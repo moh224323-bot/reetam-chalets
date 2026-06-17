@@ -1,12 +1,27 @@
 import { useState, useMemo, useEffect } from "react";
 import { hashPassword } from "../lib/db";
+import useRealtimeSync from "../hooks/useRealtimeSync";
+import useDarkMode    from "../hooks/useDarkMode";
+import type {
+  Chalet, Booking, MaintenanceRequest, WalletTransaction,
+  CleaningTransaction, CleaningExpense, CleaningTask, CleaningLog,
+  Room, Review, AppUser, Expense,
+} from "../lib/types";
+import DashboardTab   from "../components/DashboardTab";
+import BookingsTab    from "../components/BookingsTab";
+import FinancialTab   from "../components/FinancialTab";
+import MaintenanceTab from "../components/MaintenanceTab";
+import ReviewsTab     from "../components/ReviewsTab";
+import SettingsTab    from "../components/SettingsTab";
 
 const SUPA_URL = process.env.EXPO_PUBLIC_SUPA_URL!;
 const SUPA_KEY = process.env.EXPO_PUBLIC_SUPA_KEY!;
 const TUYA_DEVICES = { 16: "bf359141000334655ddl2t" };
 
-async function fetchDeviceStatus(roomId) {
-  const deviceId = TUYA_DEVICES[roomId];
+type ACStatus = { ac_on: boolean; ac_temp: number; ac_mode: string; ac_speed: string };
+
+async function fetchDeviceStatus(roomId: number): Promise<ACStatus | null> {
+  const deviceId = TUYA_DEVICES[roomId as keyof typeof TUYA_DEVICES];
   if (!deviceId) return null;
   try {
     const res = await fetch("https://kduoasfaqtrotesohqpf.supabase.co/functions/v1/tuya-control", {
@@ -16,8 +31,8 @@ async function fetchDeviceStatus(roomId) {
     });
     const data = await res.json();
     if (!data?.result) return null;
-    const status = {};
-    data.result.forEach(s => { status[s.code] = s.value; });
+    const status: Record<string, unknown> = {};
+    data.result.forEach((s: { code: string; value: unknown }) => { status[s.code] = s.value; });
     return {
       ac_on: status.power === "1" || status.power === true || status.power === 1,
       ac_temp: Number(status.temp) || 22,
@@ -27,7 +42,7 @@ async function fetchDeviceStatus(roomId) {
   } catch(e) { return null; }
 }
 
-async function tuyaControl(deviceId, commands) {
+async function tuyaControl(deviceId: string, commands: { code: string; value: unknown }[]): Promise<boolean> {
   try {
     const res = await fetch("https://kduoasfaqtrotesohqpf.supabase.co/functions/v1/tuya-control", {
       method: "POST",
@@ -39,18 +54,18 @@ async function tuyaControl(deviceId, commands) {
   } catch(e) { return false; }
 }
 
-async function sendACCommand(roomId, field, value) {
-  const deviceId = TUYA_DEVICES[roomId];
+async function sendACCommand(roomId: number, field: string, value: unknown): Promise<void> {
+  const deviceId = TUYA_DEVICES[roomId as keyof typeof TUYA_DEVICES];
   if (!deviceId) return;
-  let commands = [];
+  let commands: { code: string; value: unknown }[] = [];
   if (field === "ac_on")    commands = [{ code: value ? "PowerOn" : "PowerOff", value: value ? "PowerOn" : "PowerOff" }];
   if (field === "ac_temp")  commands = [{ code: "T", value: Number(value) }];
-  if (field === "ac_mode")  { const m = {"cool":1,"heat":2,"fan":3,"dry":4,"auto":0}; commands = [{ code: "M", value: m[value]??0 }]; }
-  if (field === "ac_speed") { const m = {"auto":0,"low":1,"medium":2,"high":3}; commands = [{ code: "F", value: m[value]??0 }]; }
+  if (field === "ac_mode")  { const m: Record<string,number> = {"cool":1,"heat":2,"fan":3,"dry":4,"auto":0}; commands = [{ code: "M", value: m[value as string]??0 }]; }
+  if (field === "ac_speed") { const m: Record<string,number> = {"auto":0,"low":1,"medium":2,"high":3}; commands = [{ code: "F", value: m[value as string]??0 }]; }
   if (commands.length > 0) await tuyaControl(deviceId, commands);
 }
 
-async function db(table, method="GET", body=null, id=null) {
+async function db(table: string, method="GET", body: Record<string,unknown> | null=null, id: string | number | null=null): Promise<unknown[] | null> {
   let url = `${SUPA_URL}/rest/v1/${table}`;
   if (method === "GET") {
     url += id ? `?${id}&select=*` : "?order=id&select=*";
@@ -84,9 +99,9 @@ const MS = {
   done:        {label:"منتهي",       color:SD,        bg:"#EEF0E9"},
 };
 
-const fd = d => d ? new Date(d).toLocaleDateString("ar-SA") : "-";
-const fn = (f,t) => (!f||!t) ? 0 : Math.max(0, Math.round((new Date(t)-new Date(f))/86400000));
-const td = () => new Date().toISOString().slice(0,10);
+const fd = (d?: string | null): string => d ? new Date(d).toLocaleDateString("ar-SA") : "-";
+const fn = (f?: string, t?: string): number => (!f||!t) ? 0 : Math.max(0, Math.round((new Date(t).getTime()-new Date(f).getTime())/86400000));
+const td = (): string => new Date().toISOString().slice(0,10);
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(
@@ -731,10 +746,10 @@ function LoginPage({onLogin}) {
 }
 
 function AppWrapper() {
-  const [ready,setReady] = useState(false);
-  const [isGuest,setIsGuest] = useState(false);
-  const [guestParams,setGuestParams] = useState({bookingId:null,mode:"checkin"});
-  const [currentUser,setCurrentUser] = useState(null);
+  const [ready,setReady]       = useState(false);
+  const [isGuest,setIsGuest]   = useState(false);
+  const [guestParams,setGuestParams] = useState<{bookingId:string|null; mode:string}>({bookingId:null,mode:"checkin"});
+  const [currentUser,setCurrentUser] = useState<AppUser | null>(null);
 
   useEffect(()=>{
     const p = new URLSearchParams(window.location.search);
@@ -753,48 +768,49 @@ function AppWrapper() {
   return <App currentUser={currentUser} onLogout={()=>{localStorage.removeItem("reetam_user");setCurrentUser(null);}}/>;
 }
 
-function App({currentUser={role:"admin",name:"المستخدم"}, onLogout=()=>{}}) {
+function App({ currentUser = { role: "admin", name: "المستخدم" } as AppUser, onLogout = () => {} }: { currentUser: AppUser; onLogout: () => void }) {
   const isAdmin        = currentUser.role === "admin";
   const isStaff        = currentUser.role === "staff";
   const isChaletMgr    = currentUser.role === "chalet_manager";
   const isMobile       = useIsMobile();
+  const [dark, toggleDark] = useDarkMode();
   const [drawerOpen,setDrawerOpen] = useState(false);
-  const [goalMdl,setGoalMdl]       = useState(null);
-  const [bkDetail,setBkDetail]     = useState(null);
-  const [selB,setSelB]             = useState(null);
+  const [goalMdl,setGoalMdl]       = useState<Chalet | null>(null);
+  const [bkDetail,setBkDetail]     = useState<Booking | null>(null);
+  const [selB,setSelB]             = useState<Booking | null>(null);
 
   const [tab,setTab]           = useState("dashboard");
-  const [chalets,setChalets]   = useState([]);
-  const [bookings,setBookings] = useState([]);
-  const [maint,setMaint]       = useState([]);
-  const [wallet,setWallet]     = useState([]);
-  const [cleaning,setCleaning] = useState([]);
-  const [clMdl,setClMdl]       = useState(null);
+  const [chalets,setChalets]   = useState<Chalet[]>([]);
+  const [bookings,setBookings] = useState<Booking[]>([]);
+  const [maint,setMaint]       = useState<MaintenanceRequest[]>([]);
+  const [wallet,setWallet]     = useState<WalletTransaction[]>([]);
+  const [cleaning,setCleaning] = useState<CleaningTransaction[]>([]);
+  const [clMdl,setClMdl]       = useState<CleaningTransaction | null>(null);
   const [clnMdl,setClnMdl]     = useState(false);
-  const [clExp,setClExp]       = useState([]);
-  const [clExpMdl,setClExpMdl] = useState(null);
-  const [clTasks,setClTasks]   = useState([]);
-  const [clLogs,setClLogs]     = useState([]);
-  const [clTaskMdl,setClTaskMdl] = useState(null);
-  const [clSelCh,setClSelCh]   = useState(null);
-  const [expenses,setExpenses] = useState([]);
-  const [users,setUsers]       = useState([]);
-  const [rooms,setRooms]       = useState([]);
-  const [reviews,setReviews]   = useState([]);
+  const [clExp,setClExp]       = useState<CleaningExpense[]>([]);
+  const [clExpMdl,setClExpMdl] = useState<Partial<CleaningExpense> | null>(null);
+  const [clTasks,setClTasks]   = useState<CleaningTask[]>([]);
+  const [clLogs,setClLogs]     = useState<CleaningLog[]>([]);
+  const [clTaskMdl,setClTaskMdl] = useState<Partial<CleaningTask> | null>(null);
+  const [clSelCh,setClSelCh]   = useState<string | null>(null);
+  const [expenses,setExpenses] = useState<Expense[]>([]);
+  const [users,setUsers]       = useState<AppUser[]>([]);
+  const [rooms,setRooms]       = useState<Room[]>([]);
+  const [reviews,setReviews]   = useState<Review[]>([]);
   const [loading,setLoading]   = useState(true);
   const [fch,setFch]           = useState("الكل");
-  const [selChalet,setSelChalet] = useState(null);
+  const [selChalet,setSelChalet] = useState<Chalet | null>(null);
 
-  const [bMdl,setBMdl]       = useState(null);
-  const [mMdl,setMMdl]       = useState(null);
-  const [mOld,setMOld]       = useState(null);
-  const [cMdl,setCMdl]       = useState(null);
+  const [bMdl,setBMdl]       = useState<Partial<Booking> | null>(null);
+  const [mMdl,setMMdl]       = useState<Partial<MaintenanceRequest> | null>(null);
+  const [mOld,setMOld]       = useState<MaintenanceRequest | null>(null);
+  const [cMdl,setCMdl]       = useState<Partial<Chalet> | null>(null);
   const [iMdl,setIMdl]       = useState(false);
-  const [wMdl,setWMdl]       = useState(null);
-  const [coMdl,setCoMdl]     = useState(null);
-  const [exMdl,setExMdl]     = useState(null);
-  const [uMdl,setUMdl]       = useState(null);
-  const [addRoomMdl,setAddRoomMdl] = useState(null);
+  const [wMdl,setWMdl]       = useState<Partial<WalletTransaction> | null>(null);
+  const [coMdl,setCoMdl]     = useState<Booking | null>(null);
+  const [exMdl,setExMdl]     = useState<Partial<Expense> | null>(null);
+  const [uMdl,setUMdl]       = useState<Partial<AppUser> | null>(null);
+  const [addRoomMdl,setAddRoomMdl] = useState<Partial<Room> | null>(null);
 
   useEffect(()=>{
     if(tab==="smart"&&selChalet){
@@ -811,10 +827,10 @@ function App({currentUser={role:"admin",name:"المستخدم"}, onLogout=()=>{
       document.documentElement.style.overflow="auto";
     }
     loadAll();
-    // تحديث تلقائي كل 30 ثانية للبيانات المتغيرة
-    const interval = setInterval(()=>loadAll(), 30_000);
-    return ()=>clearInterval(interval);
   },[]);
+
+  // تحديث فوري عند أي تغيير في قاعدة البيانات
+  useRealtimeSync(loadAll);
 
   async function loadAll() {
     try {
@@ -861,14 +877,14 @@ function App({currentUser={role:"admin",name:"المستخدم"}, onLogout=()=>{
   const eB = {chalet:names[0]||"",guest:"",phone:"",date_from:"",date_to:"",price:"",status:"confirmed",note:""};
   const eM = {chalet:names[0]||"",issue:"",maint_date:"",priority:"متوسط",status:"open",cost:"",note:"",req:"",image:null};
 
-  async function svC(f){const openDate=f.open_date?f.open_date+"-01":null;const body={name:f.name,loc:f.loc,cap:Number(f.cap),price:Number(f.price),wprice:Number(f.wprice),ins:Number(f.ins),description:f.description,st:f.st,img:f.img||null,open_date:openDate,prev_revenue:Number(f.prev_revenue)||0};if(f.id){await db("chalets","PATCH",body,f.id);}else{await db("chalets","POST",body);if(Number(f.ins)>0)await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet:f.name,cat:"تأمين",amount:Number(f.ins),note:"رصيد افتتاحي"});}await loadAll();setCMdl(null);}
-  async function dlC(id){if(!window.confirm("حذف الشاليه نهائياً؟ لا يمكن التراجع."))return;await db("chalets","DELETE",null,id);await loadAll();}
-  async function svB(f){const body={chalet:f.chalet,guest:f.guest,phone:f.phone,date_from:f.date_from,date_to:f.date_to,price:Number(f.price),status:f.status,note:f.note};if(f.id)await db("bookings","PATCH",body,f.id);else await db("bookings","POST",body);await loadAll();setBMdl(null);}
-  async function svM(f,old){const cost=Number(f.cost)||0;const wasDone=old?.status==="done";const isDone=f.status==="done";const isNew=!f.id;const body={chalet:f.chalet,issue:f.issue,maint_date:f.maint_date,priority:f.priority,status:f.status,cost,note:f.note,req:f.req,image:f.image||null};if(f.id)await db("maintenance","PATCH",body,f.id);else await db("maintenance","POST",body);if(cost>0&&isDone&&(isNew||!wasDone))await db("wallet","POST",{trans_date:f.maint_date||td(),type:"سحب صيانة",chalet:f.chalet,cat:"صيانة",amount:cost,note:f.issue||"صيانة"});await loadAll();setMMdl(null);}
-  async function svAC(chalet,field,value,roomId=null){if(roomId){const room=rooms.find(r=>r.id===roomId);const body={chalet,room_id:roomId,room_name:room?.name||"",ac_on:field==="ac_on"?value:(room?._acOn||false),ac_temp:field==="ac_temp"?value:(room?._acTemp||22),ac_mode:field==="ac_mode"?value:(room?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(room?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(room?._sdId){await db("smart_devices","PATCH",body,room._sdId);}else{const res=await db("smart_devices","POST",body);if(res?.[0])setRooms(p=>p.map(x=>x.id===roomId?{...x,_sdId:res[0].id}:x));}await sendACCommand(roomId,field,value);}else{const ch=chalets.find(x=>x.name===chalet);const body={chalet,ac_on:field==="ac_on"?value:(ch?._acOn||false),ac_temp:field==="ac_temp"?value:(ch?._acTemp||22),ac_mode:field==="ac_mode"?value:(ch?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(ch?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(ch?._sdId){await db("smart_devices","PATCH",body,ch._sdId);}else{const res=await db("smart_devices","POST",body);if(res?.[0])setChalets(p=>p.map(x=>x.name===chalet?{...x,_sdId:res[0].id}:x));}}}
-  async function svCln(chalet,amount,note){const amt=Number(amount);if(!amt||!chalet)return;await db("cleaning","POST",{trans_date:td(),type:"إيداع",chalet,amount:amt,note:note||"إيداع نظافة"});await loadAll();setClnMdl(false);}
-  async function svI(chalet,amount,note){const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"تأمين",amount:amt,note:note||"إيداع تأمين"});await loadAll();setIMdl(false);}
-  async function handleCheckout(booking,amt,pay){await db("bookings","PATCH",{status:"completed",price:amt},booking.id);await loadAll();setCoMdl(null);}
+  async function svC(f: Partial<Chalet>): Promise<void> {const openDate=f.open_date?f.open_date+"-01":null;const body={name:f.name,loc:f.loc,cap:Number(f.cap),price:Number(f.price),wprice:Number(f.wprice),ins:Number(f.ins),description:f.description,st:f.st,img:f.img||null,open_date:openDate,prev_revenue:Number(f.prev_revenue)||0};if(f.id){await db("chalets","PATCH",body as Record<string,unknown>,f.id);}else{await db("chalets","POST",body as Record<string,unknown>);if(Number(f.ins)>0)await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet:f.name,cat:"تأمين",amount:Number(f.ins),note:"رصيد افتتاحي"});}await loadAll();setCMdl(null);}
+  async function dlC(id: number): Promise<void> {if(!window.confirm("حذف الشاليه نهائياً؟ لا يمكن التراجع."))return;await db("chalets","DELETE",null,id);await loadAll();}
+  async function svB(f: Partial<Booking>): Promise<void> {const body={chalet:f.chalet,guest:f.guest,phone:f.phone,date_from:f.date_from,date_to:f.date_to,price:Number(f.price),status:f.status,note:f.note};if(f.id)await db("bookings","PATCH",body as Record<string,unknown>,f.id);else await db("bookings","POST",body as Record<string,unknown>);await loadAll();setBMdl(null);}
+  async function svM(f: Partial<MaintenanceRequest>, old?: MaintenanceRequest | null): Promise<void> {const cost=Number(f.cost)||0;const wasDone=old?.status==="done";const isDone=f.status==="done";const isNew=!f.id;const body={chalet:f.chalet,issue:f.issue,maint_date:f.maint_date,priority:f.priority,status:f.status,cost,note:f.note,req:f.req,image:f.image||null};if(f.id)await db("maintenance","PATCH",body as Record<string,unknown>,f.id);else await db("maintenance","POST",body as Record<string,unknown>);if(cost>0&&isDone&&(isNew||!wasDone))await db("wallet","POST",{trans_date:f.maint_date||td(),type:"سحب صيانة",chalet:f.chalet,cat:"صيانة",amount:cost,note:f.issue||"صيانة"});await loadAll();setMMdl(null);}
+  async function svAC(chalet: string, field: string, value: unknown, roomId: number | null = null): Promise<void> {if(roomId){const room=rooms.find(r=>r.id===roomId);const body={chalet,room_id:roomId,room_name:room?.name||"",ac_on:field==="ac_on"?value:(room?._acOn||false),ac_temp:field==="ac_temp"?value:(room?._acTemp||22),ac_mode:field==="ac_mode"?value:(room?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(room?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(room?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,room._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setRooms(p=>p.map(x=>x.id===roomId?{...x,_sdId:(res[0] as Room).id}:x));}await sendACCommand(roomId,field,value);}else{const ch=chalets.find(x=>x.name===chalet);const body={chalet,ac_on:field==="ac_on"?value:(ch?._acOn||false),ac_temp:field==="ac_temp"?value:(ch?._acTemp||22),ac_mode:field==="ac_mode"?value:(ch?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(ch?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(ch?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,ch._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setChalets(p=>p.map(x=>x.name===chalet?{...x,_sdId:(res[0] as Chalet).id}:x));}}}
+  async function svCln(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("cleaning","POST",{trans_date:td(),type:"إيداع",chalet,amount:amt,note:note||"إيداع نظافة"});await loadAll();setClnMdl(false);}
+  async function svI(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"تأمين",amount:amt,note:note||"إيداع تأمين"});await loadAll();setIMdl(false);}
+  async function handleCheckout(booking: Booking, amt: number, pay: string): Promise<void> {await db("bookings","PATCH",{status:"completed",price:amt},booking.id);await loadAll();setCoMdl(null);}
 
   const TABS = [
     {id:"dashboard",  l:"الرئيسية",    i:"⊞"},
@@ -976,8 +992,9 @@ function App({currentUser={role:"admin",name:"المستخدم"}, onLogout=()=>{
 
   // ─── Sidebar Style ────────────────────────────────────────────────────────
   const sidebarStyle = {
-    width:220, background:"#2C2419", position:"fixed", top:0, right:0,
-    height:"100vh", zIndex:50, overflowY:"auto", display:"flex", flexDirection:"column"
+    width:220, background: dark ? "#0F0D0B" : "#2C2419", position:"fixed", top:0, right:0,
+    height:"100vh", zIndex:50, overflowY:"auto", display:"flex", flexDirection:"column",
+    borderLeft: dark ? "1px solid rgba(197,172,136,.1)" : "none",
   };
   const navBtnStyle = (active) => ({
     display:"flex", alignItems:"center", gap:10, padding:"10px 12px", borderRadius:8,
@@ -1012,6 +1029,10 @@ function App({currentUser={role:"admin",name:"المستخدم"}, onLogout=()=>{
             ))}
           </nav>
           <div style={{padding:"14px 16px",borderTop:"1px solid rgba(197,172,136,.15)"}}>
+            <button onClick={toggleDark} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(197,172,136,.08)",border:"1px solid rgba(197,172,136,.2)",borderRadius:8,padding:"8px 12px",cursor:"pointer",fontFamily:"'Tajawal',sans-serif",marginBottom:10}}>
+              <span style={{fontSize:12,color:"#C5AC88",fontWeight:600}}>{dark?"الوضع النهاري":"الوضع الليلي"}</span>
+              <span style={{fontSize:16}}>{dark?"☀️":"🌙"}</span>
+            </button>
             <div style={{color:"#C5AC88",fontWeight:600,fontSize:13,marginBottom:2}}>{currentUser.name||currentUser.username}</div>
             <div style={{color:"#666",fontSize:11,marginBottom:8}}>{isAdmin?"أدمن":isChaletMgr?"مدير شاليه":"موظف"}</div>
             <button onClick={onLogout} style={{background:"rgba(139,58,58,.2)",color:"#ffaaaa",border:"none",borderRadius:6,padding:"6px 12px",fontSize:11,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:600}}>
@@ -1035,7 +1056,7 @@ function App({currentUser={role:"admin",name:"المستخدم"}, onLogout=()=>{
               <span style={{color:"#C5AC88",fontWeight:700,fontSize:14}}>مجموعة ريتام</span>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{color:"#C5AC88",fontSize:11}}>{currentUser.name||currentUser.username}</span>
+              <button onClick={toggleDark} style={{background:"rgba(197,172,136,.15)",border:"none",borderRadius:6,padding:"5px 8px",fontSize:16,cursor:"pointer"}}>{dark?"☀️":"🌙"}</button>
               <button onClick={onLogout} style={{background:"rgba(139,58,58,.2)",color:"#ffaaaa",border:"none",borderRadius:6,padding:"5px 8px",fontSize:11,cursor:"pointer",fontFamily:"'Tajawal',sans-serif"}}>خروج</button>
             </div>
           </div>
@@ -1063,6 +1084,9 @@ function App({currentUser={role:"admin",name:"المستخدم"}, onLogout=()=>{
                   ))}
                 </div>
                 <div style={{padding:"12px 16px",borderTop:"1px solid rgba(197,172,136,.2)"}}>
+                  <button onClick={toggleDark} style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(197,172,136,.08)",border:"1px solid rgba(197,172,136,.2)",borderRadius:8,padding:"8px 12px",cursor:"pointer",fontFamily:"'Tajawal',sans-serif",marginBottom:8}}>
+                    <span style={{fontSize:13,color:"#C5AC88",fontWeight:600}}>{dark?"الوضع النهاري ☀️":"الوضع الليلي 🌙"}</span>
+                  </button>
                   <div style={{color:"#888",fontSize:12,marginBottom:4}}>{currentUser.name||currentUser.username}</div>
                   <button onClick={onLogout} style={{width:"100%",background:"rgba(139,58,58,.2)",color:"#ffaaaa",border:"none",borderRadius:8,padding:"8px",fontSize:13,cursor:"pointer",fontFamily:"'Tajawal',sans-serif"}}>تسجيل الخروج</button>
                 </div>
@@ -1444,7 +1468,7 @@ function App({currentUser={role:"admin",name:"المستخدم"}, onLogout=()=>{
 
           {/* ── Finance ── */}
           {tab==="finance"&&(
-            <FinTab
+            <FinancialTab
               bookings={bookings} maintenance={maint} wallet={wallet} names={names}
               expenses={expenses}
               onAddExpense={()=>setExMdl({chalet:names[0]||"",category:"إيجار",amount:"",note:"",expense_date:td()})}
@@ -1795,65 +1819,19 @@ function App({currentUser={role:"admin",name:"المستخدم"}, onLogout=()=>{
 
           {/* ── Reviews ── */}
           {tab==="reviews"&&(
-            <div>
-              <div style={{marginBottom:20}}><h2 style={{color:B,fontWeight:800,fontSize:22,marginBottom:6}}>⭐ تقييمات الضيوف</h2><div style={{width:50,height:3,background:S,borderRadius:99,marginBottom:16}}></div></div>
-              {reviews.length>0&&(
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:12,marginBottom:20}}>
-                  {[{l:"إجمالي التقييمات",v:String(reviews.length),i:"📝",bg:W,c:B},{l:"متوسط التقييم",v:(reviews.reduce((s,r)=>s+r.rating,0)/reviews.length).toFixed(1)+" ⭐",i:"⭐",bg:"linear-gradient(135deg,#F59E0B,#D97706)",c:"#fff"},{l:"تقييم 5 نجوم",v:String(reviews.filter(r=>r.rating===5).length),i:"🌟",bg:"linear-gradient(135deg,#10b981,#059669)",c:"#fff"}].map((s,i)=>(
-                    <div key={i} style={{background:s.bg,borderRadius:12,padding:"16px",boxShadow:"0 4px 14px rgba(65,53,35,.1)",border:s.bg===W?"1px solid rgba(197,172,136,.3)":"none"}}>
-                      <div style={{fontSize:20,marginBottom:5}}>{s.i}</div>
-                      <div style={{fontSize:20,fontWeight:800,color:s.c}}>{s.v}</div>
-                      <div style={{fontSize:11,color:s.bg===W?T:"rgba(255,255,255,.8)",marginTop:2}}>{s.l}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {reviews.length===0
-                ?<div className="card" style={{padding:40,textAlign:"center",color:T}}><div style={{fontSize:48,marginBottom:12}}>⭐</div><div style={{fontWeight:700,fontSize:16,marginBottom:8}}>لا توجد تقييمات بعد</div><div style={{fontSize:13}}>أرسل رابط التقييم للضيوف من صفحة الحجوزات</div></div>
-                :<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
-                  {[...reviews].filter(r=>isAdmin||isStaff||(isChaletMgr&&r.chalet===currentUser.chalet)).reverse().map((r,i)=>(
-                    <div key={i} className="card" style={{padding:16}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                        <div><div style={{fontWeight:700,color:B,fontSize:14}}>{r.guest}</div><div style={{fontSize:12,color:T}}>{r.chalet}</div></div>
-                        <div style={{display:"flex",gap:2}}>{[1,2,3,4,5].map(s=>(<span key={s} style={{fontSize:18,color:r.rating>=s?"#F59E0B":"#E5E7EB"}}>★</span>))}</div>
-                      </div>
-                      {r.comment&&<div style={{fontSize:13,color:T,background:"#FAF8F5",borderRadius:8,padding:"8px 12px",lineHeight:1.7}}>{r.comment}</div>}
-                      <div style={{fontSize:11,color:SI,marginTop:8}}>{new Date(r.created_at).toLocaleDateString("ar-SA")}</div>
-                    </div>
-                  ))}
-                </div>
-              }
-            </div>
+            <ReviewsTab
+              reviews={(isAdmin||isStaff)?reviews:reviews.filter(r=>isChaletMgr&&r.chalet===currentUser.chalet)}
+            />
           )}
 
           {/* ── Settings ── */}
           {tab==="settings"&&isAdmin&&(
-            <div>
-              <TH title="⚙️ الإعدادات"/>
-              <div className="card" style={{overflow:"hidden",marginBottom:20}}>
-                <div style={{padding:"12px 16px",borderBottom:"2px solid rgba(197,172,136,.2)",background:SL,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <span style={{fontWeight:700,color:B,fontSize:14}}>👥 إدارة المستخدمين</span>
-                  <button className="btn bp" onClick={()=>setUMdl({name:"",username:"",email:"",password:"",role:"staff",chalet:""})}>+ إضافة مستخدم</button>
-                </div>
-                <Tbl heads={["الاسم","اسم المستخدم","البريد","الصلاحية","الشاليه","إجراءات"]}
-                  rows={users.map(u=>(
-                    <tr key={u.id}>
-                      <td style={{fontWeight:600}}>{u.name}</td>
-                      <td style={{color:T}}>{u.username||"—"}</td>
-                      <td style={{color:T,fontSize:12}}>{u.email||"—"}</td>
-                      <td><Bdg bg={u.role==="admin"?"#2C2419":u.role==="chalet_manager"?"#F5EFD6":"#E8F0F0"} color={u.role==="admin"?"#C5AC88":u.role==="chalet_manager"?"#8B6914":"#576D6F"}>{u.role==="admin"?"أدمن":u.role==="chalet_manager"?"مدير شاليه":"موظف"}</Bdg></td>
-                      <td style={{color:T,fontSize:12}}>{u.chalet||"كل الشاليهات"}</td>
-                      <td>
-                        <div style={{display:"flex",gap:4}}>
-                          <button className="btn be bsm" onClick={()=>setUMdl({...u})}>تعديل</button>
-                          {u.role!=="admin"&&<button className="btn bd bsm" onClick={async()=>{if(!window.confirm("حذف "+u.name+"؟"))return;await db("users","DELETE",null,u.id);await loadAll();}}>حذف</button>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                />
-              </div>
-            </div>
+            <SettingsTab
+              users={users}
+              onAdd={()=>setUMdl({name:"",username:"",email:"",password:"",role:"staff",chalet:""})}
+              onEdit={u=>setUMdl({...u})}
+              onReload={loadAll}
+            />
           )}
 
         </main>

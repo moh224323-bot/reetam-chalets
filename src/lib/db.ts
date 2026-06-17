@@ -6,7 +6,7 @@ export async function db(
   method: "GET" | "POST" | "PATCH" | "DELETE" = "GET",
   body: Record<string, unknown> | null = null,
   id: string | number | null = null
-): Promise<any[] | null> {
+): Promise<Record<string, unknown>[] | null> {
   let url = `${SUPA_URL}/rest/v1/${table}`;
 
   if (method === "GET") {
