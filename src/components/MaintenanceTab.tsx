@@ -84,25 +84,25 @@ export default function MaintenanceTab({ maintenance, names, cStats, mCost, onAd
           heads={["الشاليه","المشكلة","مقدم الطلب","التاريخ","الأولوية","الحالة","التكلفة","صورة","إجراءات"]}
           rows={rows.map(m => (
             <tr key={m.id}>
-              <td style={{ fontWeight:600 }}>{m.chalet}</td>
-              <td>{m.issue}</td>
-              <td style={{ fontSize:12, color:T }}>{m.req||"-"}</td>
-              <td>{formatDate(m.maint_date)}</td>
-              <td>
+              <td data-label="الشاليه" style={{ fontWeight:600 }}>{m.chalet}</td>
+              <td data-label="المشكلة">{m.issue}</td>
+              <td data-label="مقدم الطلب" style={{ fontSize:12, color:T }}>{m.req||"-"}</td>
+              <td data-label="التاريخ">{formatDate(m.maint_date)}</td>
+              <td data-label="الأولوية">
                 <Bdg
                   bg={m.priority==="عالي"?"#F5E6E6":m.priority==="متوسط"?"#F5EFD6":"#EEF0E9"}
                   color={m.priority==="عالي"?"#8B3A3A":m.priority==="متوسط"?"#8B6914":SD}>
                   {m.priority}
                 </Bdg>
               </td>
-              <td><Bdg bg={MS[m.status]?.bg||"#eee"} color={MS[m.status]?.color||"#333"}>{MS[m.status]?.label||m.status}</Bdg></td>
-              <td style={{ fontWeight:700, color:m.cost?T:SI }}>{m.cost?Number(m.cost).toLocaleString()+" ر":"-"}</td>
-              <td>
+              <td data-label="الحالة"><Bdg bg={MS[m.status]?.bg||"#eee"} color={MS[m.status]?.color||"#333"}>{MS[m.status]?.label||m.status}</Bdg></td>
+              <td data-label="التكلفة" style={{ fontWeight:700, color:m.cost?T:SI }}>{m.cost?Number(m.cost).toLocaleString()+" ر":"-"}</td>
+              <td data-label="صورة">
                 {m.image
                   ? <img src={m.image} alt="صورة" onClick={() => window.open(m.image!,"_blank")} style={{ width:40, height:40, objectFit:"cover", borderRadius:6, cursor:"pointer", border:"1px solid rgba(197,172,136,.3)" }}/>
                   : <span style={{ color:SI, fontSize:12 }}>-</span>}
               </td>
-              <td>
+              <td data-label="">
                 <div style={{ display:"flex", gap:4 }}>
                   <button className="btn be bsm" onClick={() => onEdit(m)}>تعديل</button>
                   <button className="btn bd bsm" onClick={async () => { if (window.confirm("حذف طلب الصيانة؟")) { await db("maintenance","DELETE",null,m.id); onReload(); } }}>حذف</button>

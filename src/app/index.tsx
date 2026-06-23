@@ -1,15 +1,17 @@
 import { useState, useMemo, useEffect } from "react";
 import { hashPassword } from "../lib/db";
-import useRealtimeSync from "../hooks/useRealtimeSync";
-import useDarkMode    from "../hooks/useDarkMode";
+import useRealtimeSync   from "../hooks/useRealtimeSync";
+import useDarkMode       from "../hooks/useDarkMode";
+import BookingCalendar   from "../components/BookingCalendar";
 import type {
   Chalet, Booking, MaintenanceRequest, WalletTransaction,
   CleaningTransaction, CleaningExpense, CleaningTask, CleaningLog,
-  Room, Review, AppUser, Expense,
+  Room, Review, AppUser, Expense, FixedExpense, CleaningWorker, LoyaltyCard,
 } from "../lib/types";
 import DashboardTab   from "../components/DashboardTab";
 import BookingsTab    from "../components/BookingsTab";
 import FinancialTab   from "../components/FinancialTab";
+import ChaletsTab     from "../components/ChaletsTab";
 import MaintenanceTab from "../components/MaintenanceTab";
 import ReviewsTab     from "../components/ReviewsTab";
 import SettingsTab    from "../components/SettingsTab";
@@ -117,6 +119,7 @@ function useIsMobile() {
 
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap');
+  @font-face{font-family:'YaModern';src:url('/assets/YaModernPro-Bold.otf') format('opentype');font-weight:700;font-display:swap}
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   html,body{overflow-y:auto!important;height:auto!important;min-height:100vh}
   #root{height:auto;overflow:visible}
@@ -151,12 +154,22 @@ const CSS = `
   .ig{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px}
   .mg{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
   .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  @media(max-width:600px){
+  @media(max-width:640px){
     .mbox{padding:16px;border-radius:14px}
-    th,td{padding:8px;font-size:12px}
     h2{font-size:18px!important}
     .sg{grid-template-columns:repeat(2,1fr)}
     .g2{grid-template-columns:1fr}
+    .tbl-wrap{overflow-x:visible}
+    .tbl{min-width:unset;display:block}
+    .tbl thead{display:none}
+    .tbl tbody{display:block}
+    .tbl tr{display:block;margin-bottom:12px;border-radius:12px;border:1px solid rgba(197,172,136,.25);overflow:hidden;background:#fff;box-shadow:0 1px 6px rgba(65,53,35,.07)}
+    .tbl tr:hover td{background:transparent}
+    .tbl td{display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid rgba(197,172,136,.12);font-size:13px;gap:8px}
+    .tbl td:last-child{border-bottom:none}
+    .tbl td::before{content:attr(data-label);font-size:11px;color:#576D6F;font-weight:700;flex-shrink:0;text-align:right}
+    .tbl td[data-label=""]::before{display:none}
+    .tbl td[data-label=""]{justify-content:flex-end}
   }
 `;
 
@@ -171,6 +184,152 @@ function TH({title}) {
     </div>
   );
 }
+function SendTaskBtn({task,workers,log,onSent}:{task:CleaningTask;workers:CleaningWorker[];log:CleaningLog|null;onSent:()=>void}) {
+  const [selW,setSelW]=useState<number>(workers[0]?.id||0);
+  const [sending,setSending]=useState(false);
+  async function send() {
+    const worker=workers.find(w=>w.id===selW);
+    if(!worker)return;
+    setSending(true);
+    let logId:number;
+    if(log){logId=log.id;await db("cleaning_logs","PATCH",{status:"sent",sent_at:new Date().toISOString(),worker_id:worker.id},log.id);}
+    else{const r=await db("cleaning_logs","POST",{task_id:task.id,chalet:task.chalet,log_date:td(),worker_done:false,supervisor_ok:false,status:"sent",sent_at:new Date().toISOString(),worker_id:worker.id});logId=r?.[0]?.id||0;}
+    onSent();
+    const lang=worker.language||"hi";
+    const url=`https://reetam-chalets.vercel.app?guest=1&m=cleantask&log=${logId}&task=${encodeURIComponent(task.title)}&ch=${encodeURIComponent(task.chalet)}&lang=${lang}`;
+    const msgs:Record<string,string>={
+      hi:`नमस्ते ${worker.name}! 🧹%0aकाम: *${task.title}*%0aजगह: ${task.chalet}%0a%0aकाम पूरा होने पर यहाँ क्लिक करें:%0a${encodeURIComponent(url)}`,
+      ar:`مرحباً ${worker.name} 🧹%0aالمهمة: *${task.title}*%0aالشاليه: ${task.chalet}%0a%0aعند الانتهاء اضغط هنا:%0a${encodeURIComponent(url)}`,
+      en:`Hi ${worker.name}! 🧹%0aTask: *${task.title}*%0aChalet: ${task.chalet}%0a%0aWhen done, click here:%0a${encodeURIComponent(url)}`,
+    };
+    const phone=worker.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");
+    window.open(`https://wa.me/${phone}?text=${msgs[lang]||msgs.hi}`,"_blank");
+    setSending(false);
+  }
+  return (
+    <div style={{display:"flex",gap:4,alignItems:"center"}}>
+      {workers.length>1&&(
+        <select value={selW} onChange={e=>setSelW(Number(e.target.value))}
+          style={{borderRadius:7,border:"1.5px solid rgba(6,95,70,.3)",padding:"4px 7px",fontSize:11,background:"#fff",fontFamily:"'Tajawal',sans-serif",maxWidth:90}}>
+          {workers.map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
+        </select>
+      )}
+      <button onClick={send} disabled={sending} style={{
+        background:"#25D366",color:"#fff",border:"none",borderRadius:7,
+        padding:"5px 10px",fontSize:11,fontWeight:700,cursor:"pointer",
+        fontFamily:"'Tajawal',sans-serif",whiteSpace:"nowrap",
+      }}>{sending?"...":"📲 إرسال"}</button>
+    </div>
+  );
+}
+
+function CleanTaskBanner({tasks,sentLogs,workers,logs,thisMonth,onSend,onConfirm}:{
+  tasks:CleaningTask[];sentLogs:Set<number>;workers:CleaningWorker[];logs:CleaningLog[];thisMonth:string;
+  onSend:(t:CleaningTask,w:CleaningWorker)=>Promise<void>;onConfirm:(t:CleaningTask)=>Promise<void>;
+}) {
+  const [open,setOpen]=useState(true);
+  const [sel,setSel]=useState<Record<number,number>>({});
+  return (
+    <div style={{marginBottom:20}}>
+      <button onClick={()=>setOpen(o=>!o)} style={{
+        width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 16px",
+        background:"linear-gradient(135deg,#065F46,#047857)",border:"none",borderRadius:open?"14px 14px 0 0":14,
+        cursor:"pointer",fontFamily:"'Tajawal',sans-serif",textAlign:"right",
+      }}>
+        <span style={{fontSize:16}}>🧹</span>
+        <span style={{fontWeight:800,color:"#fff",fontSize:14,flex:1}}>مهام النظافة المستحقة هذا الشهر</span>
+        <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{tasks.length}</span>
+        <span style={{color:"rgba(255,255,255,.7)",fontSize:12,marginRight:4}}>{open?"▲":"▼"}</span>
+      </button>
+      {open&&(
+        <div style={{background:"rgba(6,95,70,.07)",border:"1px solid rgba(6,95,70,.2)",borderRadius:"0 0 14px 14px",overflow:"hidden"}}>
+          {tasks.map((t,i)=>{
+            const log=logs.find(l=>l.task_id===t.id&&l.log_date?.startsWith(thisMonth));
+            const isSent=sentLogs.has(t.id)||log?.status==="sent";
+            const isDone=log?.status==="done"||log?.supervisor_ok;
+            return (
+              <div key={t.id} style={{padding:"12px 16px",borderTop:i>0?"1px solid rgba(6,95,70,.12)":"none",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                <div style={{flex:1,minWidth:120}}>
+                  <div style={{fontWeight:700,color:B,fontSize:13}}>{t.title}</div>
+                  <div style={{fontSize:11,color:T,marginTop:2}}>{t.chalet} · {t.category} · {t.frequency}</div>
+                  {isSent&&!isDone&&<div style={{fontSize:10,color:"#059669",fontWeight:600,marginTop:2}}>📤 أُرسلت للعامل</div>}
+                  {isDone&&<div style={{fontSize:10,color:"#166534",fontWeight:600,marginTop:2}}>✅ انتهى العامل</div>}
+                </div>
+                {workers.length>0&&!isDone&&(
+                  <select value={sel[t.id]||""} onChange={e=>setSel(p=>({...p,[t.id]:Number(e.target.value)}))}
+                    style={{borderRadius:8,border:"1.5px solid rgba(6,95,70,.3)",padding:"6px 10px",fontSize:12,background:"#fff",fontFamily:"'Tajawal',sans-serif"}}>
+                    <option value="">اختر عامل</option>
+                    {workers.filter(w=>w.active).map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
+                  </select>
+                )}
+                <div style={{display:"flex",gap:6}}>
+                  {!isDone&&sel[t.id]&&workers.find(w=>w.id===sel[t.id])&&(
+                    <SaveBtn label={isSent?"إعادة إرسال ↗":"إرسال ↗"} style={{background:"#25D366",padding:"6px 12px",fontSize:12}}
+                      onClick={()=>onSend(t,workers.find(w=>w.id===sel[t.id])!)}/>
+                  )}
+                  {!isDone&&(
+                    <SaveBtn label="تأكيد ✓" style={{background:"#059669",padding:"6px 12px",fontSize:12}}
+                      onClick={()=>onConfirm(t)}/>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UnpaidFixedBanner({unpaid,total,onPay}:{unpaid:FixedExpense[];total:number;onPay:(fx:FixedExpense)=>Promise<void>}) {
+  const [open,setOpen]=useState(false);
+  return (
+    <div style={{marginBottom:20}}>
+      <button onClick={()=>setOpen(o=>!o)} style={{
+        width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 16px",
+        background:"linear-gradient(135deg,#78350F,#92400E)",border:"none",borderRadius:open?"14px 14px 0 0":14,
+        cursor:"pointer",fontFamily:"'Tajawal',sans-serif",textAlign:"right",
+      }}>
+        <span style={{fontSize:16}}>📌</span>
+        <span style={{fontWeight:800,color:"#fff",fontSize:14,flex:1}}>مصروفات ثابتة لم تُسدَّد</span>
+        <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{unpaid.length}</span>
+        <span style={{fontWeight:800,color:"#FDE68A",fontSize:13}}>{total.toLocaleString()+" ر"}</span>
+        <span style={{color:"rgba(255,255,255,.7)",fontSize:12,marginRight:4}}>{open?"▲":"▼"}</span>
+      </button>
+      {open&&(
+        <div style={{background:"rgba(120,53,15,.12)",border:"1px solid rgba(120,53,15,.25)",borderRadius:"0 0 14px 14px",overflow:"hidden"}}>
+          {unpaid.map((fx,i)=>(
+            <div key={fx.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 16px",borderTop:i>0?"1px solid rgba(120,53,15,.15)":"none"}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,color:B,fontSize:13}}>{fx.name}</div>
+                <div style={{fontSize:11,color:T,marginTop:2}}>{fx.chalet} · {fx.category}</div>
+              </div>
+              <div style={{fontWeight:800,color:"#92400E",fontSize:14}}>{Number(fx.amount).toLocaleString()+" ر"}</div>
+              <SaveBtn label="تسديد" onClick={()=>onPay(fx)} style={{padding:"6px 14px",fontSize:12}}/>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+function SaveBtn({onClick,label="حفظ",disabled=false,style={}}: {onClick:()=>Promise<void>;label?:string;disabled?:boolean;style?:React.CSSProperties}) {
+  const [saving,setSaving] = useState(false);
+  async function handle(){if(saving||disabled)return;setSaving(true);try{await onClick();}finally{setSaving(false);}}
+  return (
+    <button className="btn bp" onClick={handle} disabled={saving||disabled}
+      style={{minWidth:100,opacity:(saving||disabled)?.75:1,...style}}>
+      {saving?(
+        <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
+          جاري الحفظ
+          <span style={{display:"inline-flex",gap:3,marginRight:4}}>
+            {[0,1,2].map(i=><span key={i} style={{width:5,height:5,borderRadius:"50%",background:"currentColor",display:"inline-block",animation:"dotPulse 1.2s ease-in-out infinite",animationDelay:`${i*0.2}s`}}/>)}
+          </span>
+        </span>
+      ):label}
+    </button>
+  );
+}
 function Mdl({onClose,title,children}) {
   return (
     <div className="mbg" onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -183,24 +342,7 @@ function Mdl({onClose,title,children}) {
 }
 function Logo({size}) {
   const s = size||40;
-  return (
-    <svg width={s} height={s*1.3} viewBox="0 0 100 130" fill="none">
-      <rect x="10" y="2" width="80" height="96" rx="40" ry="40" stroke={S} strokeWidth="3" fill="none"/>
-      <line x1="50" y1="2" x2="50" y2="98" stroke={S} strokeWidth="1.5"/>
-      <line x1="10" y1="50" x2="90" y2="50" stroke={S} strokeWidth="1.5"/>
-      <path d="M20 20 Q30 10 38 25 Q28 30 20 20Z" stroke={S} strokeWidth="1.5" fill="none"/>
-      <path d="M25 35 Q35 20 42 38 Q32 42 25 35Z" stroke={S} strokeWidth="1.2" fill="none"/>
-      <circle cx="70" cy="25" r="8" stroke={S} strokeWidth="1.2" fill="none"/>
-      <circle cx="70" cy="25" r="4" stroke={S} strokeWidth="1" fill="none"/>
-      <line x1="30" y1="75" x2="30" y2="92" stroke={S} strokeWidth="2"/>
-      <path d="M30 75 Q22 68 18 60" stroke={S} strokeWidth="1.5" fill="none"/>
-      <path d="M30 75 Q38 68 42 60" stroke={S} strokeWidth="1.5" fill="none"/>
-      <circle cx="70" cy="65" r="7" stroke={S} strokeWidth="1.5" fill="none"/>
-      <path d="M58 80 Q63 76 68 80 Q73 84 78 80" stroke={S} strokeWidth="1.5" fill="none"/>
-      <path d="M58 85 Q63 81 68 85 Q73 89 78 85" stroke={S} strokeWidth="1.2" fill="none"/>
-      <text x="50" y="118" textAnchor="middle" fill={S} fontSize="11" fontFamily="Tajawal,sans-serif" fontWeight="700">شاليه ريتام</text>
-    </svg>
-  );
+  return <img src="/assets/logo-reetam.png" width={s} height={s} style={{objectFit:"contain"}}/>;
 }
 function Tbl({heads,rows,footer}) {
   return (
@@ -212,155 +354,6 @@ function Tbl({heads,rows,footer}) {
           {footer&&<tr style={{background:SL}}>{footer}</tr>}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function BookingCalendar({bookings,names}) {
-  const [view,setView] = useState("month");
-  const [curDate,setCurDate] = useState(new Date());
-  const [selCh,setSelCh] = useState("الكل");
-  const y=curDate.getFullYear(), m=curDate.getMonth();
-  const fb = bookings.filter(b=>b.status==="completed"&&(selCh==="الكل"||b.chalet===selCh));
-
-  function getBookingsForDay(date) {
-    return fb.filter(b=>{
-      if(!b.date_from||!b.date_to) return false;
-      const from=new Date(b.date_from); from.setHours(0,0,0,0);
-      const to=new Date(b.date_to); to.setHours(23,59,59,999);
-      return date>=from && date<=to;
-    });
-  }
-  const SC = {
-    confirmed:{bg:"#1a3a4a",border:"#4A9BAF",text:"#e0f4f8",grad:"linear-gradient(135deg,#1a3a4a,#1f4d5e)"},
-    pending:  {bg:"#3d2e00",border:"#D4A017",text:"#FFE082",grad:"linear-gradient(135deg,#3d2e00,#4a3800)"},
-    completed:{bg:"#1a2e1a",border:"#4CAF50",text:"#A5D6A7",grad:"linear-gradient(135deg,#1a2e1a,#1e3a1e)"},
-  };
-
-  function MonthView() {
-    const firstDay=new Date(y,m,1).getDay();
-    const daysInMonth=new Date(y,m+1,0).getDate();
-    const days=[];
-    for(let i=0;i<firstDay;i++) days.push(null);
-    for(let d=1;d<=daysInMonth;d++) days.push(d);
-    const dayNames=["أح","اث","ثل","أر","خم","جم","سب"];
-    const today=new Date(); today.setHours(0,0,0,0);
-    return (
-      <div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:6}}>
-          {dayNames.map(d=><div key={d} style={{textAlign:"center",fontSize:11,fontWeight:800,color:B,padding:"6px 0",background:"rgba(197,172,136,.08)",borderRadius:6}}>{d}</div>)}
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
-          {days.map((d,i)=>{
-            if(!d) return <div key={i} style={{minHeight:80}}/>;
-            const date=new Date(y,m,d); date.setHours(0,0,0,0);
-            const dayBookings=getBookingsForDay(date);
-            const isToday=date.getTime()===today.getTime();
-            const hasBk=dayBookings.length>0;
-            return (
-              <div key={i} style={{minHeight:80,padding:"5px 4px",borderRadius:10,background:isToday?"rgba(197,172,136,.12)":hasBk?"rgba(87,109,111,.04)":"#fafafa",border:isToday?"2px solid "+B:"1px solid rgba(197,172,136,.18)",transition:"box-shadow .2s",boxShadow:hasBk?"0 1px 4px rgba(0,0,0,.06)":"none"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-                  <span style={{fontSize:12,fontWeight:isToday?900:600,color:isToday?"#fff":B,background:isToday?B:"transparent",borderRadius:isToday?"50%":"0",width:isToday?20:undefined,height:isToday?20:undefined,display:"flex",alignItems:"center",justifyContent:"center"}}>{d}</span>
-                  {hasBk&&<span style={{fontSize:9,background:B,color:S,borderRadius:99,padding:"1px 5px",fontWeight:700}}>{dayBookings.length}</span>}
-                </div>
-                {dayBookings.slice(0,2).map((b,j)=>{
-                  const sc=SC[b.status]||SC.confirmed;
-                  const isStart=new Date(b.date_from).toDateString()===date.toDateString();
-                  return (
-                    <div key={j} style={{background:sc.grad||sc.bg,borderRight:"3px solid "+sc.border,borderRadius:5,padding:"2px 5px",fontSize:9,color:sc.text,fontWeight:700,marginBottom:2,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis",boxShadow:"0 1px 3px rgba(0,0,0,.15)"}}>
-                      {isStart?"▶ ":""}{b.guest}
-                      <div style={{fontSize:8,opacity:.75,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{b.chalet}</div>
-                    </div>
-                  );
-                })}
-                {dayBookings.length>2&&<div style={{fontSize:9,color:B,fontWeight:700,textAlign:"center",marginTop:1}}>+{dayBookings.length-2} أكثر</div>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  function WeekView() {
-    const startOfWeek=new Date(curDate);
-    startOfWeek.setDate(curDate.getDate()-curDate.getDay());
-    startOfWeek.setHours(0,0,0,0);
-    const days=Array.from({length:7},(_,i)=>{const d=new Date(startOfWeek);d.setDate(startOfWeek.getDate()+i);return d;});
-    const today=new Date(); today.setHours(0,0,0,0);
-    const dayNames=["أح","اث","ثل","أر","خم","جم","سب"];
-    return (
-      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
-        {days.map((date,i)=>{
-          const dayBookings=getBookingsForDay(date);
-          const isToday=date.getTime()===today.getTime();
-          return (
-            <div key={i} style={{borderRadius:12,overflow:"hidden",border:isToday?"2px solid "+B:"1px solid rgba(197,172,136,.2)",boxShadow:isToday?"0 2px 12px rgba(0,0,0,.1)":"none"}}>
-              <div style={{background:isToday?B:SL,padding:"8px 4px",textAlign:"center"}}>
-                <div style={{fontSize:10,fontWeight:700,color:isToday?S:T,marginBottom:2}}>{dayNames[i]}</div>
-                <div style={{fontSize:18,fontWeight:900,color:isToday?S:B}}>{date.getDate()}</div>
-                {dayBookings.length>0&&<div style={{fontSize:9,background:isToday?"rgba(255,255,255,.2)":"rgba(87,109,111,.15)",color:isToday?S:T,borderRadius:99,padding:"1px 6px",marginTop:2,display:"inline-block",fontWeight:700}}>{dayBookings.length} حجز</div>}
-              </div>
-              <div style={{padding:5,minHeight:90,background:W}}>
-                {dayBookings.length===0
-                  ?<div style={{fontSize:10,color:SI,textAlign:"center",marginTop:12,opacity:.5}}>فارغ</div>
-                  :dayBookings.map((b,j)=>{
-                    const sc=SC[b.status]||SC.confirmed;
-                    return (
-                      <div key={j} style={{background:sc.grad||sc.bg,borderRight:"3px solid "+sc.border,borderRadius:6,padding:"4px 6px",marginBottom:3,fontSize:10,color:sc.text,fontWeight:700,boxShadow:"0 1px 3px rgba(0,0,0,.15)"}}>
-                        <div style={{overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{b.guest}</div>
-                        <div style={{fontSize:9,opacity:.8,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{b.chalet}</div>
-                      </div>
-                    );
-                  })
-                }
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
-  const monthNames=["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
-  function prev(){if(view==="month")setCurDate(new Date(y,m-1,1));else{const d=new Date(curDate);d.setDate(d.getDate()-7);setCurDate(d);}}
-  function next(){if(view==="month")setCurDate(new Date(y,m+1,1));else{const d=new Date(curDate);d.setDate(d.getDate()+7);setCurDate(d);}}
-
-  return (
-    <div className="card" style={{overflow:"hidden",marginBottom:20}}>
-      <div style={{padding:"12px 16px",borderBottom:"2px solid rgba(197,172,136,.2)",background:SL,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <button className="btn" onClick={prev} style={{background:W,color:B,border:"1px solid rgba(197,172,136,.4)",padding:"5px 10px",fontSize:14}}>‹</button>
-          <div style={{fontWeight:800,color:B,fontSize:14,minWidth:120,textAlign:"center"}}>
-            {view==="month"?monthNames[m]+" "+y:"الأسبوع · "+curDate.toLocaleDateString("ar-SA")}
-          </div>
-          <button className="btn" onClick={next} style={{background:W,color:B,border:"1px solid rgba(197,172,136,.4)",padding:"5px 10px",fontSize:14}}>›</button>
-        </div>
-        <div style={{display:"flex",gap:6,alignItems:"center"}}>
-          <select className="inp" style={{width:"auto",fontSize:12,padding:"5px 8px"}} value={selCh} onChange={e=>setSelCh(e.target.value)}>
-            <option value="الكل">كل الشاليهات</option>
-            {names.map(c=><option key={c} value={c}>{c}</option>)}
-          </select>
-          <div style={{display:"flex",gap:4}}>
-            {["month","week"].map(v=>(
-              <button key={v} className="btn" onClick={()=>setView(v)} style={{background:view===v?B:W,color:view===v?S:B,border:"1px solid rgba(197,172,136,.4)",padding:"5px 12px",fontSize:12}}>
-                {v==="month"?"شهري":"أسبوعي"}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-      <div style={{padding:12}}>
-        {view==="month"?<MonthView/>:<WeekView/>}
-        <div style={{display:"flex",gap:10,marginTop:14,flexWrap:"wrap"}}>
-          {[{l:"مؤكد",c:"#4A9BAF",bg:"#1a3a4a"},{l:"معلق",c:"#D4A017",bg:"#3d2e00"},{l:"مكتمل",c:"#4CAF50",bg:"#1a2e1a"}].map((s,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:6,fontSize:11,background:"rgba(197,172,136,.08)",borderRadius:20,padding:"4px 10px"}}>
-              <div style={{width:10,height:10,borderRadius:3,background:s.bg,border:"2px solid "+s.c}}/>
-              <span style={{color:B,fontWeight:600}}>{s.l}</span>
-            </div>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -570,6 +563,337 @@ function FinTab({bookings,maintenance,wallet,names,expenses=[],onAddExpense,onEd
   );
 }
 
+const BASE_URL = "https://chalet-app-five.vercel.app";
+
+function LoyaltyAdminPage({ cards, reviews, onReload }: { cards: LoyaltyCard[]; reviews: Review[]; onReload: () => void }) {
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState<"all"|"pending"|"active">("all");
+  const [editMdl, setEditMdl] = useState<LoyaltyCard | null>(null);
+  const [addMdl, setAddMdl] = useState(false);
+  const [newCard, setNewCard] = useState({ name:"", phone:"", tickets:0, free_nights:0 });
+  const [saving, setSaving] = useState(false);
+
+  const totalMembers  = cards.length;
+  const totalPending  = cards.filter(c => c.free_nights > 0).length;
+  const totalReviews  = cards.reduce((s, c) => s + c.total_reviews, 0);
+  const nearlyThere   = cards.filter(c => c.tickets === 2).length;
+
+  const filtered = cards.filter(c => {
+    const matchSearch = !search || c.name.includes(search) || c.phone.includes(search);
+    const matchFilter =
+      filter === "all"     ? true :
+      filter === "pending" ? c.free_nights > 0 :
+      filter === "active"  ? c.tickets > 0 : true;
+    return matchSearch && matchFilter;
+  });
+
+  async function useNight(c: LoyaltyCard) {
+    if (!confirm(`هل تم استخدام ليلة مجانية لـ ${c.name}؟`)) return;
+    await db("loyalty_cards", "PATCH", { free_nights: c.free_nights - 1, updated_at: new Date().toISOString() }, c.id);
+    onReload();
+  }
+
+  async function saveEdit() {
+    if (!editMdl) return;
+    setSaving(true);
+    await db("loyalty_cards", "PATCH", {
+      name: editMdl.name, phone: editMdl.phone,
+      tickets: Number(editMdl.tickets), free_nights: Number(editMdl.free_nights),
+      updated_at: new Date().toISOString(),
+    }, editMdl.id);
+    setSaving(false);
+    setEditMdl(null);
+    onReload();
+  }
+
+  async function deleteCard(c: LoyaltyCard) {
+    if (!confirm(`حذف بطاقة ${c.name}؟`)) return;
+    await db("loyalty_cards", "DELETE", undefined, `id=eq.${c.id}`);
+    onReload();
+  }
+
+  const statBox = (icon: string, label: string, value: number, color: string) => (
+    <div style={{ background:"var(--card)", borderRadius:16, padding:"18px 20px", border:"1px solid var(--border)", display:"flex", alignItems:"center", gap:14 }}>
+      <div style={{ fontSize:32 }}>{icon}</div>
+      <div>
+        <div style={{ fontSize:24, fontWeight:800, color }}>{value}</div>
+        <div style={{ fontSize:12, opacity:.6, marginTop:2 }}>{label}</div>
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Header */}
+      <div style={{ background:"linear-gradient(135deg,#2C1810,#3D2B1A)", borderRadius:18, padding:"24px 28px", marginBottom:24, border:"1px solid rgba(197,172,136,.25)" }}>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:12 }}>
+          <div>
+            <div style={{ fontSize:22, fontWeight:800, color:"#C8B89A" }}>🏆 برنامج ولاء ريتام</div>
+            <div style={{ fontSize:13, color:"rgba(197,172,136,.6)", marginTop:4 }}>اجمع 3 تذاكر واحصل على ليلة مجانية في أي شاليه</div>
+          </div>
+          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+            <button onClick={() => { setNewCard({name:"",phone:"",tickets:0,free_nights:0}); setAddMdl(true); }} style={{
+              background:"linear-gradient(135deg,#B8960C,#C8B89A)", color:"#1a1a2e", border:"none",
+              borderRadius:10, padding:"9px 16px", fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"'Tajawal',sans-serif",
+            }}>+ إضافة عميل</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:24 }}>
+        {statBox("👥", "إجمالي الأعضاء",    totalMembers,  "var(--text)")}
+        {statBox("🎁", "ليالٍ مجانية معلقة", totalPending,  "#4ADE80")}
+        {statBox("🔥", "على وشك الجائزة",   nearlyThere,   "#F59E0B")}
+        {statBox("⭐", "إجمالي التقييمات",   totalReviews,  "#C8B89A")}
+      </div>
+
+      {/* Search + Filter */}
+      <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" }}>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="🔍 بحث بالاسم أو الجوال..."
+          style={{ flex:1, minWidth:180, padding:"9px 14px", borderRadius:10, border:"1px solid var(--border)", background:"var(--card)", color:"var(--text)", fontSize:13, fontFamily:"'Tajawal',sans-serif" }}
+        />
+        {(["all","pending","active"] as const).map(f => (
+          <button key={f} onClick={() => setFilter(f)} style={{
+            padding:"9px 16px", borderRadius:10, border:"1px solid var(--border)", fontFamily:"'Tajawal',sans-serif",
+            fontWeight:700, fontSize:13, cursor:"pointer",
+            background: filter === f ? "var(--primary)" : "var(--card)",
+            color: filter === f ? "#fff" : "var(--text)",
+          }}>
+            {f === "all" ? "الكل" : f === "pending" ? "🎁 ليالٍ معلقة" : "🎫 لديهم تذاكر"}
+          </button>
+        ))}
+      </div>
+
+      {/* Cards Grid */}
+      {filtered.length === 0 && (
+        <div style={{ textAlign:"center", padding:60, opacity:.4 }}>
+          <div style={{ fontSize:48, marginBottom:12 }}>🏆</div>
+          <div>لا يوجد عملاء</div>
+        </div>
+      )}
+
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:14 }}>
+        {filtered.map(c => {
+          const loyaltyUrl = `${BASE_URL}?guest=1&m=loyalty&phone=${c.phone}`;
+          return (
+            <div key={c.id} style={{
+              background:"var(--card)", borderRadius:16, border:"1px solid var(--border)",
+              overflow:"hidden", transition:"box-shadow .2s",
+              boxShadow: c.free_nights > 0 ? "0 0 0 2px #4ADE80" : c.tickets === 2 ? "0 0 0 2px #F59E0B" : "none",
+            }}>
+              {/* Card Header */}
+              <div style={{ background:"linear-gradient(135deg,#2C1810,#3D2B1A)", padding:"14px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div>
+                  <div style={{ fontWeight:800, color:"#C8B89A", fontSize:14 }}>{c.name}</div>
+                  <div style={{ fontSize:11, color:"rgba(197,172,136,.6)", marginTop:2, direction:"ltr", textAlign:"right" }}>{c.phone}</div>
+                </div>
+                <div style={{ display:"flex", gap:4 }}>
+                  {[0,1,2].map(i => (
+                    <div key={i} style={{
+                      width:28, height:28, borderRadius:8, fontSize:14,
+                      background: i < c.tickets ? "linear-gradient(135deg,#B8960C,#C8B89A)" : "rgba(197,172,136,.12)",
+                      border: i < c.tickets ? "none" : "1.5px dashed rgba(197,172,136,.3)",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                    }}>{i < c.tickets ? "🎫" : ""}</div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Card Body */}
+              <div style={{ padding:"12px 16px" }}>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
+                  <div style={{ textAlign:"center", background:"var(--surface)", borderRadius:10, padding:"8px 4px" }}>
+                    <div style={{ fontWeight:800, fontSize:18, color:"#C8B89A" }}>{c.tickets}/3</div>
+                    <div style={{ fontSize:10, opacity:.6 }}>تذاكر</div>
+                  </div>
+                  <div style={{ textAlign:"center", background:"var(--surface)", borderRadius:10, padding:"8px 4px" }}>
+                    <div style={{ fontWeight:800, fontSize:18, color: c.free_nights > 0 ? "#4ADE80" : "var(--text)" }}>{c.free_nights}</div>
+                    <div style={{ fontSize:10, opacity:.6 }}>ليالٍ مجانية</div>
+                  </div>
+                  <div style={{ textAlign:"center", background:"var(--surface)", borderRadius:10, padding:"8px 4px" }}>
+                    <div style={{ fontWeight:800, fontSize:18 }}>{c.total_reviews}</div>
+                    <div style={{ fontSize:10, opacity:.6 }}>تقييمات</div>
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div style={{ background:"rgba(197,172,136,.15)", borderRadius:99, height:5, marginBottom:12 }}>
+                  <div style={{ width:`${(c.tickets/3)*100}%`, height:"100%", borderRadius:99, transition:"width .4s", background: c.tickets === 3 ? "#4ADE80" : "linear-gradient(90deg,#B8960C,#C8B89A)" }}/>
+                </div>
+
+                {c.free_nights > 0 && (
+                  <button onClick={() => useNight(c)} style={{
+                    width:"100%", marginBottom:8, padding:"9px", borderRadius:10, border:"none",
+                    background:"linear-gradient(135deg,#14532D,#166534)", color:"#4ADE80",
+                    fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"'Tajawal',sans-serif",
+                  }}>✓ استخدام ليلة مجانية ({c.free_nights})</button>
+                )}
+
+                <div style={{ display:"flex", gap:6 }}>
+                  <button onClick={() => window.open(loyaltyUrl, "_blank")} style={{
+                    flex:1, padding:"8px", borderRadius:10, border:"1px solid rgba(197,172,136,.3)",
+                    background:"linear-gradient(135deg,#B8960C,#C8B89A)", color:"#1a1a2e",
+                    fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"'Tajawal',sans-serif",
+                  }}>🏆 بطاقة الضيف</button>
+                  <button onClick={() => {
+                    const ph = c.phone.replace(/^0/, "966");
+                    const msg = `مرحباً ${c.name}! 🌟%0aلديك ${c.tickets}/3 تذاكر في برنامج ولاء ريتام%0aشاهد بطاقتك: ${loyaltyUrl}`;
+                    window.open(`https://wa.me/${ph}?text=${msg}`, "_blank");
+                  }} style={{
+                    padding:"8px 12px", borderRadius:10, border:"1px solid rgba(37,211,102,.3)",
+                    background:"rgba(37,211,102,.1)", color:"#25D366",
+                    fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"'Tajawal',sans-serif",
+                  }}>📲</button>
+                  <button onClick={() => setEditMdl({...c})} style={{
+                    padding:"8px 12px", borderRadius:10, border:"1px solid var(--border)",
+                    background:"var(--surface)", color:"var(--text)",
+                    fontSize:12, cursor:"pointer", fontFamily:"'Tajawal',sans-serif",
+                  }}>✏️</button>
+                  <button onClick={() => deleteCard(c)} style={{
+                    padding:"8px 12px", borderRadius:10, border:"none",
+                    background:"rgba(239,68,68,.1)", color:"#EF4444",
+                    fontSize:12, cursor:"pointer", fontFamily:"'Tajawal',sans-serif",
+                  }}>🗑️</button>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Reviews Section */}
+      <div style={{ marginTop:32, marginBottom:8 }}>
+        <div style={{ fontWeight:800, fontSize:17, marginBottom:16 }}>⭐ تقييمات الضيوف</div>
+        {reviews.length > 0 && (
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:12, marginBottom:20 }}>
+            {[
+              { l:"إجمالي التقييمات", v:String(reviews.length), i:"📝", col:"var(--text)" },
+              { l:"متوسط التقييم",    v:(reviews.reduce((s,r)=>s+r.rating,0)/reviews.length).toFixed(1)+" ⭐", i:"⭐", col:"#F59E0B" },
+              { l:"تقييم 5 نجوم",    v:String(reviews.filter(r=>r.rating===5).length), i:"🌟", col:"#10b981" },
+            ].map((s,i) => (
+              <div key={i} style={{ background:"var(--card)", borderRadius:12, padding:16, border:"1px solid var(--border)" }}>
+                <div style={{ fontSize:20, marginBottom:5 }}>{s.i}</div>
+                <div style={{ fontSize:20, fontWeight:800, color:s.col }}>{s.v}</div>
+                <div style={{ fontSize:11, opacity:.6, marginTop:2 }}>{s.l}</div>
+              </div>
+            ))}
+          </div>
+        )}
+        {reviews.length === 0
+          ? <div style={{ textAlign:"center", padding:40, opacity:.4 }}>
+              <div style={{ fontSize:40, marginBottom:8 }}>⭐</div>
+              <div>لا توجد تقييمات بعد</div>
+            </div>
+          : <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(290px,1fr))", gap:12 }}>
+              {[...reviews].reverse().map((r,i) => (
+                <div key={i} style={{ background:"var(--card)", borderRadius:14, padding:16, border:"1px solid var(--border)" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
+                    <div>
+                      <div style={{ fontWeight:700, fontSize:14 }}>{r.guest}</div>
+                      <div style={{ fontSize:12, opacity:.6 }}>{r.chalet}</div>
+                    </div>
+                    <div style={{ display:"flex", gap:2 }}>
+                      {[1,2,3,4,5].map(s=><span key={s} style={{ fontSize:16, color:r.rating>=s?"#F59E0B":"#E5E7EB" }}>★</span>)}
+                    </div>
+                  </div>
+                  {r.comment && <div style={{ fontSize:13, opacity:.8, background:"var(--surface)", borderRadius:8, padding:"8px 12px", lineHeight:1.7, marginBottom:8 }}>{r.comment}</div>}
+                  <div style={{ fontSize:11, opacity:.5 }}>{new Date(r.created_at).toLocaleDateString("ar-SA")}</div>
+                </div>
+              ))}
+            </div>
+        }
+      </div>
+
+      {/* Edit Modal */}
+      {editMdl && (
+        <div className="mbg" onClick={e => e.target === e.currentTarget && setEditMdl(null)}>
+          <div className="mbox">
+            <h3 style={{ fontWeight:800, marginBottom:16, fontSize:16 }}>✏️ تعديل بطاقة الولاء</h3>
+            <label className="lbl">الاسم</label>
+            <input className="inp" value={editMdl.name} onChange={e => setEditMdl(p => ({...p!, name:e.target.value}))} style={{ marginBottom:10 }}/>
+            <label className="lbl">الجوال</label>
+            <input className="inp" value={editMdl.phone} onChange={e => setEditMdl(p => ({...p!, phone:e.target.value}))} style={{ marginBottom:10, direction:"ltr" }}/>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+              <div>
+                <label className="lbl">التذاكر (0-2)</label>
+                <select className="inp" value={editMdl.tickets} onChange={e => setEditMdl(p => ({...p!, tickets:Number(e.target.value)}))}>
+                  {[0,1,2].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="lbl">الليالي المجانية</label>
+                <input className="inp" type="number" min={0} value={editMdl.free_nights} onChange={e => setEditMdl(p => ({...p!, free_nights:Number(e.target.value)}))}/>
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button className="btn bp" onClick={saveEdit} disabled={saving} style={{ flex:1 }}>{saving ? "جاري الحفظ..." : "حفظ"}</button>
+              <button className="btn" onClick={() => setEditMdl(null)} style={{ flex:1 }}>إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {addMdl && (
+        <div className="mbg" onClick={e => e.target === e.currentTarget && setAddMdl(false)}>
+          <div className="mbox">
+            <h3 style={{ fontWeight:800, marginBottom:16, fontSize:16 }}>➕ إضافة عميل جديد</h3>
+            <label className="lbl">الاسم</label>
+            <input className="inp" value={newCard.name} onChange={e => setNewCard(p=>({...p,name:e.target.value}))} placeholder="اسم العميل" style={{ marginBottom:10 }}/>
+            <label className="lbl">الجوال</label>
+            <input className="inp" value={newCard.phone} onChange={e => setNewCard(p=>({...p,phone:e.target.value}))} placeholder="05XXXXXXXX" style={{ marginBottom:10, direction:"ltr" }}/>
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+              <div>
+                <label className="lbl">التذاكر (0-2)</label>
+                <select className="inp" value={newCard.tickets} onChange={e => setNewCard(p=>({...p,tickets:Number(e.target.value)}))}>
+                  {[0,1,2].map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="lbl">الليالي المجانية</label>
+                <input className="inp" type="number" min={0} value={newCard.free_nights} onChange={e => setNewCard(p=>({...p,free_nights:Number(e.target.value)}))}/>
+              </div>
+            </div>
+            <div style={{ display:"flex", gap:10 }}>
+              <button className="btn bp" disabled={saving||!newCard.name||!newCard.phone} style={{ flex:1 }} onClick={async()=>{
+                if(!newCard.name||!newCard.phone) return;
+                setSaving(true);
+                await db("loyalty_cards","POST",{name:newCard.name,phone:newCard.phone,tickets:newCard.tickets,free_nights:newCard.free_nights,total_reviews:0});
+                setSaving(false); setAddMdl(false); onReload();
+              }}>{saving?"جاري الحفظ...":"حفظ"}</button>
+              <button className="btn" onClick={()=>setAddMdl(false)} style={{ flex:1 }}>إلغاء</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DoneCard({booking, submitted, B, T, card}: {booking: any; submitted: boolean; B: string; T: string; card: object}) {
+  const phone = booking?.phone?.replace(/[^0-9]/g,"").replace(/^966/,"0") || "";
+  const loyaltyUrl = phone ? `https://chalet-app-five.vercel.app?guest=1&m=loyalty&phone=${phone}` : "";
+  return (
+    <div style={{...card as any, textAlign:"center"}}>
+      <div style={{fontSize:60, marginBottom:12}}>🌟</div>
+      <div style={{fontSize:22, fontWeight:800, color:B, marginBottom:8}}>شكراً لك!</div>
+      <div style={{fontSize:14, color:T}}>{submitted ? "تم إرسال تقييمك 😊" : "لقد قيّمت هذا الحجز مسبقاً"}</div>
+      <div style={{marginTop:20, background:"linear-gradient(135deg,#2C1810,#3D2B1A)", borderRadius:16, padding:16, border:"1px solid rgba(197,172,136,.3)"}}>
+        <div style={{fontSize:20, marginBottom:6}}>🎫</div>
+        <div style={{fontWeight:800, color:"#C8B89A", fontSize:14, marginBottom:4}}>حصلت على تذكرة ولاء!</div>
+        <div style={{fontSize:12, color:"rgba(197,172,136,.7)", marginBottom:12}}>اجمع 3 تذاكر واحصل على ليلة مجانية</div>
+        {loyaltyUrl
+          ? <a href={loyaltyUrl} target="_blank" rel="noopener noreferrer" style={{display:"block", background:"linear-gradient(135deg,#B8960C,#C8B89A)", color:"#1a1a2e", borderRadius:10, padding:"10px 16px", fontWeight:800, fontSize:13, textDecoration:"none"}}>🏆 شاهد بطاقتك</a>
+          : <div style={{fontSize:12, color:"rgba(197,172,136,.5)"}}>تواصل معنا لمعرفة رصيد تذاكرك</div>
+        }
+      </div>
+      <div style={{marginTop:16, fontSize:13, color:T}}>مجموعة ريتام للشاليهات 🏖️</div>
+    </div>
+  );
+}
+
 function GuestPageEmbed({bookingId, mode}) {
   const [step,setStep] = useState("loading");
   const [booking,setBooking] = useState(null);
@@ -577,6 +901,7 @@ function GuestPageEmbed({bookingId, mode}) {
   const [hover,setHover] = useState(0);
   const [comment,setComment] = useState("");
   const [submitted,setSubmitted] = useState(false);
+  const [pdplConsent,setPdplConsent] = useState(false);
   const TERMS = `شروط وأحكام الإقامة — مجموعة ريتام\n\n١. يُمنع إدخال المسكرات أو المخدرات.\n٢. يُمنع إقامة الحفلات الصاخبة.\n٣. المحافظة على نظافة الشاليه.\n٤. أي تلف يتحمله الضيف.\n٥. وقت تسجيل الخروج ١٢:٠٠ ظهراً.\n٦. يُمنع إدخال حيوانات أليفة.\n٧. في حالة الإلغاء قبل ٤٨ ساعة يُسترد المبلغ.`;
   
   useEffect(()=>{
@@ -589,6 +914,8 @@ function GuestPageEmbed({bookingId, mode}) {
         const rv=await db("reviews","GET",null,`booking_id=eq.${bookingId}`);
         if(rv&&rv[0]){setStep("done");return;}
         setStep("review");
+      } else if(mode==="pool"){
+        setStep("pool");
       } else {
         const ci=await db("guest_checkins","GET",null,`booking_id=eq.${bookingId}`);
         if(ci&&ci[0]){setStep("confirmed");}
@@ -607,6 +934,19 @@ function GuestPageEmbed({bookingId, mode}) {
   async function submitReview(){
     if(!rating||!booking) return;
     await db("reviews","POST",{booking_id:Number(bookingId),chalet:booking.chalet,guest:booking.guest,rating,comment});
+    // منح تذكرة ولاء
+    if(booking.phone){
+      const phone=booking.phone.replace(/[^0-9]/g,"").replace(/^966/,"0");
+      const existing=await db("loyalty_cards","GET",null,`phone=eq.${phone}`);
+      if(existing&&existing[0]){
+        const cur=existing[0];
+        const newTickets=cur.tickets>=2 ? 0 : cur.tickets+1;
+        const newFree=cur.tickets>=2 ? cur.free_nights+1 : cur.free_nights;
+        await db("loyalty_cards","PATCH",{tickets:newTickets,free_nights:newFree,total_reviews:cur.total_reviews+1,name:booking.guest,updated_at:new Date().toISOString()},cur.id);
+      } else {
+        await db("loyalty_cards","POST",{phone,name:booking.guest,tickets:1,free_nights:0,total_reviews:1});
+      }
+    }
     setSubmitted(true); setStep("done");
   }
 
@@ -627,11 +967,34 @@ function GuestPageEmbed({bookingId, mode}) {
             <div style={{fontSize:20,fontWeight:800,color:B}}>أهلاً {booking.guest}!</div>
             <div style={{fontSize:13,color:T,marginTop:4}}>{booking.chalet}</div>
           </div>
-          <div style={{background:"#F5EFE6",borderRadius:12,padding:16,marginBottom:20,maxHeight:280,overflowY:"auto"}}>
+          <div style={{background:"#F5EFE6",borderRadius:12,padding:16,marginBottom:16,maxHeight:260,overflowY:"auto"}}>
             <div style={{fontWeight:800,color:B,marginBottom:10,fontSize:14}}>📄 شروط وأحكام الإقامة</div>
             <div style={{fontSize:13,color:B,lineHeight:2,whiteSpace:"pre-line"}}>{TERMS}</div>
           </div>
-          <button onClick={acceptTerms} style={{width:"100%",border:"none",cursor:"pointer",borderRadius:12,fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,background:`linear-gradient(135deg,${B},#2A2218)`,color:S}}>
+
+          {/* إشعار خصوصية PDPL */}
+          <div style={{background:"#EFF6FF",borderRadius:12,padding:14,marginBottom:16,border:"1px solid #BFDBFE"}}>
+            <div style={{fontWeight:700,color:"#1E40AF",fontSize:13,marginBottom:8}}>🔒 إشعار حماية البيانات الشخصية</div>
+            <div style={{fontSize:12,color:"#1E3A8A",lineHeight:1.8}}>
+              وفقاً لنظام حماية البيانات الشخصية (PDPL)، تقوم مجموعة ريتام بجمع اسمك ورقم جوالك لأغراض إدارة الحجز وبرنامج الولاء وتحسين خدماتنا. لن تُشارَك بياناتك مع أطراف خارجية. يحق لك طلب الاطلاع على بياناتك أو تعديلها أو حذفها عبر التواصل معنا.
+            </div>
+          </div>
+
+          {/* موافقة صريحة */}
+          <label style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:16,cursor:"pointer"}}>
+            <input type="checkbox" checked={pdplConsent} onChange={e=>setPdplConsent(e.target.checked)}
+              style={{width:18,height:18,marginTop:2,accentColor:B,flexShrink:0,cursor:"pointer"}}/>
+            <span style={{fontSize:13,color:B,lineHeight:1.7}}>
+              أوافق على جمع واستخدام بياناتي الشخصية (الاسم ورقم الجوال) لأغراض إدارة الحجز وبرنامج الولاء وفق سياسة الخصوصية المذكورة أعلاه.
+            </span>
+          </label>
+
+          <button onClick={acceptTerms} disabled={!pdplConsent} style={{
+            width:"100%",border:"none",cursor:pdplConsent?"pointer":"not-allowed",borderRadius:12,
+            fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,
+            background:pdplConsent?`linear-gradient(135deg,${B},#2A2218)`:"#D1D5DB",
+            color:pdplConsent?S:"#9CA3AF",transition:"all .2s",
+          }}>
             ✅ أوافق وأسجّل دخولي
           </button>
         </div>
@@ -670,14 +1033,211 @@ function GuestPageEmbed({bookingId, mode}) {
           </button>
         </div>
       )}
-      {step==="done"&&(
-        <div style={{...card,textAlign:"center"}}>
-          <div style={{fontSize:60,marginBottom:12}}>🌟</div>
-          <div style={{fontSize:22,fontWeight:800,color:B,marginBottom:8}}>شكراً لك!</div>
-          <div style={{fontSize:14,color:T}}>{submitted?"تم إرسال تقييمك 😊":"لقد قيّمت هذا الحجز مسبقاً"}</div>
-          <div style={{marginTop:16,fontSize:13,color:T}}>مجموعة ريتام للشاليهات 🏖️</div>
+      {step==="done"&&<DoneCard booking={booking} submitted={submitted} B={B} T={T} card={card}/>}
+      {step==="pool"&&(
+        <div style={card}>
+          <div style={{textAlign:"center",marginBottom:24}}>
+            <div style={{fontSize:48,marginBottom:8}}>🏊</div>
+            <div style={{fontSize:20,fontWeight:800,color:B}}>خيار المسبح</div>
+            <div style={{fontSize:13,color:T,marginTop:4}}>{booking?.chalet} · {booking?.guest}</div>
+            <div style={{fontSize:12,color:T,marginTop:6,background:"#F5EFE6",borderRadius:8,padding:"8px 12px"}}>
+              تعبئة المسبح تتم مرة واحدة فقط خلال الإقامة
+            </div>
+          </div>
+          <PoolGuestForm booking={booking} onDone={()=>setStep("pool_done")}/>
         </div>
       )}
+      {step==="pool_done"&&(
+        <div style={{...card,textAlign:"center"}}>
+          <div style={{fontSize:60,marginBottom:12}}>✅</div>
+          <div style={{fontSize:20,fontWeight:800,color:B,marginBottom:8}}>تم إرسال طلبك</div>
+          <div style={{fontSize:13,color:T,lineHeight:1.8}}>سيتم مراجعة طلبك والرد عليك قريباً عبر واتساب</div>
+          <div style={{marginTop:20,fontSize:12,color:T,opacity:.6}}>مجموعة ريتام للشاليهات 🏖️</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PoolGuestForm({booking, onDone}) {
+  const [choice, setChoice] = useState<"ready"|"on_arrival"|"">("");
+  const [readyTime, setReadyTime] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  useEffect(()=>{
+    if(booking?.pool_preference){setSent(true);}
+  },[booking]);
+
+  const options = [
+    {val:"ready"      as const, icon:"⏰", title:"جاهز عند الوصول", sub:"أريد المسبح جاهزاً قبل وصولي"},
+    {val:"on_arrival" as const, icon:"🕐", title:"تعبئة عند الوصول",  sub:"لا مشكلة أن تبدأ التعبئة عند وصولي"},
+  ];
+
+  async function submit(){
+    if(!choice||!booking) return;
+    setLoading(true);
+    const pref = choice==="ready"&&readyTime ? `ready:${readyTime}` : choice;
+    await db("bookings","PATCH",{pool_preference:pref,pool_approved:false},booking.id);
+    setLoading(false);
+    onDone();
+  }
+
+  if(sent) return (
+    <div style={{textAlign:"center",padding:16}}>
+      <div style={{fontSize:40,marginBottom:8}}>📋</div>
+      <div style={{fontWeight:700,color:"#413523",marginBottom:4}}>طلبك السابق: {booking.pool_preference==="on_arrival"?"تعبئة عند الوصول":"جاهز عند الوصول"}</div>
+      <div style={{fontSize:12,color:"#576D6F"}}>يمكنك تغيير اختيارك</div>
+      <button onClick={()=>setSent(false)} style={{marginTop:12,background:"#413523",color:"#C5AC88",border:"none",borderRadius:10,padding:"10px 22px",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"'Tajawal',sans-serif"}}>تغيير الاختيار</button>
+    </div>
+  );
+
+  return (
+    <div>
+      <div style={{display:"grid",gap:10,marginBottom:16}}>
+        {options.map(o=>(
+          <div key={o.val} onClick={()=>setChoice(o.val)} style={{
+            borderRadius:12,padding:"14px 16px",cursor:"pointer",
+            border: choice===o.val ? "2px solid #413523" : "1.5px solid rgba(197,172,136,.4)",
+            background: choice===o.val ? "#F5EFE6" : "#fff",
+            transition:"all .15s",
+          }}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:28}}>{o.icon}</span>
+              <div>
+                <div style={{fontWeight:800,fontSize:15,color:"#413523"}}>{o.title}</div>
+                <div style={{fontSize:12,color:"#576D6F",marginTop:2}}>{o.sub}</div>
+              </div>
+              {choice===o.val&&<span style={{marginRight:"auto",fontSize:18}}>✅</span>}
+            </div>
+            {choice==="ready"&&o.val==="ready"&&(
+              <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(197,172,136,.3)"}}>
+                <label style={{fontSize:12,color:"#576D6F",fontWeight:600,display:"block",marginBottom:6}}>وقت الوصول المتوقع (اختياري)</label>
+                <input type="time" value={readyTime} onChange={e=>setReadyTime(e.target.value)}
+                  style={{width:"100%",padding:"8px 12px",border:"1.5px solid rgba(197,172,136,.4)",borderRadius:8,fontSize:14,fontFamily:"'Tajawal',sans-serif",color:"#413523",background:"#FAF8F5",outline:"none"}}/>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <button onClick={submit} disabled={!choice||loading} style={{
+        width:"100%",border:"none",cursor:choice?"pointer":"not-allowed",borderRadius:12,
+        fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,
+        background:choice?"linear-gradient(135deg,#413523,#2A2218)":"#D1D5DB",color:choice?"#C5AC88":"#fff",
+        opacity:loading?.7:1,
+      }}>{loading?"جاري الإرسال...":"إرسال الطلب 📨"}</button>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   صفحة طلب الغرفة — تُفتح بمسح الباركود
+══════════════════════════════════════════════════════ */
+const ROOM_REQUEST_TYPES = [
+  { val:"مفارش", icon:"🛏", label:"تغيير المفارش",    color:"#4338CA" },
+  { val:"صابون",  icon:"🧴", label:"صابون / شامبو",    color:"#0284C7" },
+  { val:"منديل",  icon:"🧻", label:"مناديل / ورق حمام",color:"#059669" },
+  { val:"حشرات",  icon:"🐛", label:"بلاغ حشرات",       color:"#DC2626" },
+  { val:"أخرى",   icon:"📋", label:"طلب آخر",          color:"#7C3AED" },
+];
+
+const SUPA_URL_ROOM = "https://kduoasfaqtrotesohqpf.supabase.co";
+const SUPA_KEY_ROOM = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkdW9hc2ZhcXRyb3Rlc29ocXBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NzIwODcsImV4cCI6MjA5NTU0ODA4N30.RTybT1rFOCbWMZ9qkjmk5j0z24RMFWlJSMATMdw8aNw";
+
+function RoomRequestPage({ chalet, room }: { chalet: string; room: string }) {
+  const [type,    setType]    = useState("");
+  const [note,    setNote]    = useState("");
+  const [loading, setLoading] = useState(false);
+  const [done,    setDone]    = useState(false);
+  const [err,     setErr]     = useState("");
+
+  const GS = `@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Tajawal',sans-serif;background:#FAF8F5;min-height:100vh}`;
+  const wrap = { fontFamily:"'Tajawal',sans-serif", minHeight:"100vh", background:"#FAF8F5", display:"flex", alignItems:"center", justifyContent:"center", padding:16 } as const;
+  const card = { background:"#fff", borderRadius:20, padding:24, maxWidth:420, width:"100%", boxShadow:"0 4px 24px rgba(65,53,35,.1)" } as const;
+
+  async function submit() {
+    if (!type) return;
+    setLoading(true);
+    setErr("");
+    try {
+      const res = await fetch(`${SUPA_URL_ROOM}/rest/v1/room_requests`, {
+        method: "POST",
+        headers: {
+          "apikey": SUPA_KEY_ROOM,
+          "Authorization": `Bearer ${SUPA_KEY_ROOM}`,
+          "Content-Type": "application/json",
+          "Prefer": "return=minimal",
+        },
+        body: JSON.stringify({ chalet, room, type, note: note || null, resolved: false }),
+      });
+      if (!res.ok) { const t = await res.text(); setErr(t); setLoading(false); return; }
+      setDone(true);
+    } catch(e) {
+      setErr("تعذّر الاتصال، تحقق من الإنترنت");
+    }
+    setLoading(false);
+  }
+
+  if (done) return (
+    <div dir="rtl" style={wrap}><style>{GS}</style>
+      <div style={{ ...card, textAlign:"center" }}>
+        <div style={{ fontSize:64, marginBottom:12 }}>✅</div>
+        <div style={{ fontSize:22, fontWeight:800, color:"#413523", marginBottom:8 }}>تم إرسال طلبك</div>
+        <div style={{ fontSize:14, color:"#576D6F", marginBottom:20 }}>سنتواصل معك في أقرب وقت</div>
+        <button onClick={()=>{ setDone(false); setType(""); setNote(""); }}
+          style={{ background:"#413523", color:"#C5AC88", border:"none", borderRadius:12, padding:"12px 28px", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"'Tajawal',sans-serif" }}>
+          إرسال طلب آخر
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div dir="rtl" style={wrap}><style>{GS}</style>
+      <div style={card}>
+        {/* Header */}
+        <div style={{ textAlign:"center", marginBottom:24 }}>
+          <div style={{ fontSize:48, marginBottom:8 }}>🛎️</div>
+          <div style={{ fontSize:20, fontWeight:800, color:"#413523" }}>خدمة الغرف</div>
+          <div style={{ fontSize:13, color:"#576D6F", marginTop:6,
+            background:"#F5EFE6", borderRadius:8, padding:"6px 12px", display:"inline-block" }}>
+            {chalet} · {room}
+          </div>
+        </div>
+
+        {/* Types */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:16 }}>
+          {ROOM_REQUEST_TYPES.map(t => (
+            <div key={t.val} onClick={()=>setType(t.val)} style={{
+              borderRadius:12, padding:"14px 12px", cursor:"pointer", textAlign:"center",
+              border: type===t.val ? `2px solid ${t.color}` : "1.5px solid rgba(197,172,136,.35)",
+              background: type===t.val ? t.color+"11" : "#fff",
+              transition:"all .15s",
+            }}>
+              <div style={{ fontSize:28, marginBottom:6 }}>{t.icon}</div>
+              <div style={{ fontSize:12, fontWeight:700, color: type===t.val ? t.color : "#413523" }}>{t.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Note */}
+        <textarea
+          placeholder="تفاصيل إضافية (اختياري)..."
+          value={note} onChange={e=>setNote(e.target.value)} rows={3}
+          style={{ width:"100%", padding:"12px 14px", border:"1.5px solid rgba(197,172,136,.35)",
+            borderRadius:12, fontSize:14, fontFamily:"'Tajawal',sans-serif", color:"#413523",
+            background:"#FAF8F5", outline:"none", resize:"none", marginBottom:16 }}
+        />
+
+        {err&&<div style={{marginBottom:10,padding:"10px 14px",background:"#FEE2E2",borderRadius:10,fontSize:12,color:"#DC2626",fontWeight:600}}>⚠️ {err}</div>}
+        <button onClick={submit} disabled={!type||loading} style={{
+          width:"100%", border:"none", borderRadius:12, fontFamily:"'Tajawal',sans-serif",
+          fontWeight:700, fontSize:16, padding:14,
+          background: type ? "linear-gradient(135deg,#413523,#2A2218)" : "#E5E7EB",
+          color: type ? "#C5AC88" : "#9CA3AF",
+          cursor: type ? "pointer" : "not-allowed", opacity: loading ? .7 : 1,
+        }}>{loading ? "جاري الإرسال..." : "إرسال الطلب 🔔"}</button>
+      </div>
     </div>
   );
 }
@@ -745,16 +1305,298 @@ function LoginPage({onLogin}) {
   );
 }
 
+// ── بطاقة الولاء للضيف ──────────────────────────────────────────────────────
+const SUPA_URL_G = "https://kduoasfaqtrotesohqpf.supabase.co";
+const SUPA_KEY_G = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkdW9hc2ZhcXRyb3Rlc29ocXBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc1NzExOTcsImV4cCI6MjA2MzE0NzE5N30.LKqDMEZLnrNHfAJnCvwzb0_ZVhkVqkJi7MaGvGWRnkU";
+
+async function guestDb(table: string, method = "GET", body?: object, filter?: string) {
+  const url = `${SUPA_URL_G}/rest/v1/${table}${filter ? "?" + filter : ""}`;
+  const headers: Record<string,string> = { "apikey": SUPA_KEY_G, "Authorization": `Bearer ${SUPA_KEY_G}`, "Content-Type": "application/json" };
+  if (method !== "GET") headers["Prefer"] = method === "POST" ? "return=representation" : "return=minimal";
+  const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  if (!res.ok) return null;
+  if (method === "PATCH" || method === "DELETE") return null;
+  return res.json().catch(() => null);
+}
+
+function LoyaltyPage({ phone }: { phone: string }) {
+  const [card, setCard] = useState<LoyaltyCard | null>(null);
+  const [loading, setLoading] = useState(true);
+  const GS = `@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Tajawal',sans-serif;background:#1a1a2e;min-height:100vh}`;
+  const wrap = { fontFamily:"'Tajawal',sans-serif", minHeight:"100vh", background:"linear-gradient(135deg,#1a1a2e,#16213e,#0f3460)", display:"flex", alignItems:"center", justifyContent:"center", padding:16 };
+
+  useEffect(() => {
+    if (!phone) { setLoading(false); return; }
+    guestDb("loyalty_cards", "GET", undefined, `phone=eq.${phone}`).then(data => {
+      setCard(data?.[0] || null);
+      setLoading(false);
+    });
+  }, [phone]);
+
+  if (loading) return (
+    <div dir="rtl" style={wrap}><style>{GS}</style>
+      <div style={{ color:"#C8B89A", fontSize:40, textAlign:"center" }}>⌛</div>
+    </div>
+  );
+
+  const tickets = card?.tickets || 0;
+  const freeNights = card?.free_nights || 0;
+  const totalReviews = card?.total_reviews || 0;
+
+  return (
+    <div dir="rtl" style={wrap}>
+      <style>{GS}</style>
+      <div style={{ maxWidth:380, width:"100%" }}>
+        {/* الهيدر */}
+        <div style={{ textAlign:"center", marginBottom:28 }}>
+          <div style={{ fontSize:14, color:"#C8B89A", letterSpacing:3, marginBottom:8 }}>مجموعة ريتام</div>
+          <div style={{ fontSize:28, fontWeight:800, color:"#fff" }}>بطاقة الولاء</div>
+          <div style={{ fontSize:13, color:"rgba(200,184,154,.6)", marginTop:4 }}>اجمع 3 تذاكر واحصل على ليلة مجانية</div>
+        </div>
+
+        {/* البطاقة الرئيسية */}
+        <div style={{
+          background:"linear-gradient(135deg,#2C1810,#3D2B1A)",
+          borderRadius:24, padding:28, marginBottom:16,
+          border:"1px solid rgba(197,172,136,.3)",
+          boxShadow:"0 20px 60px rgba(0,0,0,.5)",
+          position:"relative", overflow:"hidden",
+        }}>
+          {/* زخرفة */}
+          <div style={{ position:"absolute", top:-30, left:-30, width:120, height:120, background:"rgba(197,172,136,.07)", borderRadius:"50%" }}/>
+          <div style={{ position:"absolute", bottom:-20, right:-20, width:80, height:80, background:"rgba(197,172,136,.05)", borderRadius:"50%" }}/>
+
+          <div style={{ position:"relative" }}>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:24 }}>
+              <div>
+                <div style={{ fontSize:11, color:"rgba(197,172,136,.6)", letterSpacing:1 }}>العميل</div>
+                <div style={{ fontSize:18, fontWeight:800, color:"#C8B89A", marginTop:2 }}>{card?.name || "ضيف ريتام"}</div>
+              </div>
+              <div style={{ fontSize:28 }}>🏆</div>
+            </div>
+
+            {/* طوابع التذاكر */}
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:12, color:"rgba(197,172,136,.6)", marginBottom:12 }}>تذاكرك ({tickets}/3)</div>
+              <div style={{ display:"flex", gap:12 }}>
+                {[0,1,2].map(i => (
+                  <div key={i} style={{
+                    flex:1, aspectRatio:"1", borderRadius:16,
+                    background: i < tickets ? "linear-gradient(135deg,#B8960C,#C8B89A)" : "rgba(197,172,136,.1)",
+                    border: i < tickets ? "2px solid #C8B89A" : "2px dashed rgba(197,172,136,.3)",
+                    display:"flex", alignItems:"center", justifyContent:"center",
+                    fontSize:28, transition:"all .3s",
+                    boxShadow: i < tickets ? "0 4px 16px rgba(200,184,154,.3)" : "none",
+                  }}>
+                    {i < tickets ? "🎫" : ""}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* شريط التقدم */}
+            <div style={{ background:"rgba(197,172,136,.1)", borderRadius:99, height:6, marginBottom:8 }}>
+              <div style={{ width:`${(tickets/3)*100}%`, height:"100%", background:"linear-gradient(90deg,#B8960C,#C8B89A)", borderRadius:99, transition:"width .5s" }}/>
+            </div>
+            <div style={{ fontSize:11, color:"rgba(197,172,136,.5)", textAlign:"center" }}>
+              {tickets === 3 ? "🎉 مبروك! لديك ليلة مجانية" : `${3 - tickets} تذكرة متبقية للليلة المجانية`}
+            </div>
+          </div>
+        </div>
+
+        {/* الإحصائيات */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
+          <div style={{ background:"rgba(255,255,255,.05)", borderRadius:16, padding:16, border:"1px solid rgba(197,172,136,.15)" }}>
+            <div style={{ fontSize:24, fontWeight:800, color:"#C8B89A" }}>{totalReviews}</div>
+            <div style={{ fontSize:12, color:"rgba(200,184,154,.6)", marginTop:2 }}>إجمالي التقييمات</div>
+          </div>
+          <div style={{ background:"rgba(255,255,255,.05)", borderRadius:16, padding:16, border:"1px solid rgba(197,172,136,.15)" }}>
+            <div style={{ fontSize:24, fontWeight:800, color: freeNights > 0 ? "#4ADE80" : "#C8B89A" }}>{freeNights}</div>
+            <div style={{ fontSize:12, color:"rgba(200,184,154,.6)", marginTop:2 }}>ليالٍ مجانية</div>
+          </div>
+        </div>
+
+        {freeNights > 0 && (
+          <div style={{ background:"linear-gradient(135deg,rgba(74,222,128,.15),rgba(34,197,94,.1))", border:"1px solid rgba(74,222,128,.3)", borderRadius:16, padding:16, textAlign:"center" }}>
+            <div style={{ fontSize:24, marginBottom:4 }}>🎁</div>
+            <div style={{ fontWeight:800, color:"#4ADE80", fontSize:15 }}>لديك {freeNights} ليلة مجانية!</div>
+            <div style={{ fontSize:12, color:"rgba(74,222,128,.7)", marginTop:4 }}>تواصل معنا عبر واتساب لحجزها</div>
+          </div>
+        )}
+
+        <div style={{ textAlign:"center", marginTop:20, fontSize:11, color:"rgba(200,184,154,.3)" }}>مجموعة ريتام للشاليهات © 2025</div>
+      </div>
+    </div>
+  );
+}
+
+const SUPA_URL_CL = "https://kduoasfaqtrotesohqpf.supabase.co";
+const SUPA_KEY_CL = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkdW9hc2ZhcXRyb3Rlc29ocXBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc1NzExOTcsImV4cCI6MjA2MzE0NzE5N30.LKqDMEZLnrNHfAJnCvwzb0_ZVhkVqkJi7MaGvGWRnkU";
+
+const CLEAN_TASK_STRINGS: Record<string, Record<string, string>> = {
+  hi: {
+    title: "सफाई कार्य",
+    subtitle: "नीचे दिए गए कार्य को पूरा करें",
+    done_btn: "✅ काम पूरा हो गया",
+    note_ph: "कोई टिप्पणी (वैकल्पिक)...",
+    done_msg: "शुक्रिया! काम दर्ज कर लिया गया।",
+    chalet_label: "शाले:",
+    task_label: "कार्य:",
+    media_label: "📸 फोटो / वीडियो जोड़ें (अनिवार्य)",
+    media_btn: "📷 फाइल चुनें",
+    media_err: "⚠️ कृपया पहले फोटो या वीडियो अपलोड करें",
+    uploading: "अपलोड हो रहा है...",
+  },
+  ar: {
+    title: "مهمة نظافة",
+    subtitle: "أكمل المهمة المطلوبة",
+    done_btn: "✅ تم الانتهاء",
+    note_ph: "ملاحظة (اختياري)...",
+    done_msg: "شكراً! تم تسجيل المهمة.",
+    chalet_label: "الشاليه:",
+    task_label: "المهمة:",
+    media_label: "📸 أرفق صورة أو فيديو (إلزامي)",
+    media_btn: "📷 اختر ملف",
+    media_err: "⚠️ الرجاء إرفاق صورة أو فيديو أولاً",
+    uploading: "جاري الرفع...",
+  },
+  en: {
+    title: "Cleaning Task",
+    subtitle: "Complete the task below",
+    done_btn: "✅ Task Done",
+    note_ph: "Note (optional)...",
+    done_msg: "Thank you! Task recorded.",
+    chalet_label: "Chalet:",
+    task_label: "Task:",
+    media_label: "📸 Attach Photo / Video (required)",
+    media_btn: "📷 Choose File",
+    media_err: "⚠️ Please attach a photo or video first",
+    uploading: "Uploading...",
+  },
+};
+
+function CleanTaskWorkerPage({ logId, taskName, chalet, lang }: { logId: string | null; taskName: string | null; chalet: string | null; lang: string }) {
+  const [note, setNote] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState("");
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const s = CLEAN_TASK_STRINGS[lang] || CLEAN_TASK_STRINGS.hi;
+  const wrap = { fontFamily:"'Tajawal',sans-serif", minHeight:"100vh", background:"#F0F7F0", display:"flex", alignItems:"center", justifyContent:"center", padding:16 } as const;
+  const card = { background:"#fff", borderRadius:20, padding:28, maxWidth:400, width:"100%", boxShadow:"0 4px 24px rgba(0,0,0,.1)" } as const;
+
+  function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMediaFile(file);
+    setErr("");
+    const url = URL.createObjectURL(file);
+    setMediaPreview(url);
+  }
+
+  async function markDone() {
+    if (!logId) return;
+    if (!mediaFile) { setErr(s.media_err); return; }
+    setLoading(true); setErr("");
+    try {
+      setUploading(true);
+      const ext = mediaFile.name.split(".").pop() || (mediaFile.type.startsWith("video") ? "mp4" : "jpg");
+      const fileName = `log-${logId}-${Date.now()}.${ext}`;
+      const upRes = await fetch(`${SUPA_URL_CL}/storage/v1/object/cleaning-media/${fileName}`, {
+        method: "POST",
+        headers: {
+          "apikey": SUPA_KEY_CL,
+          "Authorization": `Bearer ${SUPA_KEY_CL}`,
+          "Content-Type": mediaFile.type || "application/octet-stream",
+          "x-upsert": "true",
+        },
+        body: mediaFile,
+      });
+      setUploading(false);
+      if (!upRes.ok) { setErr("خطأ في رفع الملف"); setLoading(false); return; }
+      const mediaUrl = `${SUPA_URL_CL}/storage/v1/object/public/cleaning-media/${fileName}`;
+
+      const res = await fetch(`${SUPA_URL_CL}/rest/v1/cleaning_logs?id=eq.${logId}`, {
+        method: "PATCH",
+        headers: { "apikey": SUPA_KEY_CL, "Authorization": `Bearer ${SUPA_KEY_CL}`, "Content-Type": "application/json", "Prefer": "return=minimal" },
+        body: JSON.stringify({ status: "done", done_at: new Date().toISOString(), done_note: note || null, worker_done: true, done_media_url: mediaUrl }),
+      });
+      if (!res.ok) { setErr("خطأ في الاتصال"); setLoading(false); return; }
+      setDone(true);
+    } catch { setErr("تعذّر الاتصال"); }
+    setLoading(false);
+  }
+
+  if (done) return (
+    <div style={wrap}>
+      <div style={{ ...card, textAlign:"center" }}>
+        <div style={{ fontSize:64, marginBottom:16 }}>✅</div>
+        <div style={{ fontSize:20, fontWeight:800, color:"#166534" }}>{s.done_msg}</div>
+      </div>
+    </div>
+  );
+
+  const isVideo = mediaFile?.type.startsWith("video");
+
+  return (
+    <div style={wrap}>
+      <div style={card}>
+        <div style={{ textAlign:"center", marginBottom:24 }}>
+          <div style={{ fontSize:48, marginBottom:8 }}>🧹</div>
+          <div style={{ fontSize:22, fontWeight:800, color:"#166534" }}>{s.title}</div>
+          <div style={{ fontSize:13, color:"#6B7280", marginTop:4 }}>{s.subtitle}</div>
+        </div>
+        <div style={{ background:"#F0FDF4", borderRadius:12, padding:16, marginBottom:20, border:"1px solid #BBF7D0" }}>
+          {chalet && <div style={{ fontSize:13, color:"#374151", marginBottom:6 }}><b>{s.chalet_label}</b> {chalet}</div>}
+          {taskName && <div style={{ fontSize:15, fontWeight:700, color:"#166534" }}><b>{s.task_label}</b> {taskName}</div>}
+        </div>
+        <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder={s.note_ph}
+          style={{ width:"100%", borderRadius:10, border:"1.5px solid #D1FAE5", padding:"10px 12px", fontSize:14, resize:"none", height:80, marginBottom:16, fontFamily:"inherit" }}/>
+
+        {/* رفع صورة/فيديو */}
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:13, fontWeight:700, color:"#166534", marginBottom:8 }}>{s.media_label}</div>
+          <label style={{
+            display:"block", border:"2px dashed #BBF7D0", borderRadius:12, padding:"14px", textAlign:"center",
+            cursor:"pointer", background: mediaPreview ? "#F0FDF4" : "#fff", transition:"background .2s",
+          }}>
+            {mediaPreview ? (
+              isVideo
+                ? <video src={mediaPreview} style={{ maxWidth:"100%", maxHeight:180, borderRadius:8 }} controls/>
+                : <img src={mediaPreview} alt="preview" style={{ maxWidth:"100%", maxHeight:180, borderRadius:8, objectFit:"cover" }}/>
+            ) : (
+              <div>
+                <div style={{ fontSize:32, marginBottom:6 }}>📷</div>
+                <div style={{ fontSize:13, color:"#6B7280" }}>{s.media_btn}</div>
+              </div>
+            )}
+            <input type="file" accept="image/*,video/*" capture="environment" style={{ display:"none" }} onChange={onFileChange}/>
+          </label>
+        </div>
+
+        {err && <div style={{ color:"#DC2626", fontSize:13, marginBottom:12 }}>{err}</div>}
+        <button onClick={markDone} disabled={loading} style={{
+          width:"100%", border:"none", borderRadius:12, padding:14,
+          background: loading ? "#9CA3AF" : "linear-gradient(135deg,#166534,#15803D)",
+          color:"#fff", fontSize:16, fontWeight:800, cursor: loading ? "not-allowed" : "pointer", fontFamily:"inherit",
+        }}>{uploading ? s.uploading : loading ? "..." : s.done_btn}</button>
+      </div>
+    </div>
+  );
+}
+
 function AppWrapper() {
   const [ready,setReady]       = useState(false);
   const [isGuest,setIsGuest]   = useState(false);
-  const [guestParams,setGuestParams] = useState<{bookingId:string|null; mode:string}>({bookingId:null,mode:"checkin"});
+  const [guestParams,setGuestParams] = useState<{bookingId:string|null; mode:string; chalet:string|null; room:string|null}>({bookingId:null,mode:"checkin",chalet:null,room:null});
   const [currentUser,setCurrentUser] = useState<AppUser | null>(null);
 
   useEffect(()=>{
     const p = new URLSearchParams(window.location.search);
     if(p.get("guest")==="1"){
-      setGuestParams({bookingId:p.get("b"),mode:p.get("m")||"checkin"});
+      setGuestParams({bookingId:p.get("b"),mode:p.get("m")||"checkin",chalet:p.get("ch"),room:p.get("rm")});
       setIsGuest(true);
     }
     const saved = localStorage.getItem("reetam_user");
@@ -763,7 +1605,19 @@ function AppWrapper() {
   },[]);
 
   if(!ready) return null;
-  if(isGuest) return <GuestPageEmbed bookingId={guestParams.bookingId} mode={guestParams.mode}/>;
+  if(isGuest){
+    if(guestParams.mode==="room"&&guestParams.chalet&&guestParams.room)
+      return <RoomRequestPage chalet={guestParams.chalet} room={guestParams.room}/>;
+    if(guestParams.mode==="cleantask"){
+      const p=new URLSearchParams(window.location.search);
+      return <CleanTaskWorkerPage logId={p.get("log")} taskName={p.get("task")} chalet={p.get("ch")} lang={p.get("lang")||"hi"}/>;
+    }
+    if(guestParams.mode==="loyalty"){
+      const p=new URLSearchParams(window.location.search);
+      return <LoyaltyPage phone={p.get("phone")||""}/>;
+    }
+    return <GuestPageEmbed bookingId={guestParams.bookingId} mode={guestParams.mode}/>;
+  }
   if(!currentUser) return <LoginPage onLogin={u=>setCurrentUser(u)}/>;
   return <App currentUser={currentUser} onLogout={()=>{localStorage.removeItem("reetam_user");setCurrentUser(null);}}/>;
 }
@@ -794,6 +1648,13 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [clTaskMdl,setClTaskMdl] = useState<Partial<CleaningTask> | null>(null);
   const [clSelCh,setClSelCh]   = useState<string | null>(null);
   const [expenses,setExpenses] = useState<Expense[]>([]);
+  const [fixedExpenses,setFixedExpenses] = useState<FixedExpense[]>([]);
+  const [fxMdl,setFxMdl] = useState<Partial<FixedExpense> | null>(null);
+  const [cleanWorkers,setCleanWorkers] = useState<CleaningWorker[]>([]);
+  const [cwMdl,setCwMdl] = useState<Partial<CleaningWorker> | null>(null);
+  const [loyaltyCards,setLoyaltyCards] = useState<LoyaltyCard[]>([]);
+  const [roomReqs,setRoomReqs] = useState<Record<string,unknown>[]>([]);
+  const [qrMdl,setQrMdl]       = useState<{chalet:string; rooms:string[]} | null>(null);
   const [users,setUsers]       = useState<AppUser[]>([]);
   const [rooms,setRooms]       = useState<Room[]>([]);
   const [reviews,setReviews]   = useState<Review[]>([]);
@@ -834,16 +1695,24 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
 
   async function loadAll() {
     try {
-      const [c,b,m,w,cl,cle,ctasks,clogs,sd,rm,rv,ex,us] = await Promise.all([
+      const [c,b,m,w,cl,cle,ctasks,clogs,sd,rm,rv,ex,us,rr] = await Promise.all([
         db("chalets"), db("bookings"), db("maintenance"), db("wallet"), db("cleaning"), db("cleaning_expenses"), db("cleaning_tasks"), db("cleaning_logs"),
-        db("smart_devices"), db("rooms"), db("reviews"), db("expenses"), db("users")
+        db("smart_devices"), db("rooms"), db("reviews"), db("expenses"), db("users"),
+        db("room_requests","GET",null,"resolved=eq.false&order=created_at.desc"),
+      ]);
+      const [fx,cw,lc] = await Promise.all([
+        db("fixed_expenses").catch(()=>[]),
+        db("cleaning_workers").catch(()=>[]),
+        db("loyalty_cards","GET",null,"order=total_reviews.desc").catch(()=>[]),
       ]);
       const sdMap = {};
       (sd||[]).forEach(d=>{if(d.room_id)sdMap["room_"+d.room_id]=d;else sdMap[d.chalet]=d;});
       setChalets((c||[]).map(ch=>({...ch,_acOn:sdMap[ch.name]?.ac_on||false,_acTemp:sdMap[ch.name]?.ac_temp||22,_acMode:sdMap[ch.name]?.ac_mode||"cool",_acSpeed:sdMap[ch.name]?.ac_speed||"auto",_sdId:sdMap[ch.name]?.id||null})));
       setRooms((rm||[]).map(r=>({...r,_acOn:sdMap["room_"+r.id]?.ac_on||false,_acTemp:sdMap["room_"+r.id]?.ac_temp||22,_acMode:sdMap["room_"+r.id]?.ac_mode||"cool",_acSpeed:sdMap["room_"+r.id]?.ac_speed||"auto",_sdId:sdMap["room_"+r.id]?.id||null})));
+      if(!ctasks) console.error("⚠️ cleaning_tasks فشل التحميل — تحقق من RLS في Supabase");
+      if(!clogs)  console.error("⚠️ cleaning_logs فشل التحميل");
       setBookings(b||[]); setMaint(m||[]); setWallet(w||[]); setCleaning(cl||[]); setClExp(cle||[]); setClTasks(ctasks||[]); setClLogs(clogs||[]);
-      setReviews(rv||[]); setExpenses(ex||[]); setUsers(us||[]);
+      setReviews(rv||[]); setExpenses(ex||[]); setUsers(us||[]); setRoomReqs(rr||[]); setFixedExpenses(fx||[]); setCleanWorkers(cw||[]); setLoyaltyCards(lc||[]);
       setLoading(false);
     } catch(e) { console.error(e); setLoading(false); }
   }
@@ -858,19 +1727,31 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const cBal     = useMemo(()=>{const map={};chalets.forEach(c=>{map[c.name]=0;});wallet.forEach(t=>{if(!Object.prototype.hasOwnProperty.call(map,t.chalet))return;if(t.type==="إيداع")map[t.chalet]+=t.amount;else map[t.chalet]=Math.max(0,map[t.chalet]-t.amount);});return map;},[wallet,chalets]);
   const cStats   = useMemo(()=>{
     const now=new Date(); const y=now.getFullYear(); const mo=now.getMonth();
-    return chalets.map(c=>({
-      ...c,
-      rev:bookings.filter(b=>b.chalet===c.name&&b.status==="completed").reduce((s,b)=>s+Number(b.price),0),
-      totalRev:(Number(c.prev_revenue)||0)+bookings.filter(b=>b.chalet===c.name&&b.status==="completed").reduce((s,b)=>s+Number(b.price),0),
-      monthRev:bookings.filter(b=>b.chalet===c.name&&b.status==="completed"&&b.date_from&&new Date(b.date_from).getFullYear()===y&&new Date(b.date_from).getMonth()===mo).reduce((s,b)=>s+Number(b.price),0),
-      monthExp:maint.filter(m=>m.chalet===c.name&&Number(m.cost)>0&&m.maint_date&&new Date(m.maint_date).getFullYear()===y&&new Date(m.maint_date).getMonth()===mo).reduce((s,m)=>s+Number(m.cost),0),
-      mtot:maint.filter(m=>m.chalet===c.name).length,
-      mop:maint.filter(m=>m.chalet===c.name&&m.status==="open").length,
-      mip:maint.filter(m=>m.chalet===c.name&&m.status==="in_progress").length,
-      mdn:maint.filter(m=>m.chalet===c.name&&m.status==="done").length,
-      ins:cBal[c.name]||0,
-      goal:Number(c.monthly_goal||0),
-    }));
+    // precompute maps once instead of filtering per chalet
+    const bMap: Record<string,Booking[]>={};
+    for(const b of bookings){if(!bMap[b.chalet])bMap[b.chalet]=[];bMap[b.chalet].push(b);}
+    const mMap: Record<string,typeof maint[0][]>={};
+    for(const m of maint){if(!mMap[m.chalet])mMap[m.chalet]=[];mMap[m.chalet].push(m);}
+    return chalets.map(c=>{
+      const cb=bMap[c.name]||[];
+      const cm=mMap[c.name]||[];
+      const completed=cb.filter(b=>b.status==="completed");
+      const rev=completed.reduce((s,b)=>s+Number(b.price),0);
+      const monthRev=completed.filter(b=>b.date_from&&new Date(b.date_from).getFullYear()===y&&new Date(b.date_from).getMonth()===mo).reduce((s,b)=>s+Number(b.price),0);
+      const monthExp=cm.filter(m=>Number(m.cost)>0&&m.maint_date&&new Date(m.maint_date).getFullYear()===y&&new Date(m.maint_date).getMonth()===mo).reduce((s,m)=>s+Number(m.cost),0);
+      return {
+        ...c,
+        rev,
+        totalRev:(Number(c.prev_revenue)||0)+rev,
+        monthRev,monthExp,
+        mtot:cm.length,
+        mop:cm.filter(m=>m.status==="open").length,
+        mip:cm.filter(m=>m.status==="in_progress").length,
+        mdn:cm.filter(m=>m.status==="done").length,
+        ins:cBal[c.name]||0,
+        goal:Number(c.monthly_goal||0),
+      };
+    });
   },[chalets,bookings,maint,cBal]);
 
   const eC = {name:"",loc:"",cap:"",price:"",wprice:"",ins:"",description:"",st:"active",img:null};
@@ -879,12 +1760,66 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
 
   async function svC(f: Partial<Chalet>): Promise<void> {const openDate=f.open_date?f.open_date+"-01":null;const body={name:f.name,loc:f.loc,cap:Number(f.cap),price:Number(f.price),wprice:Number(f.wprice),ins:Number(f.ins),description:f.description,st:f.st,img:f.img||null,open_date:openDate,prev_revenue:Number(f.prev_revenue)||0};if(f.id){await db("chalets","PATCH",body as Record<string,unknown>,f.id);}else{await db("chalets","POST",body as Record<string,unknown>);if(Number(f.ins)>0)await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet:f.name,cat:"تأمين",amount:Number(f.ins),note:"رصيد افتتاحي"});}await loadAll();setCMdl(null);}
   async function dlC(id: number): Promise<void> {if(!window.confirm("حذف الشاليه نهائياً؟ لا يمكن التراجع."))return;await db("chalets","DELETE",null,id);await loadAll();}
-  async function svB(f: Partial<Booking>): Promise<void> {const body={chalet:f.chalet,guest:f.guest,phone:f.phone,date_from:f.date_from,date_to:f.date_to,price:Number(f.price),status:f.status,note:f.note};if(f.id)await db("bookings","PATCH",body as Record<string,unknown>,f.id);else await db("bookings","POST",body as Record<string,unknown>);await loadAll();setBMdl(null);}
+  async function svB(f: Partial<Booking>): Promise<void> {const body={chalet:f.chalet,guest:f.guest,phone:f.phone,date_from:f.date_from,date_to:f.date_to,checkin_time:f.checkin_time||null,checkout_time:f.checkout_time||null,price:Number(f.price),status:f.status,note:f.note};if(f.id)await db("bookings","PATCH",body as Record<string,unknown>,f.id);else await db("bookings","POST",body as Record<string,unknown>);await loadAll();setBMdl(null);}
+  function buildPreArrivalMsg(b: Booking): string {
+    const checkinTime  = b.checkin_time  || "الوقت المتفق عليه";
+    const checkoutTime = b.checkout_time || "الوقت المتفق عليه";
+    const poolUrl = `https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=pool`;
+    return `مرحباً ${b.guest} 👋
+
+نذكّركم بحجزكم في *${b.chalet}* غداً إن شاء الله 🏡
+
+*التفاصيل:*
+⏰ وقت الدخول: ${checkinTime}
+⏰ وقت الخروج: ${checkoutTime}
+
+🏊 *بخصوص المسبح:*
+تعبئة المسبح تتم مرة واحدة فقط — يرجى اختيار ما يناسبكم:
+${poolUrl}
+
+*تذكير مهم:*
+• يرجى الالتزام بوقت الدخول والخروج المحدد
+• في حال التأخر عن وقت الخروج يُطبّق رسوم إضافية
+
+نتطلع لاستقبالكم وتمنياتنا لكم بإقامة ممتعة 🌟
+*ريتام للشاليهات*`;
+  }
+  function buildPoolApprovalMsg(b: Booking): string {
+    const pref = b.pool_preference || "";
+    const isReady = pref.startsWith("ready");
+    const time = pref.includes(":") ? pref.split(":").slice(1).join(":") : "";
+    const poolLine = isReady
+      ? `✅ المسبح سيكون جاهزاً عند وصولكم${time ? " الساعة " + time : ""}`
+      : "✅ سيتم تعبئة المسبح فور وصولكم مباشرة";
+    return `مرحباً ${b.guest} 👋
+
+تم تأكيد طلب المسبح الخاص بحجزكم في *${b.chalet}* 🏊
+
+${poolLine}
+
+نتطلع لاستقبالكم 🌟
+*ريتام للشاليهات*`;
+  }
+  const [preArrMdl, setPreArrMdl] = useState<{booking: Booking} | null>(null);
   async function svM(f: Partial<MaintenanceRequest>, old?: MaintenanceRequest | null): Promise<void> {const cost=Number(f.cost)||0;const wasDone=old?.status==="done";const isDone=f.status==="done";const isNew=!f.id;const body={chalet:f.chalet,issue:f.issue,maint_date:f.maint_date,priority:f.priority,status:f.status,cost,note:f.note,req:f.req,image:f.image||null};if(f.id)await db("maintenance","PATCH",body as Record<string,unknown>,f.id);else await db("maintenance","POST",body as Record<string,unknown>);if(cost>0&&isDone&&(isNew||!wasDone))await db("wallet","POST",{trans_date:f.maint_date||td(),type:"سحب صيانة",chalet:f.chalet,cat:"صيانة",amount:cost,note:f.issue||"صيانة"});await loadAll();setMMdl(null);}
   async function svAC(chalet: string, field: string, value: unknown, roomId: number | null = null): Promise<void> {if(roomId){const room=rooms.find(r=>r.id===roomId);const body={chalet,room_id:roomId,room_name:room?.name||"",ac_on:field==="ac_on"?value:(room?._acOn||false),ac_temp:field==="ac_temp"?value:(room?._acTemp||22),ac_mode:field==="ac_mode"?value:(room?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(room?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(room?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,room._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setRooms(p=>p.map(x=>x.id===roomId?{...x,_sdId:(res[0] as Room).id}:x));}await sendACCommand(roomId,field,value);}else{const ch=chalets.find(x=>x.name===chalet);const body={chalet,ac_on:field==="ac_on"?value:(ch?._acOn||false),ac_temp:field==="ac_temp"?value:(ch?._acTemp||22),ac_mode:field==="ac_mode"?value:(ch?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(ch?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(ch?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,ch._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setChalets(p=>p.map(x=>x.name===chalet?{...x,_sdId:(res[0] as Chalet).id}:x));}}}
   async function svCln(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("cleaning","POST",{trans_date:td(),type:"إيداع",chalet,amount:amt,note:note||"إيداع نظافة"});await loadAll();setClnMdl(false);}
   async function svI(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"تأمين",amount:amt,note:note||"إيداع تأمين"});await loadAll();setIMdl(false);}
-  async function handleCheckout(booking: Booking, amt: number, pay: string): Promise<void> {await db("bookings","PATCH",{status:"completed",price:amt},booking.id);await loadAll();setCoMdl(null);}
+  async function handleCheckout(booking: Booking, amt: number, pay: string): Promise<void> {
+    await db("bookings","PATCH",{status:"completed",price:amt},booking.id);
+    // مهمة تنظيف تلقائية بعد الخروج
+    await db("cleaning_tasks","POST",{
+      chalet: booking.chalet,
+      title: `تنظيف بعد خروج ${booking.guest}`,
+      frequency: "مرة واحدة",
+      category: "تنظيف عام",
+      active: true,
+      assigned_to: "",
+      note: `خروج بتاريخ ${td()} · رقم الحجز ${booking.id}`,
+    });
+    await loadAll();
+    setCoMdl(null);
+  }
 
   const TABS = [
     {id:"dashboard",  l:"الرئيسية",    i:"⊞"},
@@ -895,13 +1830,13 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
     {id:"insurance",  l:"التأمين",     i:"🛡️"},
     {id:"cleaning",   l:"النظافة",     i:"🧹"},
     {id:"smart",      l:"التحكم الذكي",i:"🌡️"},
-    {id:"reviews",    l:"التقييمات",   i:"⭐"},
+    {id:"loyalty",    l:"الولاء والتقييمات", i:"🏆"},
     {id:"settings",   l:"الإعدادات",   i:"⚙️"},
   ];
 
   function allowedTabs(t) {
     if(isAdmin) return true;
-    if(isChaletMgr) return ["dashboard","bookings","maintenance","reviews","smart"].includes(t.id);
+    if(isChaletMgr) return ["dashboard","bookings","maintenance","loyalty","smart"].includes(t.id);
     if(isStaff)     return ["dashboard","bookings","chalets","maintenance"].includes(t.id);
     return ["dashboard","bookings"].includes(t.id);
   }
@@ -1104,12 +2039,45 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
           {tab==="dashboard"&&(
             <div>
               {/* ── الترويسة ── */}
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
                 <div>
-                  <div style={{fontSize:22,fontWeight:900,color:B}}>لوحة التحكم</div>
-                  <div style={{fontSize:12,color:T,marginTop:2}}>{new Date().toLocaleDateString("ar-SA",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
+                  <div style={{fontSize:22,fontWeight:900,color:"var(--text)"}}>لوحة التحكم</div>
+                  <div style={{fontSize:12,color:"var(--text2)",marginTop:2}}>{new Date().toLocaleDateString("ar-SA",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
                 </div>
               </div>
+
+              {/* ── ملخص يومي ── */}
+              {(()=>{
+                const todayStr=new Date().toISOString().slice(0,10);
+                const tomStr=new Date(Date.now()+86400000).toISOString().slice(0,10);
+                const checkoutsToday=bookings.filter(b=>(b.status==="confirmed"||b.status==="pending")&&b.date_to===todayStr).length;
+                const checkinsToday=bookings.filter(b=>b.status==="confirmed"&&b.date_from===todayStr).length;
+                const arrivingTomorrow=bookings.filter(b=>b.status==="confirmed"&&b.date_from===tomStr).length;
+                const poolPending=bookings.filter(b=>b.pool_preference&&!b.pool_approved&&b.status==="confirmed").length;
+                const openMaint=maint.filter(m=>m.status==="open").length;
+                const items=[
+                  checkoutsToday&&{icon:"🚪",label:"خروج اليوم",val:checkoutsToday,color:"#DC2626",bg:"rgba(220,38,38,.08)"},
+                  checkinsToday&&{icon:"🏡",label:"دخول اليوم",val:checkinsToday,color:"#059669",bg:"rgba(5,150,105,.08)"},
+                  arrivingTomorrow&&{icon:"🌅",label:"وصول غداً",val:arrivingTomorrow,color:"#4338CA",bg:"rgba(67,56,202,.08)"},
+                  poolPending&&{icon:"🏊",label:"طلبات مسبح",val:poolPending,color:"#0284C7",bg:"rgba(2,132,199,.08)"},
+                  openMaint&&{icon:"🔧",label:"صيانة مفتوحة",val:openMaint,color:"#B45309",bg:"rgba(180,83,9,.08)"},
+                  roomReqs.length&&{icon:"🛎️",label:"طلبات غرف",val:roomReqs.length,color:"#7C3AED",bg:"rgba(124,58,237,.08)"},
+                ].filter(Boolean);
+                if(!items.length) return null;
+                return (
+                  <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+                    {items.map((item:any,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,borderRadius:12,padding:"10px 16px",background:item.bg,border:`1px solid ${item.color}22`,flex:1,minWidth:120}}>
+                        <span style={{fontSize:20}}>{item.icon}</span>
+                        <div>
+                          <div style={{fontSize:20,fontWeight:900,color:item.color,lineHeight:1}}>{item.val}</div>
+                          <div style={{fontSize:10,color:"var(--text2)",fontWeight:600,marginTop:2}}>{item.label}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/* ── تسجيل الخروج اليوم (أولوية قصوى) ── */}
               {(()=>{
@@ -1144,6 +2112,230 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
                 );
               })()}
 
+              {/* ── وصول غداً (رسائل قبل الوصول) ── */}
+              {(()=>{
+                const tom=new Date(); tom.setDate(tom.getDate()+1);
+                const tomStr=tom.toISOString().slice(0,10);
+                const arrivals=bookings.filter(b=>b.status==="confirmed"&&b.date_from===tomStr);
+                if(!arrivals.length) return null;
+                return (
+                  <div style={{background:"linear-gradient(135deg,#312E81,#4338CA)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 4px 20px rgba(67,56,202,.35)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+                      <span style={{fontSize:18}}>🌅</span>
+                      <span style={{fontWeight:800,color:"#fff",fontSize:15}}>وصول غداً · رسائل قبل الوصول</span>
+                      <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{arrivals.length}</span>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                      <span style={{fontSize:11,color:"rgba(255,255,255,.6)"}}>
+                        {arrivals.filter(b=>b.pre_arrival_sent).length}/{arrivals.length} تم الإرسال
+                      </span>
+                    </div>
+                    {arrivals.map((b,i)=>(
+                      <div key={b.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:b.pre_arrival_sent?"rgba(34,197,94,.15)":"rgba(255,255,255,.08)",borderRadius:10,marginBottom:i<arrivals.length-1?8:0,flexWrap:"wrap",border:b.pre_arrival_sent?"1px solid rgba(34,197,94,.35)":"1px solid transparent"}}>
+                        <div style={{flex:1,minWidth:140}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <span style={{fontWeight:800,color:"#fff",fontSize:14}}>{b.guest}</span>
+                            {b.pre_arrival_sent&&<span style={{fontSize:10,background:"rgba(34,197,94,.3)",color:"#86EFAC",borderRadius:99,padding:"1px 8px",fontWeight:700}}>✓ أُرسلت</span>}
+                          </div>
+                          <div style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:2}}>
+                            {b.chalet}
+                            {b.checkin_time&&<span style={{marginRight:6}}>· دخول {b.checkin_time}</span>}
+                            {b.checkout_time&&<span style={{marginRight:6}}>· خروج {b.checkout_time}</span>}
+                            {!b.phone&&<span style={{color:"#FCA5A5",marginRight:6}}>· ⚠ لا يوجد هاتف</span>}
+                          </div>
+                        </div>
+                        <button onClick={()=>setPreArrMdl({booking:b})} style={{
+                          background:b.pre_arrival_sent?"rgba(255,255,255,.15)":"#fff",
+                          color:b.pre_arrival_sent?"#fff":"#4338CA",
+                          border:b.pre_arrival_sent?"1px solid rgba(255,255,255,.3)":"none",
+                          borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:800,cursor:"pointer",
+                          fontFamily:"'Tajawal',sans-serif",flexShrink:0,
+                        }}>{b.pre_arrival_sent?"📋 إعادة إرسال":"📋 إرسال رسالة"}</button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* ── طلبات المسبح المعلقة ── */}
+              {(()=>{
+                const poolReqs = bookings.filter(b=>b.pool_preference&&!b.pool_approved&&b.status==="confirmed");
+                if(!poolReqs.length) return null;
+                function poolLabel(pref: string){
+                  if(!pref) return "-";
+                  if(pref==="on_arrival") return "تعبئة عند الوصول 🕐";
+                  if(pref.startsWith("ready")){
+                    const t=pref.split(":").slice(1).join(":");
+                    return t ? `جاهز عند الوصول · الساعة ${t} ✅` : "جاهز عند الوصول ✅";
+                  }
+                  return pref;
+                }
+                return (
+                  <div style={{background:"linear-gradient(135deg,#065F46,#047857)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 4px 20px rgba(4,120,87,.3)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+                      <span style={{fontSize:18}}>🏊</span>
+                      <span style={{fontWeight:800,color:"#fff",fontSize:15}}>طلبات المسبح · تنتظر موافقتك</span>
+                      <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{poolReqs.length}</span>
+                    </div>
+                    {poolReqs.map((b,i)=>(
+                      <div key={b.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"rgba(255,255,255,.1)",borderRadius:10,marginBottom:i<poolReqs.length-1?8:0,flexWrap:"wrap"}}>
+                        <div style={{flex:1,minWidth:140}}>
+                          <div style={{fontWeight:800,color:"#fff",fontSize:14}}>{b.guest}</div>
+                          <div style={{fontSize:11,color:"rgba(255,255,255,.8)",marginTop:2}}>{b.chalet} · {poolLabel(b.pool_preference||"")}</div>
+                          <div style={{fontSize:10,color:"rgba(255,255,255,.6)",marginTop:1}}>دخول {fd(b.date_from)}</div>
+                        </div>
+                        <button onClick={async()=>{
+                          await db("bookings","PATCH",{pool_approved:true},b.id);
+                          await loadAll();
+                          const msg=encodeURIComponent(buildPoolApprovalMsg(b));
+                          const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966")||"";
+                          if(phone) window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");
+                        }} style={{
+                          background:"#fff",color:"#065F46",border:"none",borderRadius:8,
+                          padding:"8px 14px",fontSize:12,fontWeight:800,cursor:"pointer",
+                          fontFamily:"'Tajawal',sans-serif",flexShrink:0,
+                        }}>✅ موافقة وإرسال</button>
+                        <button onClick={async()=>{
+                          await db("bookings","PATCH",{pool_preference:null,pool_approved:false},b.id);
+                          await loadAll();
+                        }} style={{
+                          background:"rgba(239,68,68,.2)",color:"#FCA5A5",border:"1px solid rgba(239,68,68,.3)",
+                          borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:700,cursor:"pointer",
+                          fontFamily:"'Tajawal',sans-serif",flexShrink:0,
+                        }}>رفض</button>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* ── طلبات الغرف ── */}
+              {roomReqs.length>0&&(
+                <div style={{background:"linear-gradient(135deg,#4C1D95,#6D28D9)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 4px 20px rgba(109,40,217,.3)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,justifyContent:"space-between"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:18}}>🛎️</span>
+                      <span style={{fontWeight:800,color:"#fff",fontSize:15}}>طلبات الغرف</span>
+                      <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{roomReqs.length}</span>
+                    </div>
+                  </div>
+                  <div style={{display:"grid",gap:8}}>
+                    {roomReqs.map((r:any)=>{
+                      const rt=ROOM_REQUEST_TYPES.find(x=>x.val===r.type)||{icon:"📋",label:r.type,color:"#fff"};
+                      const ago=Math.round((Date.now()-new Date(r.created_at).getTime())/60000);
+                      const agoStr=ago<1?"الآن":ago<60?`منذ ${ago} د`:`منذ ${Math.round(ago/60)} س`;
+                      return (
+                        <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"rgba(255,255,255,.1)",borderRadius:10,flexWrap:"wrap"}}>
+                          <span style={{fontSize:24}}>{rt.icon}</span>
+                          <div style={{flex:1,minWidth:120}}>
+                            <div style={{fontWeight:800,color:"#fff",fontSize:13}}>{rt.label}</div>
+                            <div style={{fontSize:11,color:"rgba(255,255,255,.75)",marginTop:2}}>
+                              {r.chalet} · {r.room} · {agoStr}
+                            </div>
+                            {r.note&&<div style={{fontSize:11,color:"rgba(255,255,255,.6)",marginTop:1,fontStyle:"italic"}}>"{r.note}"</div>}
+                          </div>
+                          <button onClick={async()=>{await db("room_requests","PATCH",{resolved:true},r.id);await loadAll();}} style={{
+                            background:"rgba(255,255,255,.2)",color:"#fff",border:"1px solid rgba(255,255,255,.3)",
+                            borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:700,cursor:"pointer",
+                            fontFamily:"'Tajawal',sans-serif",flexShrink:0,
+                          }}>✓ تم</button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ── تنبيه مهام النظافة المستحقة ── */}
+              {(()=>{
+                const todayStr=td();
+                const thisMonth=todayStr.slice(0,7);
+                const doneLogs=new Set(clLogs.filter(l=>l.log_date?.startsWith(thisMonth)&&(l.status==="done"||l.supervisor_ok)).map(l=>l.task_id));
+                const sentLogs=new Set(clLogs.filter(l=>l.log_date?.startsWith(thisMonth)&&l.status==="sent").map(l=>l.task_id));
+                const dueTasks=clTasks.filter(t=>t.active!==false&&!doneLogs.has(t.id));
+                if(!dueTasks.length) return null;
+                return <CleanTaskBanner tasks={dueTasks} sentLogs={sentLogs} workers={cleanWorkers} logs={clLogs} thisMonth={thisMonth} onSend={async(task,worker)=>{
+                  const existing=clLogs.find(l=>l.task_id===task.id&&l.log_date?.startsWith(thisMonth));
+                  let logId:number;
+                  if(existing){logId=existing.id;await db("cleaning_logs","PATCH",{status:"sent",sent_at:new Date().toISOString(),worker_id:worker.id},existing.id);}
+                  else{const r=await db("cleaning_logs","POST",{task_id:task.id,chalet:task.chalet,log_date:todayStr,worker_done:false,supervisor_ok:false,status:"sent",sent_at:new Date().toISOString(),worker_id:worker.id});logId=r?.[0]?.id||0;}
+                  await loadAll();
+                  const lang=worker.language||"hi";
+                  const url=`https://reetam-chalets.vercel.app?guest=1&m=cleantask&log=${logId}&task=${encodeURIComponent(task.title)}&ch=${encodeURIComponent(task.chalet)}&lang=${lang}`;
+                  const msgs:Record<string,string>={
+                    hi:`नमस्ते ${worker.name}! 🧹%0aकाम: *${task.title}*%0aजगह: ${task.chalet}%0a%0aकाम पूरा होने पर यहाँ क्लिक करें:%0a${encodeURIComponent(url)}`,
+                    ar:`مرحباً ${worker.name} 🧹%0aالمهمة: *${task.title}*%0aالشاليه: ${task.chalet}%0a%0aعند الانتهاء اضغط هنا:%0a${encodeURIComponent(url)}`,
+                    en:`Hi ${worker.name}! 🧹%0aTask: *${task.title}*%0aChalet: ${task.chalet}%0a%0aWhen done, click here:%0a${encodeURIComponent(url)}`,
+                  };
+                  const phone=worker.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");
+                  window.open(`https://wa.me/${phone}?text=${msgs[lang]||msgs.hi}`,"_blank");
+                }} onConfirm={async(task)=>{
+                  const existing=clLogs.find(l=>l.task_id===task.id&&l.log_date?.startsWith(thisMonth));
+                  if(existing){await db("cleaning_logs","PATCH",{supervisor_ok:true,status:"done",done_at:new Date().toISOString()},existing.id);}
+                  else{await db("cleaning_logs","POST",{task_id:task.id,chalet:task.chalet,log_date:todayStr,worker_done:true,supervisor_ok:true,status:"done",done_at:new Date().toISOString()});}
+                  await loadAll();
+                }}/>;
+              })()}
+
+              {/* ── تنبيه اكتمال مهام النظافة ── */}
+              {(()=>{
+                const thisMonth=td().slice(0,7);
+                const justDone=clLogs.filter(l=>l.status==="done"&&l.done_at&&!l.supervisor_ok&&l.log_date?.startsWith(thisMonth));
+                if(!justDone.length) return null;
+                return (
+                  <div style={{background:"linear-gradient(135deg,#166534,#15803D)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 4px 20px rgba(22,101,52,.3)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                      <span style={{fontSize:18}}>🔔</span>
+                      <span style={{fontWeight:800,color:"#fff",fontSize:15}}>مهام أنهاها العمال — تحتاج موافقة</span>
+                      <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{justDone.length}</span>
+                    </div>
+                    {justDone.map(l=>{
+                      const task=clTasks.find(t=>t.id===l.task_id);
+                      const worker=cleanWorkers.find(w=>w.id===l.worker_id);
+                      return (
+                        <div key={l.id} style={{background:"rgba(255,255,255,.1)",borderRadius:10,marginBottom:6,overflow:"hidden"}}>
+                          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px"}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontWeight:700,color:"#fff",fontSize:13}}>{task?.title||"مهمة"}</div>
+                              <div style={{fontSize:11,color:"rgba(255,255,255,.75)",marginTop:2}}>
+                                {l.chalet}{worker?" · "+worker.name:""}{l.done_note?" · \""+l.done_note+"\"":""}
+                              </div>
+                            </div>
+                            <button onClick={async()=>{await db("cleaning_logs","PATCH",{supervisor_ok:true},l.id);await loadAll();}} style={{
+                              background:"#fff",color:"#166534",border:"none",borderRadius:8,padding:"8px 14px",
+                              fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",flexShrink:0,
+                            }}>✓ موافقة</button>
+                          </div>
+                          {(l as any).done_media_url && (
+                            <div style={{padding:"0 14px 12px"}}>
+                              {(l as any).done_media_url.match(/\.(mp4|mov|webm|avi)$/i)
+                                ? <video src={(l as any).done_media_url} controls style={{width:"100%",maxHeight:180,borderRadius:8,background:"#000"}}/>
+                                : <a href={(l as any).done_media_url} target="_blank" rel="noopener noreferrer">
+                                    <img src={(l as any).done_media_url} alt="media" style={{width:"100%",maxHeight:180,borderRadius:8,objectFit:"cover",display:"block"}}/>
+                                  </a>
+                              }
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* ── تنبيه المصروفات الثابتة غير المدفوعة ── */}
+              {(()=>{
+                const nowD=new Date();
+                const thisYM=`${nowD.getFullYear()}-${String(nowD.getMonth()+1).padStart(2,"0")}`;
+                const activeFixed=fixedExpenses.filter(fx=>fx.active);
+                if(!activeFixed.length) return null;
+                const paidNames=new Set(expenses.filter(e=>e.expense_date?.startsWith(thisYM)).map(e=>e.note));
+                const unpaid=activeFixed.filter(fx=>!paidNames.has(fx.name));
+                if(!unpaid.length) return null;
+                const unpaidTotal=unpaid.reduce((s,fx)=>s+Number(fx.amount),0);
+                return <UnpaidFixedBanner unpaid={unpaid} total={unpaidTotal} onPay={async(fx)=>{await db("expenses","POST",{chalet:fx.chalet,category:fx.category||"مصروف ثابت",amount:Number(fx.amount),note:fx.name,expense_date:td()});await loadAll();}}/>;
+              })()}
+
               {/* ── الأرقام الكبيرة ── */}
               <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12,marginBottom:20}}>
                 {/* إيرادات الشهر */}
@@ -1160,12 +2352,18 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
                     </div>
                   );
                 })()}
-                {/* إجمالي الإيرادات */}
-                <div style={{background:"linear-gradient(135deg,"+T+","+TD+")",borderRadius:14,padding:18,boxShadow:"0 4px 16px rgba(0,0,0,.2)"}}>
-                  <div style={{fontSize:12,color:"rgba(255,255,255,.7)",marginBottom:6}}>📈 إجمالي الإيرادات</div>
-                  <div style={{fontSize:28,fontWeight:900,color:"#fff"}}>{totRev.toLocaleString()}<span style={{fontSize:14,marginRight:4}}>ر</span></div>
-                  <div style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:4}}>{bookings.filter(b=>b.status==="completed").length} حجز مكتمل</div>
-                </div>
+                {/* إجمالي إيرادات هذا العام */}
+                {(()=>{
+                  const nowY=new Date().getFullYear();
+                  const yearRev=bookings.filter(b=>b.status==="completed"&&b.date_from&&new Date(b.date_from).getFullYear()===nowY).reduce((s,b)=>s+Number(b.price),0);
+                  return (
+                    <div style={{background:"linear-gradient(135deg,"+T+","+TD+")",borderRadius:14,padding:18,boxShadow:"0 4px 16px rgba(0,0,0,.2)"}}>
+                      <div style={{fontSize:12,color:"rgba(255,255,255,.7)",marginBottom:6}}>📈 إيرادات {nowY}</div>
+                      <div style={{fontSize:28,fontWeight:900,color:"#fff"}}>{yearRev.toLocaleString()}<span style={{fontSize:14,marginRight:4}}>ر</span></div>
+                      <div style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:4}}>{bookings.filter(b=>b.status==="completed"&&b.date_from&&new Date(b.date_from).getFullYear()===nowY).length} حجز مكتمل</div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* ── صف ثاني: محافظ + إحصائيات ── */}
@@ -1318,77 +2516,20 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
 
           {/* ── Chalets ── */}
           {tab==="chalets"&&(
-            <div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
-                <TH title="إدارة الشاليهات"/>
-                <button className="btn bp" onClick={()=>setCMdl({...eC})}>+ إضافة شاليه</button>
-              </div>
-              <div className="cg">
-                {cStats.map(c=>(
-                  <div key={c.id} className="cc">
-                    <div style={{position:"relative",height:170,overflow:"hidden",background:"linear-gradient(135deg,"+B+","+BD+")"}}>
-                      {c.img?<img src={c.img} alt={c.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:40,opacity:.25}}>🏠</span></div>}
-                      <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(transparent,rgba(42,34,24,.9))",padding:"18px 14px 10px"}}>
-                        <div style={{color:S,fontWeight:800,fontSize:15}}>{c.name}</div>
-                        <div style={{color:SI,fontSize:11,marginTop:2}}>{"📍 "+c.loc+(c.open_date?" · افتتح: "+c.open_date.slice(0,7):"")}</div>
-                      </div>
-                      <div style={{position:"absolute",top:8,left:8}}><Bdg bg={c.st==="active"?"rgba(141,149,119,.85)":"rgba(139,58,58,.85)"} color="#fff">{c.st==="active"?"نشط":"موقف"}</Bdg></div>
-                      <label style={{position:"absolute",top:8,right:8,background:"rgba(42,34,24,.7)",borderRadius:7,padding:"4px 8px",cursor:"pointer",color:S,fontSize:11,fontWeight:600}}>
-                        📷 تغيير
-                        <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>setChalets(p=>p.map(x=>x.id===c.id?{...x,img:ev.target.result}:x));r.readAsDataURL(file);}}/>
-                      </label>
-                    </div>
-                    <div style={{padding:"14px 16px"}}>
-                      <p style={{color:T,fontSize:12,marginBottom:12}}>{c.description||"—"}</p>
-                      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:7,marginBottom:12}}>
-                        {[{l:"السعة",v:c.cap+" شخص",i:"👥"},{l:"سعر عادي",v:c.price+" ريال",i:"🌙"},{l:"سعر ويكند",v:(c.wprice||"-")+(c.wprice?" ريال":""),i:"🎉"},{l:"إيرادات النظام",v:c.rev.toLocaleString()+" ر",i:"📈"},{l:"إجمالي الإيرادات",v:c.totalRev.toLocaleString()+" ر",i:"💰"},{l:"التأمين",v:c.ins.toLocaleString()+" ر",i:"🛡️"}].map((item,i)=>(
-                          <div key={i} style={{background:SL,borderRadius:8,padding:"7px 9px",border:"1px solid rgba(197,172,136,.2)"}}>
-                            <div style={{fontSize:10,color:T}}>{item.i+" "+item.l}</div>
-                            <div style={{fontWeight:700,color:B,fontSize:12,marginTop:2}}>{item.v}</div>
-                          </div>
-                        ))}
-                      </div>
-                      <div style={{display:"flex",gap:5,marginBottom:12}}>
-                        {[{l:"مفتوح",c:"#8B3A3A",bg:"#F5E6E6",v:c.mop},{l:"جاري",c:"#8B6914",bg:"#F5EFD6",v:c.mip},{l:"منتهي",c:SD,bg:"#EEF0E9",v:c.mdn}].map((x,i)=>(
-                          <div key={i} style={{flex:1,textAlign:"center",background:x.bg,borderRadius:7,padding:"6px 0"}}>
-                            <div style={{fontSize:18,fontWeight:800,color:x.c}}>{x.v}</div>
-                            <div style={{fontSize:10,color:x.c}}>{x.l}</div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* هدف الشهر */}
-                      {c.goal>0&&(()=>{
-                        const netMonth=c.monthRev-c.monthExp;
-                        const pct=Math.min(Math.round(netMonth/c.goal*100),100);
-                        const color=pct>=100?"#4CAF50":pct>=60?"#B8A06A":"#C97B63";
-                        return (
-                          <div style={{marginBottom:12,background:SL,borderRadius:10,padding:"10px 12px",border:"1px solid rgba(197,172,136,.2)"}}>
-                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                              <span style={{fontSize:11,fontWeight:700,color:B}}>🎯 هدف الشهر</span>
-                              <span style={{fontSize:11,fontWeight:800,color}}>{pct+"%"}</span>
-                            </div>
-                            <div style={{background:"rgba(197,172,136,.2)",borderRadius:99,height:8,overflow:"hidden",marginBottom:5}}>
-                              <div style={{width:pct+"%",height:"100%",background:color,borderRadius:99,transition:"width .4s"}}/>
-                            </div>
-                            <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:T}}>
-                              <span>{"صافي: "+netMonth.toLocaleString()+" ر"}</span>
-                              <span>{"هدف: "+c.goal.toLocaleString()+" ر"}</span>
-                            </div>
-                          </div>
-                        );
-                      })()}
-
-                      <div style={{display:"flex",gap:7}}>
-                        <button className="btn be" style={{flex:1,padding:"8px",fontSize:13}} onClick={()=>setCMdl({...c,open_date:c.open_date?c.open_date.slice(0,7):""})}>✏️ تعديل</button>
-                        <button className="btn bp bsm" style={{padding:"8px 12px",fontSize:12}} onClick={()=>setGoalMdl({id:c.id,name:c.name,goal:c.goal||""})}>🎯</button>
-                        <button className="btn bd bsm" style={{padding:"8px 12px"}} onClick={()=>dlC(c.id)}>🗑️</button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <ChaletsTab
+              cStats={cStats}
+              rooms={rooms}
+              loading={loading}
+              onAdd={()=>setCMdl({...eC})}
+              onEdit={c=>setCMdl({...c})}
+              onDelete={dlC}
+              onGoal={c=>setGoalMdl({id:c.id,name:c.name,goal:c.goal||""})}
+              onQr={(chalet,chRooms)=>setQrMdl({chalet,rooms:chRooms})}
+              onImgChange={async(id,dataUrl)=>{
+                setChalets(p=>p.map(x=>x.id===id?{...x,img:dataUrl}:x));
+                await db("chalets","PATCH",{img:dataUrl},id);
+              }}
+            />
           )}
 
           {/* ── Bookings ── */}
@@ -1427,7 +2568,10 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
                             <div style={{display:"flex",alignItems:"center",gap:8}}>
                               <div style={{width:4,height:36,borderRadius:4,background:sc.color,flexShrink:0}}/>
                               <div>
-                                <div style={{fontWeight:800,color:B,fontSize:13}}>{b.guest}</div>
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  <span style={{fontWeight:800,color:B,fontSize:13}}>{b.guest}</span>
+                                  {b.pre_arrival_sent&&<span style={{fontSize:9,background:"#DCFCE7",color:"#166534",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ رسالة</span>}
+                                </div>
                                 <div style={{fontSize:11,color:T,marginTop:1,direction:"ltr",textAlign:"right"}}>{b.phone||"-"}</div>
                               </div>
                             </div>
@@ -1453,6 +2597,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
                             <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                               <button className="btn be bsm" onClick={e=>{e.stopPropagation();setBMdl({...b})}}>تعديل</button>
                               <button className="btn bd bsm" onClick={async e=>{e.stopPropagation();if(window.confirm("حذف الحجز؟")){await db("bookings","DELETE",null,b.id);await loadAll();}}}>حذف</button>
+                              <button onClick={e=>{e.stopPropagation();setPreArrMdl({booking:b});}} style={{background:"#6366F1",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>📋 قبل الوصول</button>
                               <button onClick={e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=checkin`;const msg=`مرحباً ${b.guest} 👋%0aأهلاً بك في ${b.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}} style={{background:"#25D366",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>واتساب</button>
                               <button onClick={e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=review`;const msg=`${b.guest} 😊%0aرابط التقييم:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}} style={{background:"#F59E0B",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>تقييم</button>
                             </div>
@@ -1471,7 +2616,10 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
             <FinancialTab
               bookings={bookings} maintenance={maint} wallet={wallet} names={names}
               expenses={expenses}
+              fixedExpenses={fixedExpenses}
               onAddExpense={()=>setExMdl({chalet:names[0]||"",category:"إيجار",amount:"",note:"",expense_date:td()})}
+              onAddFixedExpense={()=>setFxMdl({chalet:names[0]||"",name:"",amount:0,frequency:"monthly",category:"إيجار",active:true})}
+              onPayFixedExpense={async(fx)=>{const today=td();await db("expenses","POST",{chalet:fx.chalet,category:fx.category||"مصروف ثابت",amount:Number(fx.amount),note:fx.name,expense_date:today});await loadAll();}}
               onEdit={t=>setWMdl({...t})}
               onReload={loadAll}
             />
@@ -1609,12 +2757,12 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
                 <Tbl heads={["التاريخ","الشاليه","النوع","المبلغ","ملاحظة","إجراءات"]}
                   rows={[...cleaning].reverse().map((t,i)=>(
                     <tr key={i}>
-                      <td>{fd(t.trans_date)}</td>
-                      <td style={{fontWeight:600}}>{t.chalet}</td>
-                      <td><Bdg bg={t.type==="إيداع"?"#E8F5EE":"#F5E6E6"} color={t.type==="إيداع"?"#3D7A5A":"#8B3A3A"}>{t.type}</Bdg></td>
-                      <td style={{fontWeight:700,color:t.type==="إيداع"?"#3D7A5A":"#8B3A3A"}}>{(t.type==="إيداع"?"+":"-")+t.amount.toLocaleString()+" ر"}</td>
-                      <td style={{color:T,fontSize:12}}>{t.note||"-"}</td>
-                      <td><div style={{display:"flex",gap:4}}><button className="btn be bsm" onClick={()=>setClMdl({...t})}>تعديل</button><button className="btn bd bsm" onClick={async()=>{if(window.confirm("حذف هذا الصف؟")){await db("cleaning","DELETE",null,t.id);await loadAll();}}}>حذف</button></div></td>
+                      <td data-label="التاريخ">{fd(t.trans_date)}</td>
+                      <td data-label="الشاليه" style={{fontWeight:600}}>{t.chalet}</td>
+                      <td data-label="النوع"><Bdg bg={t.type==="إيداع"?"#E8F5EE":"#F5E6E6"} color={t.type==="إيداع"?"#3D7A5A":"#8B3A3A"}>{t.type}</Bdg></td>
+                      <td data-label="المبلغ" style={{fontWeight:700,color:t.type==="إيداع"?"#3D7A5A":"#8B3A3A"}}>{(t.type==="إيداع"?"+":"-")+t.amount.toLocaleString()+" ر"}</td>
+                      <td data-label="ملاحظة" style={{color:T,fontSize:12}}>{t.note||"-"}</td>
+                      <td data-label=""><div style={{display:"flex",gap:4}}><button className="btn be bsm" onClick={()=>setClMdl({...t})}>تعديل</button><button className="btn bd bsm" onClick={async()=>{if(window.confirm("حذف هذا الصف؟")){await db("cleaning","DELETE",null,t.id);await loadAll();}}}>حذف</button></div></td>
                     </tr>
                   ))}
                 />
@@ -1630,12 +2778,12 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
                   <Tbl heads={["التاريخ","الشاليه","الفئة","المبلغ","ملاحظة","إجراءات"]}
                     rows={[...clExp].reverse().map((e,i)=>(
                       <tr key={i}>
-                        <td style={{fontSize:12}}>{fd(e.expense_date)}</td>
-                        <td style={{fontWeight:600}}>{e.chalet}</td>
-                        <td><Bdg bg="#E8F5EE" color="#3D7A5A">{e.category}</Bdg></td>
-                        <td style={{fontWeight:700,color:"#8B3A3A"}}>-{Number(e.amount).toLocaleString()+" ر"}</td>
-                        <td style={{color:T,fontSize:12}}>{e.note||"-"}</td>
-                        <td><div style={{display:"flex",gap:4}}>
+                        <td data-label="التاريخ" style={{fontSize:12}}>{fd(e.expense_date)}</td>
+                        <td data-label="الشاليه" style={{fontWeight:600}}>{e.chalet}</td>
+                        <td data-label="الفئة"><Bdg bg="#E8F5EE" color="#3D7A5A">{e.category}</Bdg></td>
+                        <td data-label="المبلغ" style={{fontWeight:700,color:"#8B3A3A"}}>-{Number(e.amount).toLocaleString()+" ر"}</td>
+                        <td data-label="ملاحظة" style={{color:T,fontSize:12}}>{e.note||"-"}</td>
+                        <td data-label=""><div style={{display:"flex",gap:4}}>
                           <button className="btn be bsm" onClick={()=>setClExpMdl({...e})}>تعديل</button>
                           <button className="btn bd bsm" onClick={async()=>{if(window.confirm("حذف؟")){await db("cleaning_expenses","DELETE",null,e.id);await loadAll();}}}>حذف</button>
                         </div></td>
@@ -1662,7 +2810,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
                   </div>
                 </div>
 
-                {(clSelCh?[clSelCh]:names).map(chName=>{
+                {(clSelCh?[clSelCh]:[...new Set(clTasks.map(t=>t.chalet))]).map(chName=>{
                   const tasks = clTasks.filter(t=>t.chalet===chName&&t.active!==false);
                   if(!tasks.length) return null;
                   const month = new Date().toISOString().slice(0,7);
@@ -1682,34 +2830,43 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
                           <div style={{fontWeight:800,color:pct===100?"#3D7A5A":B,fontSize:13}}>{pct+"%"}</div>
                         </div>
                       </div>
-                      <table style={{width:"100%",borderCollapse:"collapse"}}>
+                      <div className="tbl-wrap">
+                      <table className="tbl">
                         <thead><tr style={{background:"rgba(197,172,136,.1)"}}>
-                          {["المهمة","الفئة","التكرار","المسؤول","العامل ✓","المشرف ✓","ملاحظة",""].map((h,i)=><th key={i} style={{padding:"8px 12px",textAlign:"right",fontSize:12,color:T,fontWeight:600}}>{h}</th>)}
+                          {["المهمة","الفئة","التكرار","العامل ✓","المشرف ✓","إرسال",""].map((h,i)=><th key={i}>{h}</th>)}
                         </tr></thead>
                         <tbody>
                           {tasks.map(task=>{
                             const log = logs.find(l=>l.task_id===task.id);
+                            const isDone = log?.supervisor_ok||log?.status==="done";
                             return (
-                              <tr key={task.id} style={{borderTop:"1px solid rgba(197,172,136,.15)",background:log?.supervisor_ok?"rgba(61,122,90,.05)":log?"rgba(184,160,106,.05)":""}}>
-                                <td style={{padding:"10px 12px",fontWeight:600,fontSize:13}}>{task.title}</td>
-                                <td style={{padding:"10px 12px"}}><Bdg bg="#E8F5EE" color="#3D7A5A">{task.category}</Bdg></td>
-                                <td style={{padding:"10px 12px",fontSize:12,color:T}}>{task.frequency}</td>
-                                <td style={{padding:"10px 12px",fontSize:12}}>{task.assigned_to||"-"}</td>
-                                <td style={{padding:"10px 12px",textAlign:"center"}}>
-                                  {log ? <span style={{color:"#3D7A5A",fontWeight:700,fontSize:16}}>✓</span> : <span style={{color:"#ccc",fontSize:16}}>○</span>}
+                              <tr key={task.id} style={{background:isDone?"rgba(61,122,90,.05)":log?.status==="sent"?"rgba(37,211,102,.05)":""}}>
+                                <td data-label="المهمة" style={{fontWeight:600}}>
+                                  {task.title}
+                                  {log?.status==="sent"&&<div style={{fontSize:10,color:"#059669",fontWeight:600}}>📤 أُرسلت</div>}
+                                  {isDone&&<div style={{fontSize:10,color:"#166534",fontWeight:600}}>✅ منتهية</div>}
                                 </td>
-                                <td style={{padding:"10px 12px",textAlign:"center"}}>
-                                  {log?.supervisor_ok
+                                <td data-label="الفئة"><Bdg bg="#E8F5EE" color="#3D7A5A">{task.category}</Bdg></td>
+                                <td data-label="التكرار" style={{fontSize:12,color:T}}>{task.frequency}</td>
+                                <td data-label="العامل ✓" style={{textAlign:"center"}}>
+                                  {log?.worker_done||log?.status==="done" ? <span style={{color:"#3D7A5A",fontWeight:700,fontSize:16}}>✓</span> : <span style={{color:"#ccc",fontSize:16}}>○</span>}
+                                </td>
+                                <td data-label="المشرف ✓" style={{textAlign:"center"}}>
+                                  {isDone
                                     ? <span style={{color:"#3D7A5A",fontWeight:700,fontSize:16}}>✓</span>
                                     : <button className="btn be bsm" style={{fontSize:11}} onClick={async()=>{
-                                        if(log){await db("cleaning_logs","PATCH",{supervisor_ok:true},log.id);}
-                                        else{await db("cleaning_logs","POST",{task_id:task.id,chalet:chName,log_date:td(),worker_done:false,supervisor_ok:true,note:""});}
+                                        if(log){await db("cleaning_logs","PATCH",{supervisor_ok:true,status:"done"},log.id);}
+                                        else{await db("cleaning_logs","POST",{task_id:task.id,chalet:chName,log_date:td(),worker_done:true,supervisor_ok:true,status:"done"});}
                                         await loadAll();
-                                      }}>تأكيد</button>
+                                      }}>تأكيد ✓</button>
                                   }
                                 </td>
-                                <td style={{padding:"10px 12px",fontSize:12,color:T}}>{log?.note||"-"}</td>
-                                <td style={{padding:"10px 12px"}}>
+                                <td data-label="إرسال">
+                                  {!isDone&&cleanWorkers.filter(w=>w.active).length>0&&(
+                                    <SendTaskBtn task={task} workers={cleanWorkers.filter(w=>w.active)} log={log||null} onSent={loadAll}/>
+                                  )}
+                                </td>
+                                <td data-label="">
                                   <div style={{display:"flex",gap:4}}>
                                     <button className="btn be bsm" style={{fontSize:11}} onClick={()=>setClTaskMdl({...task})}>تعديل</button>
                                     <button className="btn bd bsm" style={{fontSize:11}} onClick={async()=>{if(window.confirm("حذف المهمة؟")){await db("cleaning_tasks","DELETE",null,task.id);await loadAll();}}}>حذف</button>
@@ -1720,10 +2877,57 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
                           })}
                         </tbody>
                       </table>
+                      </div>
                     </div>
                   );
                 })}
                 {clTasks.length===0&&<div className="card" style={{padding:24,textAlign:"center",color:T}}>لا توجد مهام بعد — أضف مهام النظافة لكل شاليه</div>}
+
+                {/* ── فريق النظافة ── */}
+                <div style={{marginTop:24}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                    <div style={{fontWeight:700,color:B,fontSize:16}}>👷 فريق النظافة</div>
+                    <button className="btn bp" style={{background:"#065F46"}} onClick={()=>setCwMdl({name:"",phone:"",language:"hi",active:true})}>+ إضافة عامل</button>
+                  </div>
+                  {cleanWorkers.length===0
+                    ? <div className="card" style={{padding:20,textAlign:"center",color:T,fontSize:13}}>لا يوجد عمال — أضف فريق النظافة</div>
+                    : <div className="card" style={{overflow:"hidden"}}>
+                        <div className="tbl-wrap">
+                        <table className="tbl">
+                          <thead><tr>
+                            {["الاسم","الهاتف","اللغة","الحالة","إجراءات"].map((h,i)=><th key={i}>{h}</th>)}
+                          </tr></thead>
+                          <tbody>
+                            {cleanWorkers.map(w=>(
+                              <tr key={w.id}>
+                                <td data-label="الاسم" style={{fontWeight:700}}>{w.name}</td>
+                                <td data-label="الهاتف" style={{direction:"ltr",textAlign:"right"}}>{w.phone}</td>
+                                <td data-label="اللغة">
+                                  <Bdg bg={w.language==="hi"?"#FFF7ED":"#EFF6FF"} color={w.language==="hi"?"#C2410C":"#1D4ED8"}>
+                                    {w.language==="hi"?"🇮🇳 هندية":w.language==="ar"?"🇸🇦 عربية":"🌐 إنجليزية"}
+                                  </Bdg>
+                                </td>
+                                <td data-label="الحالة">
+                                  <Bdg bg={w.active?"#DCFCE7":"#F3F4F6"} color={w.active?"#166534":"#6B7280"}>{w.active?"نشط":"موقف"}</Bdg>
+                                </td>
+                                <td data-label="">
+                                  <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                                    <button className="btn be bsm" onClick={()=>setCwMdl({...w})}>تعديل</button>
+                                    <button className="btn bsm" onClick={async()=>{await db("cleaning_workers","PATCH",{active:!w.active},w.id);await loadAll();}}
+                                      style={{background:w.active?"#FEF3C7":"#DCFCE7",color:w.active?"#92400E":"#166534",padding:"5px 10px",fontSize:12}}>
+                                      {w.active?"إيقاف":"تفعيل"}
+                                    </button>
+                                    <button className="btn bd bsm" onClick={async()=>{if(window.confirm("حذف العامل؟")){await db("cleaning_workers","DELETE",null,w.id);await loadAll();}}}>🗑️</button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        </div>
+                      </div>
+                  }
+                </div>
               </div>
             </div>
           )}
@@ -1818,9 +3022,12 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
           )}
 
           {/* ── Reviews ── */}
-          {tab==="reviews"&&(
-            <ReviewsTab
+          {/* ── Loyalty + Reviews ── */}
+          {tab==="loyalty"&&(
+            <LoyaltyAdminPage
+              cards={loyaltyCards}
               reviews={(isAdmin||isStaff)?reviews:reviews.filter(r=>isChaletMgr&&r.chalet===currentUser.chalet)}
+              onReload={loadAll}
             />
           )}
 
@@ -1865,7 +3072,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
           </div>
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setCMdl(null)}>إلغاء</button>
-            <button className="btn bp" onClick={()=>svC(cMdl)}>حفظ</button>
+            <SaveBtn onClick={()=>svC(cMdl)}/>
           </div>
         </Mdl>
       )}
@@ -1878,13 +3085,15 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
             <div><label className="lbl">الشاليه</label><select className="inp" value={bMdl.chalet||""} onChange={e=>setBMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
             <div><label className="lbl">تاريخ الوصول</label><input className="inp" type="date" value={bMdl.date_from||""} onChange={e=>setBMdl(p=>({...p,date_from:e.target.value}))}/></div>
             <div><label className="lbl">تاريخ المغادرة</label><input className="inp" type="date" value={bMdl.date_to||""} onChange={e=>setBMdl(p=>({...p,date_to:e.target.value}))}/></div>
+            <div><label className="lbl">وقت الدخول</label><input className="inp" type="time" value={bMdl.checkin_time||""} onChange={e=>setBMdl(p=>({...p,checkin_time:e.target.value}))} placeholder="مثال: 15:00"/></div>
+            <div><label className="lbl">وقت الخروج</label><input className="inp" type="time" value={bMdl.checkout_time||""} onChange={e=>setBMdl(p=>({...p,checkout_time:e.target.value}))} placeholder="مثال: 12:00"/></div>
             <div style={{gridColumn:"span 2"}}><label className="lbl">السعر (ريال)</label><input className="inp" type="number" value={bMdl.price||""} onChange={e=>setBMdl(p=>({...p,price:e.target.value}))}/></div>
             <div><label className="lbl">الحالة</label><select className="inp" value={bMdl.status||"confirmed"} onChange={e=>setBMdl(p=>({...p,status:e.target.value}))}>{Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div>
             <div><label className="lbl">ملاحظات</label><input className="inp" value={bMdl.note||""} onChange={e=>setBMdl(p=>({...p,note:e.target.value}))}/></div>
           </div>
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setBMdl(null)}>إلغاء</button>
-            <button className="btn bp" onClick={()=>svB(bMdl)}>حفظ</button>
+            <SaveBtn onClick={()=>svB(bMdl)}/>
           </div>
         </Mdl>
       )}
@@ -1911,7 +3120,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
           </div>
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setMMdl(null)}>إلغاء</button>
-            <button className="btn bp" onClick={()=>svM(mMdl,mOld)}>حفظ</button>
+            <SaveBtn onClick={()=>svM(mMdl,mOld)}/>
           </div>
         </Mdl>
       )}
@@ -1932,7 +3141,38 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
           <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={exMdl.note||""} onChange={e=>setExMdl(p=>({...p,note:e.target.value}))} placeholder="اختياري..."/></div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setExMdl(null)}>إلغاء</button>
-            <button className="btn bp" onClick={async()=>{if(!exMdl.amount||!exMdl.chalet)return;await db("expenses","POST",{chalet:exMdl.chalet,category:exMdl.category,amount:Number(exMdl.amount),note:exMdl.note||"",expense_date:exMdl.expense_date});await loadAll();setExMdl(null);}}>حفظ المصروف</button>
+            <SaveBtn label="حفظ المصروف" disabled={!exMdl.amount||!exMdl.chalet} onClick={async()=>{await db("expenses","POST",{chalet:exMdl.chalet,category:exMdl.category,amount:Number(exMdl.amount),note:exMdl.note||"",expense_date:exMdl.expense_date});await loadAll();setExMdl(null);}}/>
+          </div>
+        </Mdl>
+      )}
+
+      {fxMdl&&(
+        <Mdl onClose={()=>setFxMdl(null)} title="إضافة مصروف ثابت">
+          <div style={{marginBottom:12}}><label className="lbl">اسم المصروف</label><input className="inp" value={fxMdl.name||""} onChange={e=>setFxMdl(p=>({...p,name:e.target.value}))} placeholder="مثال: كهرباء، ماء، إنترنت"/></div>
+          <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={fxMdl.chalet} onChange={e=>setFxMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+          <div style={{marginBottom:12}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={fxMdl.amount||""} onChange={e=>setFxMdl(p=>({...p,amount:Number(e.target.value)}))} placeholder="0"/></div>
+          <div style={{marginBottom:12}}>
+            <label className="lbl">التكرار</label>
+            <div style={{display:"flex",gap:6}}>
+              {([["monthly","شهري"],["quarterly","ربع سنوي"],["yearly","سنوي"]] as [string,string][]).map(([v,l])=>(
+                <button key={v} className="btn" onClick={()=>setFxMdl(p=>({...p,frequency:v as "monthly"|"quarterly"|"yearly"}))} style={{padding:"8px 16px",fontSize:13,background:fxMdl.frequency===v?"#5B4636":"#F5EFE6",color:fxMdl.frequency===v?"#fff":"#5B4636",border:"1.5px solid rgba(197,172,136,.3)"}}>{l}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{marginBottom:20}}>
+            <label className="lbl">الفئة</label>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {["إيجار","تنظيف","صيانة","إدارة","كهرباء","اشتراكات","غيره"].map(cat=>(
+                <button key={cat} className="btn" onClick={()=>setFxMdl(p=>({...p,category:cat}))} style={{padding:"7px 14px",fontSize:13,background:fxMdl.category===cat?"#5B4636":"#F5EFE6",color:fxMdl.category===cat?"#fff":"#5B4636",border:"1.5px solid rgba(197,172,136,.3)"}}>{cat}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <button className="btn bo" onClick={()=>setFxMdl(null)}>إلغاء</button>
+            <SaveBtn label="حفظ المصروف الثابت" disabled={!fxMdl.name||!fxMdl.chalet||!fxMdl.amount} onClick={async()=>{
+              await db("fixed_expenses","POST",{chalet:fxMdl.chalet,name:fxMdl.name,amount:Number(fxMdl.amount),frequency:fxMdl.frequency||"monthly",category:fxMdl.category||"إيجار",active:true});
+              await loadAll();setFxMdl(null);
+            }}/>
           </div>
         </Mdl>
       )}
@@ -1947,8 +3187,11 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
             <div style={{gridColumn:"span 2"}}>
               <label className="lbl">الصلاحية</label>
               <div style={{display:"flex",gap:8}}>
-                {[{v:"admin",l:"أدمن"},{v:"staff",l:"موظف"},{v:"chalet_manager",l:"مدير شاليه"}].map(r=>(
-                  <button key={r.v} className="btn" onClick={()=>setUMdl(p=>({...p,role:r.v}))} style={{flex:1,padding:"9px 0",fontSize:13,background:uMdl.role===r.v?B:SL,color:uMdl.role===r.v?S:B,border:"1.5px solid rgba(197,172,136,.3)"}}>{r.l}</button>
+                {[{v:"admin",l:"أدمن",d:"كل شيء"},{v:"staff",l:"موظف",d:"حجوزات وصيانة"},{v:"chalet_manager",l:"مدير شاليه",d:"شاليه واحد فقط"}].map(r=>(
+                  <button key={r.v} className="btn" onClick={()=>setUMdl(p=>({...p,role:r.v}))} style={{flex:1,padding:"9px 4px",fontSize:12,background:uMdl.role===r.v?B:SL,color:uMdl.role===r.v?S:B,border:"1.5px solid rgba(197,172,136,.3)",display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                    <span style={{fontWeight:800}}>{r.l}</span>
+                    <span style={{fontSize:10,opacity:.7}}>{r.d}</span>
+                  </button>
                 ))}
               </div>
             </div>
@@ -1964,7 +3207,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
           </div>
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setUMdl(null)}>إلغاء</button>
-            <button className="btn bp" onClick={async()=>{
+            <SaveBtn disabled={!uMdl.name} onClick={async()=>{
               if(!uMdl.name) return;
               const body: Record<string,unknown>={name:uMdl.name,username:uMdl.username||null,email:uMdl.email||null,role:uMdl.role,chalet:uMdl.chalet||null};
               if(uMdl.password){
@@ -1975,7 +3218,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
               if(uMdl.id) await db("users","PATCH",body,uMdl.id);
               else await db("users","POST",body);
               await loadAll(); setUMdl(null);
-            }}>حفظ</button>
+            }}/>
           </div>
         </Mdl>
       )}
@@ -2005,12 +3248,12 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
           </div>
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setClTaskMdl(null)}>إلغاء</button>
-            <button className="btn bp" style={{background:"#3D7A5A"}} onClick={async()=>{
+            <SaveBtn style={{background:"#3D7A5A"}} onClick={async()=>{
               const body={chalet:clTaskMdl.chalet,title:clTaskMdl.title,category:clTaskMdl.category,frequency:clTaskMdl.frequency,assigned_to:clTaskMdl.assigned_to||"",active:true};
               if(clTaskMdl.id)await db("cleaning_tasks","PATCH",body,clTaskMdl.id);
               else await db("cleaning_tasks","POST",body);
               await loadAll();setClTaskMdl(null);
-            }}>حفظ</button>
+            }}/>
           </div>
         </Mdl>
       )}
@@ -2030,12 +3273,12 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
           </div>
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setClExpMdl(null)}>إلغاء</button>
-            <button className="btn bp" style={{background:"#3D7A5A"}} onClick={async()=>{
+            <SaveBtn style={{background:"#3D7A5A"}} onClick={async()=>{
               const body={chalet:clExpMdl.chalet,category:clExpMdl.category,amount:Number(clExpMdl.amount),note:clExpMdl.note||"",expense_date:clExpMdl.expense_date||td()};
               if(clExpMdl.id)await db("cleaning_expenses","PATCH",body,clExpMdl.id);
               else await db("cleaning_expenses","POST",body);
               await loadAll();setClExpMdl(null);
-            }}>حفظ</button>
+            }}/>
           </div>
         </Mdl>
       )}
@@ -2052,7 +3295,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
               <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={nt} onChange={e=>setNt(e.target.value)} placeholder="رصيد نظافة شهر يونيو"/></div>
               <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
                 <button className="btn bo" onClick={()=>setClnMdl(false)}>إلغاء</button>
-                <button className="btn bp" style={{background:"#3D7A5A"}} onClick={()=>svCln(ch,amt,nt)}>إضافة</button>
+                <SaveBtn label="إضافة" style={{background:"#3D7A5A"}} onClick={()=>svCln(ch,amt,nt)}/>
               </div>
             </Mdl>
           );
@@ -2068,7 +3311,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
           <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={clMdl.note||""} onChange={e=>setClMdl(p=>({...p,note:e.target.value}))}/></div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setClMdl(null)}>إلغاء</button>
-            <button className="btn bp" style={{background:"#3D7A5A"}} onClick={async()=>{await db("cleaning","PATCH",{trans_date:clMdl.trans_date,chalet:clMdl.chalet,type:clMdl.type,amount:clMdl.amount,note:clMdl.note},clMdl.id);await loadAll();setClMdl(null);}}>حفظ</button>
+            <SaveBtn style={{background:"#3D7A5A"}} onClick={async()=>{await db("cleaning","PATCH",{trans_date:clMdl.trans_date,chalet:clMdl.chalet,type:clMdl.type,amount:clMdl.amount,note:clMdl.note},clMdl.id);await loadAll();setClMdl(null);}}/>
           </div>
         </Mdl>
       )}
@@ -2091,6 +3334,8 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
                 {[
                   {l:"تاريخ الوصول",    v:fd(selB.date_from), i:"📅"},
                   {l:"تاريخ المغادرة",  v:fd(selB.date_to),   i:"📅"},
+                  {l:"وقت الدخول",      v:selB.checkin_time||"-", i:"⏰"},
+                  {l:"وقت الخروج",      v:selB.checkout_time||"-", i:"⏰"},
                   {l:"عدد الليالي",     v:fn(selB.date_from,selB.date_to)+" ليلة", i:"🌙"},
                   {l:"السعر الإجمالي",  v:Number(selB.price).toLocaleString()+" ر", i:"💰"},
                   {l:"طريقة الدفع",     v:selB.payment_method||"-", i:"💳"},
@@ -2102,10 +3347,37 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
                   </div>
                 ))}
               </div>
-              {selB.notes&&<div style={{background:"#FEF3C7",borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:13,color:"#8B6914"}}>📝 {selB.notes}</div>}
+              {/* Pool status */}
+              {selB.pool_preference&&(
+                <div style={{borderRadius:10,padding:"10px 14px",marginBottom:12,display:"flex",alignItems:"center",gap:8,
+                  background:selB.pool_approved?"rgba(34,197,94,.1)":"rgba(245,158,11,.1)",
+                  border:selB.pool_approved?"1px solid rgba(34,197,94,.3)":"1px solid rgba(245,158,11,.3)"}}>
+                  <span style={{fontSize:18}}>🏊</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,fontWeight:700,color:selB.pool_approved?"#166534":"#B45309"}}>
+                      {selB.pool_preference==="on_arrival"?"تعبئة عند الوصول":selB.pool_preference.startsWith("ready")?"جاهز عند الوصول":selB.pool_preference}
+                    </div>
+                    <div style={{fontSize:10,color:T,marginTop:1}}>{selB.pool_approved?"✓ تم الموافقة والإبلاغ":"⏳ في انتظار الموافقة"}</div>
+                  </div>
+                  {!selB.pool_approved&&(
+                    <button onClick={async()=>{
+                      await db("bookings","PATCH",{pool_approved:true},selB.id);
+                      await loadAll();
+                      const msg=encodeURIComponent(buildPoolApprovalMsg(selB));
+                      const phone=selB.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966")||"";
+                      if(phone) window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");
+                      setSelB(null);
+                    }} style={{background:"#22C55E",color:"#fff",border:"none",borderRadius:7,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Tajawal',sans-serif"}}>موافقة</button>
+                  )}
+                </div>
+              )}
+              {selB.notes&&<div style={{background:"#FEF3C7",borderRadius:10,padding:"12px 14px",marginBottom:12,fontSize:13,color:"#8B6914"}}>📝 {selB.notes}</div>}
               <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                 <button className="btn be" style={{flex:1}} onClick={()=>{setBMdl({...selB});setSelB(null);}}>✏️ تعديل</button>
-                {(selB.status==="confirmed"||selB.status==="pending")&&<button className="btn" style={{flex:1,background:"linear-gradient(135deg,#8B3A3A,#6B2A2A)",color:"#fff"}} onClick={()=>{setCoMdl(selB);setSelB(null);}}>🚪 تسجيل خروج</button>}
+                {(selB.status==="confirmed"||selB.status==="pending")&&<button className="btn" style={{flex:1,background:"linear-gradient(135deg,#8B3A3A,#6B2A2A)",color:"#fff"}} onClick={()=>{setCoMdl(selB);setSelB(null);}}>🚪 خروج</button>}
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
+                <button onClick={()=>{setSelB(null);setPreArrMdl({booking:selB});}} style={{background:"#6366F1",color:"#fff",border:"none",borderRadius:8,padding:"10px 16px",fontSize:13,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700,flex:1}}>📋 قبل الوصول</button>
                 <button onClick={()=>{const url=`https://reetam-chalets.vercel.app?guest=1&b=${selB.id}&m=checkin`;const msg=`مرحباً ${selB.guest} 👋%0aأهلاً بك في ${selB.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=selB.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}} style={{background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"10px 16px",fontSize:13,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700,flex:1}}>واتساب 📲</button>
                 <button onClick={()=>{const url=`https://reetam-chalets.vercel.app?guest=1&b=${selB.id}&m=review`;const msg=`${selB.guest} 😊%0aرابط التقييم:%0a${encodeURIComponent(url)}`;const phone=selB.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}} style={{background:"#F59E0B",color:"#fff",border:"none",borderRadius:8,padding:"10px 16px",fontSize:13,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700,flex:1}}>تقييم ⭐</button>
               </div>
@@ -2164,10 +3436,10 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
           </div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setGoalMdl(null)}>إلغاء</button>
-            <button className="btn bp" onClick={async()=>{
+            <SaveBtn label="حفظ الهدف" onClick={async()=>{
               await db("chalets","PATCH",{monthly_goal:Number(goalMdl.goal)},goalMdl.id);
               await loadAll();setGoalMdl(null);
-            }}>حفظ الهدف</button>
+            }}/>
           </div>
         </Mdl>
       )}
@@ -2180,12 +3452,141 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
           <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={wMdl.note||""} onChange={e=>setWMdl(p=>({...p,note:e.target.value}))}/></div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setWMdl(null)}>إلغاء</button>
-            <button className="btn bp" onClick={async()=>{await db("wallet","PATCH",{trans_date:wMdl.trans_date,chalet:wMdl.chalet,type:wMdl.type,amount:wMdl.amount,note:wMdl.note},wMdl.id);await loadAll();setWMdl(null);}}>حفظ</button>
+            <SaveBtn onClick={async()=>{await db("wallet","PATCH",{trans_date:wMdl.trans_date,chalet:wMdl.chalet,type:wMdl.type,amount:wMdl.amount,note:wMdl.note},wMdl.id);await loadAll();setWMdl(null);}}/>
           </div>
         </Mdl>
       )}
       {iMdl&&<InsMdl/>}
       {addRoomMdl&&<AddRoomMdl/>}
+
+      {cwMdl&&(
+        <Mdl onClose={()=>setCwMdl(null)} title={cwMdl.id?"تعديل بيانات العامل":"إضافة عامل نظافة"}>
+          <div style={{marginBottom:12}}><label className="lbl">الاسم</label><input className="inp" value={cwMdl.name||""} onChange={e=>setCwMdl(p=>({...p,name:e.target.value}))} placeholder="مثال: Raju Kumar"/></div>
+          <div style={{marginBottom:12}}><label className="lbl">رقم الهاتف (واتساب)</label><input className="inp" value={cwMdl.phone||""} onChange={e=>setCwMdl(p=>({...p,phone:e.target.value}))} placeholder="9665XXXXXXXX" dir="ltr"/></div>
+          <div style={{marginBottom:20}}>
+            <label className="lbl">لغة التواصل</label>
+            <div style={{display:"flex",gap:8,marginTop:6}}>
+              {([["hi","🇮🇳 هندية"],["ar","🇸🇦 عربية"],["en","🌐 إنجليزية"]] as [string,string][]).map(([v,l])=>(
+                <button key={v} className="btn" onClick={()=>setCwMdl(p=>({...p,language:v as "ar"|"hi"|"en"}))}
+                  style={{flex:1,padding:"10px 8px",fontSize:13,background:cwMdl.language===v?"#065F46":"#F0FDF4",color:cwMdl.language===v?"#fff":"#065F46",border:"1.5px solid rgba(6,95,70,.3)"}}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <button className="btn bo" onClick={()=>setCwMdl(null)}>إلغاء</button>
+            <SaveBtn disabled={!cwMdl.name||!cwMdl.phone} style={{background:"#065F46"}} onClick={async()=>{
+              const body={name:cwMdl.name,phone:cwMdl.phone,language:cwMdl.language||"hi",active:true};
+              if(cwMdl.id)await db("cleaning_workers","PATCH",body,cwMdl.id);
+              else await db("cleaning_workers","POST",body);
+              await loadAll();setCwMdl(null);
+            }}/>
+          </div>
+        </Mdl>
+      )}
+
+      {qrMdl&&(
+        <div className="mbg" onClick={()=>setQrMdl(null)}>
+          <div className="mbox" style={{maxWidth:620,direction:"rtl"}} onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div>
+                <div style={{fontWeight:900,fontSize:16,color:"var(--text)"}}>📱 باركودات الغرف</div>
+                <div style={{fontSize:12,color:"var(--text2)",marginTop:3}}>{qrMdl.chalet} · اطبع وضعها في كل غرفة</div>
+              </div>
+              <button onClick={()=>setQrMdl(null)} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"var(--text3)"}}>×</button>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:14}}>
+              {qrMdl.rooms.map(room=>{
+                const url=`https://reetam-chalets.vercel.app?guest=1&m=room&ch=${encodeURIComponent(qrMdl.chalet)}&rm=${encodeURIComponent(room)}`;
+                const qrSrc=`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(url)}&margin=10&color=413523`;
+                return (
+                  <div key={room} style={{
+                    textAlign:"center",borderRadius:14,padding:"16px 12px",
+                    border:"1px solid var(--border2)",background:"var(--surface)",
+                  }}>
+                    <img src={qrSrc} alt={room} style={{width:140,height:140,borderRadius:8,display:"block",margin:"0 auto 10px"}}/>
+                    <div style={{fontWeight:800,color:"var(--text)",fontSize:14}}>{room}</div>
+                    <div style={{fontSize:10,color:"var(--text2)",marginTop:3,marginBottom:10}}>{qrMdl.chalet}</div>
+                    <button onClick={()=>window.open(url,"_blank")} style={{
+                      width:"100%",background:"#4C1D95",color:"#fff",border:"none",
+                      borderRadius:8,padding:"6px",fontSize:11,fontWeight:700,
+                      cursor:"pointer",fontFamily:"'Tajawal',sans-serif",marginBottom:6,
+                    }}>🔗 تجربة الرابط</button>
+                    <button onClick={()=>{
+                      const a=document.createElement("a");
+                      a.href=qrSrc;
+                      a.download=`QR-${qrMdl.chalet}-${room}.png`;
+                      a.click();
+                    }} style={{
+                      width:"100%",background:"var(--th-bg)",color:"var(--text)",
+                      border:"1px solid var(--border2)",borderRadius:8,padding:"6px",
+                      fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",
+                    }}>⬇ تحميل PNG</button>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{marginTop:16,padding:"10px 14px",background:"rgba(124,58,237,.08)",borderRadius:10,border:"1px solid rgba(124,58,237,.2)",fontSize:12,color:"#6D28D9",fontWeight:600}}>
+              💡 اطبع الباركود وضعه على لوحة صغيرة في غرفة النوم — الضيف يمسحه ويطلب مباشرة
+            </div>
+          </div>
+        </div>
+      )}
+
+      {preArrMdl&&(
+        <div className="mbg" onClick={()=>setPreArrMdl(null)}>
+          <div className="mbox" style={{maxWidth:560,direction:"rtl"}} onClick={e=>e.stopPropagation()}>
+            {/* Header */}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+              <div>
+                <div style={{fontWeight:900,fontSize:16,color:"var(--text)"}}>📋 رسالة ما قبل الوصول</div>
+                <div style={{fontSize:12,color:"var(--text2)",marginTop:3}}>{preArrMdl.booking.guest} · {preArrMdl.booking.chalet}</div>
+              </div>
+              <button onClick={()=>setPreArrMdl(null)} style={{background:"none",border:"none",fontSize:22,cursor:"pointer",color:"var(--text3)"}}>×</button>
+            </div>
+
+            {/* Pool link note */}
+            <div style={{background:"rgba(99,102,241,.08)",borderRadius:10,padding:"10px 14px",marginBottom:14,border:"1px solid rgba(99,102,241,.2)"}}>
+              <div style={{fontSize:12,color:"#4338CA",fontWeight:700}}>🏊 رابط خيار المسبح مضمّن في الرسالة</div>
+              <div style={{fontSize:11,color:"#6366F1",marginTop:3}}>الضيف سيختار من خلاله: جاهز عند الوصول أو تعبئة عند الوصول</div>
+            </div>
+
+            {/* Message preview */}
+            <div style={{background:"#ECF9EC",borderRadius:12,padding:"14px 16px",marginBottom:18,border:"1px solid rgba(37,211,102,.25)"}}>
+              <div style={{fontSize:11,color:"#128C7E",fontWeight:700,marginBottom:8}}>معاينة الرسالة · واتساب</div>
+              <pre style={{
+                fontSize:12,color:"#111",fontFamily:"'Tajawal',sans-serif",whiteSpace:"pre-wrap",
+                lineHeight:1.7,margin:0,direction:"rtl",textAlign:"right",
+              }}>{buildPreArrivalMsg(preArrMdl.booking)}</pre>
+            </div>
+
+            {/* Warning if no phone */}
+            {!preArrMdl.booking.phone&&(
+              <div style={{background:"rgba(245,158,11,.1)",borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:12,color:"#B45309",fontWeight:600,border:"1px solid rgba(245,158,11,.3)"}}>
+                ⚠️ لم يتم إدخال رقم هاتف للضيف. يرجى تعديل الحجز أولاً.
+              </div>
+            )}
+
+            {/* Actions */}
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button className="btn bo" onClick={()=>setPreArrMdl(null)} style={{fontSize:13}}>إلغاء</button>
+              <button onClick={async()=>{
+                const msg=encodeURIComponent(buildPreArrivalMsg(preArrMdl.booking));
+                const phone=preArrMdl.booking.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966")||"";
+                window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");
+                await db("bookings","PATCH",{pre_arrival_sent:true},preArrMdl.booking.id);
+                await loadAll();
+                setPreArrMdl(null);
+              }} disabled={!preArrMdl.booking.phone} style={{
+                background:"#25D366",color:"#fff",border:"none",borderRadius:10,
+                padding:"10px 22px",fontSize:14,cursor:preArrMdl.booking.phone?"pointer":"not-allowed",
+                fontFamily:"'Tajawal',sans-serif",fontWeight:700,opacity:preArrMdl.booking.phone?1:.5,
+              }}>إرسال واتساب 📲</button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

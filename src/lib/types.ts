@@ -27,11 +27,16 @@ export interface Booking {
   phone?: string;
   date_from: string;
   date_to: string;
+  checkin_time?: string;
+  checkout_time?: string;
   price: number;
   status: "confirmed" | "pending" | "cancelled" | "completed";
   note?: string;
   payment_method?: string;
   notes?: string;
+  pre_arrival_sent?: boolean;
+  pool_preference?: string | null;
+  pool_approved?: boolean;
 }
 
 export interface MaintenanceRequest {
@@ -75,6 +80,16 @@ export interface Expense {
   expense_date: string;
 }
 
+export interface FixedExpense {
+  id: number;
+  chalet: string;
+  name: string;
+  amount: number;
+  frequency: "monthly" | "quarterly" | "yearly";
+  category: string;
+  active: boolean;
+}
+
 export interface CleaningExpense {
   id: number;
   chalet: string;
@@ -102,6 +117,21 @@ export interface CleaningLog {
   worker_done: boolean;
   supervisor_ok: boolean;
   note?: string;
+  worker_id?: number | null;
+  status?: "pending" | "sent" | "done";
+  due_date?: string;
+  sent_at?: string;
+  done_at?: string;
+  done_note?: string;
+  done_media_url?: string;
+}
+
+export interface CleaningWorker {
+  id: number;
+  name: string;
+  phone: string;
+  language: "ar" | "hi" | "en";
+  active: boolean;
 }
 
 export interface Room {
@@ -123,6 +153,17 @@ export interface Review {
   rating: number;
   comment?: string;
   created_at: string;
+}
+
+export interface LoyaltyCard {
+  id: number;
+  phone: string;
+  name: string;
+  tickets: number;
+  free_nights: number;
+  total_reviews: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface AppUser {
