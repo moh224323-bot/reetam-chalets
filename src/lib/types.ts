@@ -9,6 +9,11 @@ export interface Chalet {
   description?: string;
   st: "active" | "inactive";
   img?: string | null;
+  gallery?: string | null;
+  amenities?: string | null;
+  allow_overnight?: boolean;
+  allow_hourly?: boolean;
+  hourly_slots?: string | null;
   open_date?: string | null;
   prev_revenue?: number;
   monthly_goal?: number;
@@ -167,10 +172,11 @@ export interface LoyaltyCard {
 }
 
 export interface AppUser {
-  id: number;
+  id: string;
+  owner_id: string;
   name: string;
   username?: string;
   email?: string;
-  role: "admin" | "staff" | "chalet_manager";
+  role: "platform_admin" | "owner" | "admin" | "staff" | "chalet_manager";
   chalet?: string;
 }

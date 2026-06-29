@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
-import { hashPassword } from "../lib/db";
+import { hashPassword, setCurrentOwnerId } from "../lib/db";
+import { supabase } from "../lib/supabase";
 import useRealtimeSync   from "../hooks/useRealtimeSync";
 import useDarkMode       from "../hooks/useDarkMode";
 import BookingCalendar   from "../components/BookingCalendar";
@@ -19,6 +20,7 @@ import SettingsTab    from "../components/SettingsTab";
 const SUPA_URL = process.env.EXPO_PUBLIC_SUPA_URL!;
 const SUPA_KEY = process.env.EXPO_PUBLIC_SUPA_KEY!;
 const TUYA_DEVICES = { 16: "bf359141000334655ddl2t" };
+let currentOwnerId: string | null = null;
 
 type ACStatus = { ac_on: boolean; ac_temp: number; ac_mode: string; ac_speed: string };
 
@@ -67,6 +69,8 @@ async function sendACCommand(roomId: number, field: string, value: unknown): Pro
   if (commands.length > 0) await tuyaControl(deviceId, commands);
 }
 
+let lastDbError: string | null = null;
+
 async function db(table: string, method="GET", body: Record<string,unknown> | null=null, id: string | number | null=null): Promise<unknown[] | null> {
   let url = `${SUPA_URL}/rest/v1/${table}`;
   if (method === "GET") {
@@ -74,15 +78,36 @@ async function db(table: string, method="GET", body: Record<string,unknown> | nu
   } else if (id) {
     url += `?id=eq.${id}`;
   }
-  const headers = {
-    "apikey": SUPA_KEY, "Authorization": `Bearer ${SUPA_KEY}`,
+  const {data:{session}} = await supabase.auth.getSession();
+  const token = session?.access_token || SUPA_KEY;
+  if (method === "POST" && body && !("owner_id" in body) && currentOwnerId && table!=="profiles" && table!=="subscriptions") {
+    body = { ...body, owner_id: currentOwnerId };
+  }
+  const headers: Record<string,string> = {
+    "apikey": SUPA_KEY, "Authorization": `Bearer ${token}`,
     "Content-Type": "application/json", "Cache-Control": "no-cache",
   };
   if (method === "POST" || method === "PATCH") headers["Prefer"] = "return=representation";
   const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : null });
-  if (!res.ok) { const e = await res.text(); console.error("Supabase error:", method, table, id, e); return null; }
+  if (!res.ok) { const e = await res.text(); lastDbError = e; console.error("Supabase error:", method, table, id, e); return null; }
+  lastDbError = null;
   const text = await res.text();
   return text ? JSON.parse(text) : [];
+}
+
+// رفع صورة شاليه إلى Supabase Storage (أخف من base64)
+let lastUploadError: string | null = null;
+async function uploadChaletImage(file: File): Promise<string | null> {
+  const ext = file.name.split(".").pop() || "jpg";
+  const path = `chalets/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+  const res = await fetch(`${SUPA_URL}/storage/v1/object/chalet-images/${path}`, {
+    method: "POST",
+    headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": file.type },
+    body: file,
+  });
+  if (!res.ok) { const err = await res.text(); lastUploadError = err; console.error("فشل رفع الصورة:", err); return null; }
+  lastUploadError = null;
+  return `${SUPA_URL}/storage/v1/object/public/chalet-images/${path}`;
 }
 
 const S="#C5AC88", B="#413523", BD="#2A2218", SA="#8D9577";
@@ -340,10 +365,618 @@ function Mdl({onClose,title,children}) {
     </div>
   );
 }
+const logoImg = require("../../assets/logo-reetam.png");
+function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookings:Booking[];expenses:any[];maint:any[];B:string;T:string;SI:string;SL:string}) {
+  const [hovered,setHovered]=useState<number|null>(null);
+  const [selected,setSelected]=useState<number|null>(null);
+  const [mounted,setMounted]=useState(false);
+  useEffect(()=>{const id=setTimeout(()=>setMounted(true),60);return()=>clearTimeout(id);},[]);
+
+  const MONTHS=["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+  const currentYear=new Date().getFullYear();
+  const curMonth=new Date().getMonth();
+  const activeStatuses=["completed","confirmed"];
+
+  const monthlyData=MONTHS.map((_,mi)=>{
+    const bks=bookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===currentYear&&new Date(b.date_from).getMonth()===mi);
+    const rev=bks.reduce((s,b)=>s+Number(b.price),0);
+    const exp=expenses.filter(e=>e.expense_date&&new Date(e.expense_date).getFullYear()===currentYear&&new Date(e.expense_date).getMonth()===mi).reduce((s,e)=>s+Number(e.amount),0)
+      +maint.filter(m=>m.cost&&m.maint_date&&new Date(m.maint_date).getFullYear()===currentYear&&new Date(m.maint_date).getMonth()===mi).reduce((s,m)=>s+Number(m.cost),0);
+    return {rev,exp,cnt:bks.length,net:rev-exp};
+  });
+
+  const maxRev=Math.max(...monthlyData.map(d=>d.rev),1);
+  const total=monthlyData.reduce((s,d)=>s+d.rev,0);
+  const totalExp=monthlyData.reduce((s,d)=>s+d.exp,0);
+  const avgRev=total/12;
+  const activeMos=monthlyData.filter(d=>d.rev>0).length;
+  const bestIdx=monthlyData.reduce((bi,d,i)=>d.rev>monthlyData[bi].rev?i:bi,0);
+
+  const active=selected!==null?selected:hovered;
+  const activeData=active!==null?monthlyData[active]:null;
+
+  const yStep=Math.ceil(maxRev/4/1000)*1000||1000;
+  const yLines=[1,2,3,4].map(n=>n*yStep).filter(v=>v<=maxRev*1.1);
+
+  return (
+    <div className="card" style={{overflow:"hidden",marginBottom:16}}>
+      {/* الرأس */}
+      <div style={{padding:"14px 18px",borderBottom:"1px solid rgba(197,172,136,.15)",background:SL,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{fontWeight:800,color:B,fontSize:14}}>📊 الإيرادات الشهرية {currentYear}</div>
+          <div style={{fontSize:11,color:SI,marginTop:2}}>{activeMos} أشهر نشطة · أفضل شهر: <span style={{color:B,fontWeight:700}}>{MONTHS[bestIdx]}</span></div>
+        </div>
+        <div style={{display:"flex",gap:16,alignItems:"center"}}>
+          {[
+            {label:"إجمالي الإيرادات",v:total,c:B},
+            {label:"إجمالي المصاريف",v:totalExp,c:"#C97B63"},
+            {label:"صافي الربح",v:total-totalExp,c:total>=totalExp?"#4CAF50":"#FF6B6B"},
+          ].map(({label,v,c})=>(
+            <div key={label} style={{textAlign:"center"}}>
+              <div style={{fontSize:18,fontWeight:900,color:c,lineHeight:1}}>{v.toLocaleString()}</div>
+              <div style={{fontSize:9,color:SI,fontWeight:600}}>{label} ر</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Tooltip المنبثق */}
+      {activeData&&active!==null&&(
+        <div style={{margin:"12px 18px 0",background:"rgba(197,172,136,.08)",border:"1px solid rgba(197,172,136,.25)",borderRadius:12,padding:"12px 16px",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,transition:"all .2s"}}>
+          <div>
+            <div style={{fontSize:11,color:SI,marginBottom:2}}>📅 الشهر</div>
+            <div style={{fontWeight:800,color:B,fontSize:14}}>{MONTHS[active]}</div>
+            <div style={{fontSize:10,color:SI}}>{currentYear}</div>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:SI,marginBottom:2}}>💰 الإيرادات</div>
+            <div style={{fontWeight:900,color:B,fontSize:15}}>{activeData.rev.toLocaleString()} <span style={{fontSize:11}}>ر</span></div>
+            <div style={{fontSize:10,color:SI}}>{activeData.cnt} حجز</div>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:SI,marginBottom:2}}>📤 المصاريف</div>
+            <div style={{fontWeight:900,color:"#C97B63",fontSize:15}}>{activeData.exp.toLocaleString()} <span style={{fontSize:11}}>ر</span></div>
+            <div style={{fontSize:10,color:SI}}>صيانة + نفقات</div>
+          </div>
+          <div>
+            <div style={{fontSize:11,color:SI,marginBottom:2}}>📈 صافي الربح</div>
+            <div style={{fontWeight:900,color:activeData.net>=0?"#4CAF50":"#FF6B6B",fontSize:15}}>{activeData.net.toLocaleString()} <span style={{fontSize:11}}>ر</span></div>
+            <div style={{fontSize:10,color:SI}}>هامش {activeData.rev>0?Math.round(activeData.net/activeData.rev*100):0}%</div>
+          </div>
+        </div>
+      )}
+
+      {/* الرسم */}
+      <div style={{padding:"20px 18px 12px",position:"relative"}}>
+        <div style={{position:"absolute",inset:"20px 18px 56px",pointerEvents:"none"}}>
+          {yLines.map(v=>(
+            <div key={v} style={{position:"absolute",bottom:(v/maxRev)*100+"%",left:0,right:0,display:"flex",alignItems:"center",gap:6}}>
+              <div style={{fontSize:9,color:SI,whiteSpace:"nowrap",width:36,textAlign:"left",flexShrink:0}}>{v>=1000?(v/1000)+"k":v}</div>
+              <div style={{flex:1,height:1,background:"rgba(197,172,136,.1)"}}/>
+            </div>
+          ))}
+          {avgRev>0&&(
+            <div style={{position:"absolute",bottom:(avgRev/maxRev)*100+"%",left:40,right:0,display:"flex",alignItems:"center",gap:6}}>
+              <div style={{flex:1,height:1,borderTop:"1.5px dashed rgba(197,172,136,.35)"}}/>
+              <div style={{fontSize:9,color:T,fontWeight:700,whiteSpace:"nowrap"}}>متوسط</div>
+            </div>
+          )}
+        </div>
+
+        <div style={{display:"flex",alignItems:"flex-end",gap:4,height:180,paddingRight:44,paddingLeft:4}}>
+          {monthlyData.map((d,i)=>{
+            const isHov=i===active;
+            const isCur=i===curMonth;
+            const isPast=i<curMonth;
+            const isBest=i===bestIdx&&d.rev>0;
+            const revH=mounted&&maxRev>0?Math.max((d.rev/maxRev)*100,d.rev>0?3:0):0;
+            const expH=mounted&&maxRev>0&&d.exp>0?Math.max((d.exp/maxRev)*100,2):0;
+            const revColor=isCur?"linear-gradient(180deg,#C5AC88,#8B7355)":isBest?"linear-gradient(180deg,#4CAF50,#2E7D32)":isPast?"linear-gradient(180deg,rgba(87,109,111,.9),rgba(87,109,111,.5))":"rgba(197,172,136,.2)";
+            return (
+              <div
+                key={i}
+                style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,height:"100%",justifyContent:"flex-end",cursor:"pointer",padding:"0 1px"}}
+                onMouseEnter={()=>setHovered(i)}
+                onMouseLeave={()=>setHovered(null)}
+                onClick={()=>setSelected(selected===i?null:i)}
+              >
+                <div style={{fontSize:8,color:isHov?B:isBest?"#4CAF50":isPast&&d.rev>0?T:"transparent",fontWeight:800,textAlign:"center",lineHeight:1.2,marginBottom:1,transition:"color .15s"}}>
+                  {d.rev>=1000?(d.rev/1000).toFixed(1)+"k":d.rev>0?d.rev:""}
+                </div>
+                <div style={{width:"100%",display:"flex",gap:1,alignItems:"flex-end",height:"100%"}}>
+                  <div style={{
+                    flex:1,
+                    height:revH+"%",
+                    background:revColor,
+                    borderRadius:"4px 4px 0 0",
+                    position:"relative",
+                    transition:"height .5s cubic-bezier(.34,1.56,.64,1), box-shadow .15s, transform .15s",
+                    boxShadow:isHov?"0 0 16px rgba(197,172,136,.5)":isCur?"0 0 10px rgba(197,172,136,.3)":"none",
+                    transform:isHov?"scaleX(1.08)":"scaleX(1)",
+                    minHeight:d.rev>0?"3px":0,
+                    outline:selected===i?"2px solid #C5AC88":"none",
+                    outlineOffset:1,
+                  }}>
+                    {isCur&&<div style={{position:"absolute",top:-4,left:"50%",transform:"translateX(-50%)",width:8,height:8,borderRadius:"50%",background:"#C5AC88",boxShadow:"0 0 6px rgba(197,172,136,.8)"}}/>}
+                  </div>
+                  {d.exp>0&&<div style={{width:3,height:expH+"%",background:isHov?"rgba(201,123,99,.9)":"rgba(201,123,99,.5)",borderRadius:"2px 2px 0 0",minHeight:2,transition:"height .5s cubic-bezier(.34,1.56,.64,1)"}}/>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{display:"flex",gap:4,paddingRight:44,paddingLeft:4,marginTop:6}}>
+          {monthlyData.map((d,i)=>{
+            const isCur=i===curMonth;
+            const isActive=i===active;
+            return (
+              <div key={i} style={{flex:1,textAlign:"center",cursor:"pointer"}} onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)} onClick={()=>setSelected(selected===i?null:i)}>
+                <div style={{fontSize:8.5,color:isActive?B:isCur?B:i<curMonth?T:SI,fontWeight:isActive||isCur?900:500,lineHeight:1,transition:"color .15s"}}>{MONTHS[i].slice(0,3)}</div>
+                {d.cnt>0&&<div style={{fontSize:7.5,color:isActive?"#C5AC88":SI,fontWeight:600,marginTop:1,transition:"color .15s"}}>{d.cnt}</div>}
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:12,flexWrap:"wrap"}}>
+          {[
+            {color:"linear-gradient(90deg,#C5AC88,#8B7355)",label:"الشهر الحالي"},
+            {color:"linear-gradient(90deg,#4CAF50,#2E7D32)",label:"أفضل شهر"},
+            {color:"rgba(87,109,111,.7)",label:"الأشهر الماضية"},
+            {color:"rgba(197,172,136,.2)",label:"القادمة"},
+            {color:"rgba(201,123,99,.6)",label:"المصاريف"},
+          ].map(({color,label})=>(
+            <div key={label} style={{display:"flex",alignItems:"center",gap:5}}>
+              <div style={{width:14,height:8,borderRadius:3,background:color,flexShrink:0}}/>
+              <span style={{fontSize:9,color:SI}}>{label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ملخص ربع سنوي */}
+      <div style={{borderTop:"1px solid rgba(197,172,136,.12)",display:"grid",gridTemplateColumns:"repeat(4,1fr)"}}>
+        {["Q1","Q2","Q3","Q4"].map((q,qi)=>{
+          const slice=monthlyData.slice(qi*3,qi*3+3);
+          const qRev=slice.reduce((s,d)=>s+d.rev,0);
+          const qExp=slice.reduce((s,d)=>s+d.exp,0);
+          const isCurQ=Math.floor(curMonth/3)===qi;
+          const isSelQ=selected!==null&&Math.floor(selected/3)===qi;
+          return (
+            <div key={q} style={{padding:"10px 12px",borderLeft:qi>0?"1px solid rgba(197,172,136,.12)":"none",background:isSelQ?"rgba(197,172,136,.12)":isCurQ?SL:"transparent",cursor:"pointer",transition:"background .2s"}} onClick={()=>{}}>
+              <div style={{fontSize:10,color:isCurQ||isSelQ?B:SI,fontWeight:isCurQ||isSelQ?800:600,marginBottom:3}}>{q}{isCurQ?" ← الآن":""}</div>
+              <div style={{fontSize:13,fontWeight:900,color:isCurQ||isSelQ?B:T}}>{qRev>=1000?(qRev/1000).toFixed(1)+"k":qRev} <span style={{fontSize:9,opacity:.6}}>ر</span></div>
+              <div style={{fontSize:9,color:"#C97B63"}}>{qExp>0?"- "+(qExp>=1000?(qExp/1000).toFixed(1)+"k":qExp)+" مصاريف":""}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 function Logo({size}) {
   const s = size||40;
-  return <img src="/assets/logo-reetam.png" width={s} height={s} style={{objectFit:"contain"}}/>;
+  return <img src={logoImg} width={s} height={s} style={{objectFit:"contain"}}/>;
 }
+function AvailabilityCalendar({bookings,from,to,onPick}:{bookings:Booking[];from:string;to:string;onPick:(from:string,to:string)=>void}) {
+  const B="#413523", S="#C5AC88", T="#576D6F", SL="#F5EFE6";
+  const [cur,setCur] = useState(()=>{ const d=new Date(); d.setDate(1); return d; });
+  const MONTHS=["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+  const DAYS=["أح","اث","ثل","أر","خم","جم","سب"];
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  function toISO(d:Date){ return d.toISOString().slice(0,10); }
+  function isBooked(d:Date){
+    const t=d.getTime();
+    return bookings.some(b=>{
+      if(!b.date_from||!b.date_to) return false;
+      const f=new Date(b.date_from).getTime(), tt=new Date(b.date_to).getTime();
+      return t>=f && t<tt;
+    });
+  }
+  function rangeHasBooked(f:Date,t:Date){
+    const d=new Date(f);
+    while(d<t){ if(isBooked(d)) return true; d.setDate(d.getDate()+1); }
+    return false;
+  }
+  function clickDay(d:Date){
+    if(d<today || isBooked(d)) return;
+    if(!from || (from&&to)){
+      onPick(toISO(d),"");
+    }else{
+      const f = new Date(from);
+      if(d<=f){ onPick(toISO(d),""); return; }
+      if(rangeHasBooked(f,d)){ onPick(toISO(d),""); return; }
+      onPick(from,toISO(d));
+    }
+  }
+
+  const y=cur.getFullYear(), m=cur.getMonth();
+  const firstDay = new Date(y,m,1);
+  const startOffset = firstDay.getDay();
+  const daysInMonth = new Date(y,m+1,0).getDate();
+  const cells: (Date|null)[] = [...Array(startOffset).fill(null), ...Array(daysInMonth).fill(0).map((_,i)=>new Date(y,m,i+1))];
+
+  const fromD = from?new Date(from):null;
+  const toD = to?new Date(to):null;
+
+  return (
+    <div style={{marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <button onClick={()=>setCur(new Date(y,m-1,1))} style={{background:SL,border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:14,color:B}}>‹</button>
+        <span style={{fontWeight:800,color:B,fontSize:13}}>{MONTHS[m]} {y}</span>
+        <button onClick={()=>setCur(new Date(y,m+1,1))} style={{background:SL,border:"none",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:14,color:B}}>›</button>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3,marginBottom:4}}>
+        {DAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:10,color:T,fontWeight:700,padding:"2px 0"}}>{d}</div>)}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:3}}>
+        {cells.map((d,i)=>{
+          if(!d) return <div key={i}/>;
+          const past = d<today;
+          const booked = isBooked(d);
+          const isFrom = fromD && d.getTime()===fromD.getTime();
+          const isTo = toD && d.getTime()===toD.getTime();
+          const inRange = fromD && toD && d>fromD && d<toD;
+          const disabled = past||booked;
+          let bg="transparent", color=B, fontWeight=500, border="1px solid transparent";
+          if(disabled){ bg="#F8D7D7"; color="#A33B3B"; }
+          if(inRange){ bg="#E8DCC8"; color=B; fontWeight=700; }
+          if(isFrom||isTo){ bg=B; color=S; fontWeight=800; border="1px solid "+B; }
+          return (
+            <div key={i} onClick={()=>clickDay(d)} style={{
+              textAlign:"center",padding:"7px 0",borderRadius:8,fontSize:12,cursor:disabled?"not-allowed":"pointer",
+              background:bg,color,fontWeight,border,textDecoration:disabled&&!past?"line-through":"none",opacity:past?.4:1,
+              transition:"background .15s",
+            }}>{d.getDate()}</div>
+          );
+        })}
+      </div>
+      <div style={{display:"flex",gap:14,justifyContent:"center",marginTop:10}}>
+        {[{c:"#F8D7D7",l:"محجوز"},{c:"#E8DCC8",l:"بين التاريخين"},{c:B,l:"محدد"}].map(x=>(
+          <div key={x.l} style={{display:"flex",alignItems:"center",gap:5}}>
+            <div style={{width:11,height:11,borderRadius:4,background:x.c,border:"1px solid rgba(197,172,136,.3)"}}/>
+            <span style={{fontSize:10,color:T}}>{x.l}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+type BusinessSettings = {bank_name?:string; bank_account_name?:string; bank_iban?:string};
+
+function ChaletPublicPage({chaletName}:{chaletName:string}) {
+  const B="#413523", BD="#2A2218", S="#C5AC88", T="#576D6F", SL="#F5EFE6";
+  const [chalet,setChalet] = useState<Chalet|null>(null);
+  const [biz,setBiz]       = useState<BusinessSettings|null>(null);
+  const [lightbox,setLightbox] = useState<string|null>(null);
+  const [loading,setLoading] = useState(true);
+  const [bookings,setBookings] = useState<Booking[]>([]);
+
+  const [bkMode,setBkMode]   = useState<"overnight"|"hourly">("overnight");
+  const [bkFrom,setBkFrom]   = useState("");
+  const [bkTo,setBkTo]       = useState("");
+  const [bkDay,setBkDay]     = useState("");
+  const [bkSlot,setBkSlot]   = useState<number|null>(null);
+  const [bkName,setBkName]   = useState("");
+  const [bkPhone,setBkPhone] = useState("");
+  const [bkErr,setBkErr]     = useState("");
+  const [bkSubmitting,setBkSubmitting] = useState(false);
+  const [bkDone,setBkDone]   = useState(false);
+
+  useEffect(()=>{
+    if(typeof document!=="undefined"){
+      document.body.style.overflow="auto";
+      document.documentElement.style.overflow="auto";
+    }
+  },[]);
+
+  useEffect(()=>{
+    (async()=>{
+      const rows = await db("chalets","GET",null,`name=eq.${encodeURIComponent(chaletName)}`);
+      const ch = rows?.[0] as Chalet | undefined;
+      if(ch){
+        setChalet(ch);
+        const bs = await db("business_settings","GET",null,"id=eq.1");
+        if(bs?.[0]) setBiz(bs[0] as BusinessSettings);
+        const bks = await db("bookings","GET",null,`chalet=eq.${encodeURIComponent(ch.name)}&status=in.(confirmed,pending)&select=*`);
+        setBookings((bks||[]) as Booking[]);
+        if(ch.allow_overnight===false && ch.allow_hourly) setBkMode("hourly");
+      }
+      setLoading(false);
+    })();
+  },[chaletName]);
+
+  function nightsCount(f:string,t:string){
+    if(!f||!t) return 0;
+    return Math.max(0, Math.round((new Date(t).getTime()-new Date(f).getTime())/86400000));
+  }
+  function calcPrice(f:string,t:string,chl:Chalet|null){
+    if(!f||!t||!chl) return 0;
+    const n = nightsCount(f,t);
+    let total = 0;
+    for(let i=0;i<n;i++){
+      const d = new Date(f); d.setDate(d.getDate()+i);
+      const isWeekend = d.getDay()===5||d.getDay()===6;
+      total += isWeekend && chl.wprice ? Number(chl.wprice) : Number(chl.price);
+    }
+    return total;
+  }
+  function hasConflict(f:string,t:string){
+    if(!f||!t) return false;
+    const nf=new Date(f).getTime(), nt=new Date(t).getTime();
+    return bookings.some(b=>{
+      if(!b.date_from||!b.date_to) return false;
+      const bf=new Date(b.date_from).getTime(), bt=new Date(b.date_to).getTime();
+      return nf < bt && nt > bf;
+    });
+  }
+
+  let hourlySlots: {name:string;from:string;to:string;price:string}[] = [];
+  try { hourlySlots = chalet?.hourly_slots ? JSON.parse(chalet.hourly_slots as string) : []; } catch { hourlySlots = []; }
+
+  function slotsTakenForDay(day:string){
+    if(!day) return new Set<number>();
+    return new Set(
+      bookings
+        .filter(b=>b.date_from===day && b.date_to===day && b.checkin_time)
+        .map(b=>hourlySlots.findIndex(s=>s.from===b.checkin_time && s.to===b.checkout_time))
+        .filter(i=>i>=0)
+    );
+  }
+  function dayFullyBooked(day:string){
+    if(!day) return false;
+    return bookings.some(b=>{
+      if(!b.date_from||!b.date_to) return false;
+      const f=new Date(b.date_from).getTime(), t=new Date(b.date_to).getTime(), d=new Date(day).getTime();
+      return d>=f && d<t && b.date_from!==b.date_to;
+    });
+  }
+
+  async function submitBooking(){
+    setBkErr("");
+    if(!chalet) return;
+    if(!bkName||!bkPhone){ setBkErr("أدخل اسمك ورقم جوالك"); return; }
+
+    if(bkMode==="overnight"){
+      if(!bkFrom||!bkTo){ setBkErr("اختر تاريخ الوصول والمغادرة"); return; }
+      if(new Date(bkTo)<=new Date(bkFrom)){ setBkErr("تاريخ المغادرة يجب أن يكون بعد الوصول"); return; }
+      if(hasConflict(bkFrom,bkTo)){ setBkErr("التواريخ المختارة محجوزة مسبقاً، اختر تواريخ أخرى"); return; }
+    }else{
+      if(!bkDay){ setBkErr("اختر اليوم"); return; }
+      if(bkSlot===null){ setBkErr("اختر الفترة"); return; }
+      if(dayFullyBooked(bkDay)){ setBkErr("هذا اليوم محجوز بالكامل (مبيت)"); return; }
+      if(slotsTakenForDay(bkDay).has(bkSlot)){ setBkErr("هذي الفترة محجوزة، اختر فترة أخرى"); return; }
+    }
+
+    setBkSubmitting(true);
+    const body = bkMode==="overnight"
+      ? { chalet:chalet.name, guest:bkName, phone:bkPhone, date_from:bkFrom, date_to:bkTo, price:calcPrice(bkFrom,bkTo,chalet), status:"pending", payment_method:"تحويل بنكي", note:"حجز ذاتي من رابط الشاليه — بانتظار تأكيد التحويل" }
+      : { chalet:chalet.name, guest:bkName, phone:bkPhone, date_from:bkDay, date_to:bkDay, checkin_time:hourlySlots[bkSlot!].from, checkout_time:hourlySlots[bkSlot!].to, price:Number(hourlySlots[bkSlot!].price)||0, status:"pending", payment_method:"تحويل بنكي", note:`حجز بالساعة (${hourlySlots[bkSlot!].name}) — بانتظار تأكيد التحويل` };
+
+    const res = await fetch(`${SUPA_URL}/rest/v1/bookings`,{
+      method:"POST",
+      headers:{apikey:SUPA_KEY,Authorization:`Bearer ${SUPA_KEY}`,"Content-Type":"application/json",Prefer:"return=representation"},
+      body:JSON.stringify(body),
+    });
+    setBkSubmitting(false);
+    if(!res.ok){ setBkErr("تعذّر إتمام الحجز، حاول مرة أخرى"); return; }
+    setBkDone(true);
+  }
+
+  if(loading) return <div dir="rtl" style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Tajawal',sans-serif"}}><div style={{textAlign:"center",color:T}}><div style={{fontSize:40,marginBottom:8}}>⌛</div>جاري التحميل...</div></div>;
+  if(!chalet) return <div dir="rtl" style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Tajawal',sans-serif"}}><div style={{textAlign:"center",color:T}}><div style={{fontSize:40,marginBottom:8}}>🏠</div>الشاليه غير موجود</div></div>;
+
+  let gallery: string[] = [];
+  try { gallery = chalet.gallery ? JSON.parse(chalet.gallery as string) : []; } catch { gallery = []; }
+  const allImages = [chalet.img, ...gallery].filter(Boolean) as string[];
+  const amenitiesList = (chalet.amenities||"").split(/[،,]/).map(a=>a.trim()).filter(Boolean);
+
+  return (
+    <div dir="rtl" style={{fontFamily:"'Tajawal',sans-serif",background:"#FAF8F5",minHeight:"100vh"}}>
+      <style>{`@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800;900&display=swap');*{box-sizing:border-box}html,body{overflow-y:auto!important;height:auto!important;min-height:100vh}#root{height:auto;overflow:visible}`}</style>
+
+      <div style={{background:`linear-gradient(135deg,${B},${BD})`,padding:"14px 20px",display:"flex",alignItems:"center",gap:10}}>
+        <Logo size={30}/>
+        <span style={{color:S,fontWeight:800,fontSize:15}}>مجموعة ريتام</span>
+      </div>
+
+      <div style={{position:"relative",height:280,overflow:"hidden",background:`linear-gradient(135deg,${B},${BD})`}}>
+        {allImages[0]
+          ? <img src={allImages[0]} style={{width:"100%",height:"100%",objectFit:"cover"}} onClick={()=>setLightbox(allImages[0])}/>
+          : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:60,opacity:.25}}>🏠</span></div>}
+        <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(transparent,rgba(42,34,24,.85))",padding:"40px 20px 18px"}}>
+          <div style={{color:"#fff",fontWeight:900,fontSize:26}}>{chalet.name}</div>
+          <div style={{color:"rgba(255,255,255,.75)",fontSize:13,marginTop:4}}>📍 {chalet.loc}</div>
+        </div>
+      </div>
+
+      <div style={{maxWidth:680,margin:"0 auto",padding:"20px 16px 80px"}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:20}}>
+          {[
+            {icon:"👥",label:"السعة",val:chalet.cap+" شخص"},
+            {icon:"🌙",label:"سعر الليلة",val:chalet.price+" ريال"},
+            {icon:"🎉",label:"سعر الويكند",val:(chalet.wprice?chalet.wprice+" ريال":"—")},
+          ].map(s=>(
+            <div key={s.label} style={{background:"#fff",borderRadius:14,padding:"14px 10px",textAlign:"center",border:"1px solid rgba(197,172,136,.2)"}}>
+              <div style={{fontSize:20,marginBottom:4}}>{s.icon}</div>
+              <div style={{fontWeight:900,color:B,fontSize:15}}>{s.val}</div>
+              <div style={{fontSize:10,color:T,marginTop:2}}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {chalet.description && (
+          <div style={{background:"#fff",borderRadius:14,padding:16,marginBottom:16,border:"1px solid rgba(197,172,136,.2)"}}>
+            <div style={{fontWeight:800,color:B,fontSize:14,marginBottom:8}}>📝 عن الشاليه</div>
+            <div style={{color:T,fontSize:13.5,lineHeight:1.8}}>{chalet.description}</div>
+          </div>
+        )}
+
+        {amenitiesList.length>0 && (
+          <div style={{background:"#fff",borderRadius:14,padding:16,marginBottom:16,border:"1px solid rgba(197,172,136,.2)"}}>
+            <div style={{fontWeight:800,color:B,fontSize:14,marginBottom:12}}>✨ المميزات</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+              {amenitiesList.map(a=>(
+                <span key={a} style={{background:SL,color:B,borderRadius:99,padding:"6px 14px",fontSize:12.5,fontWeight:700,border:"1px solid rgba(197,172,136,.25)"}}>✓ {a}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {allImages.length>1 && (
+          <div style={{background:"#fff",borderRadius:14,padding:16,marginBottom:16,border:"1px solid rgba(197,172,136,.2)"}}>
+            <div style={{fontWeight:800,color:B,fontSize:14,marginBottom:12}}>📷 صور الشاليه</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+              {allImages.map((img,i)=>(
+                <div key={i} onClick={()=>setLightbox(img)} style={{height:90,borderRadius:10,overflow:"hidden",cursor:"pointer"}}>
+                  <img src={img} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {bkDone ? (
+          <div style={{background:"#fff",borderRadius:16,padding:22,border:"2px solid #4CAF50",textAlign:"center"}}>
+            <div style={{fontSize:44,marginBottom:10}}>✅</div>
+            <div style={{fontWeight:900,color:B,fontSize:17,marginBottom:8}}>تم استلام طلب حجزك</div>
+            <div style={{color:T,fontSize:13.5,lineHeight:1.8,marginBottom:18}}>
+              حجزك بانتظار التأكيد بعد استلام التحويل. حوّل المبلغ على الحساب التالي وأرسل صورة الإيصال عبر واتساب لتسريع التأكيد.
+            </div>
+            {(biz?.bank_iban||biz?.bank_name) && (
+              <div style={{background:SL,borderRadius:12,padding:16,marginBottom:16,textAlign:"right"}}>
+                {biz?.bank_name && <div style={{fontSize:13,color:T,marginBottom:6}}><b style={{color:B}}>البنك:</b> {biz.bank_name}</div>}
+                {biz?.bank_account_name && <div style={{fontSize:13,color:T,marginBottom:6}}><b style={{color:B}}>اسم الحساب:</b> {biz.bank_account_name}</div>}
+                {biz?.bank_iban && <div style={{fontSize:13,color:T,direction:"ltr",textAlign:"right",fontFamily:"monospace"}}><b style={{color:B,fontFamily:"'Tajawal',sans-serif"}}>IBAN: </b>{biz.bank_iban}</div>}
+              </div>
+            )}
+            <a href={`https://wa.me/?text=${encodeURIComponent(`مرحباً، حوّلت قيمة حجز شاليه ${chalet.name} باسم ${bkName}، مرفق صورة الإيصال`)}`} target="_blank" rel="noreferrer"
+              style={{display:"block",textAlign:"center",background:"#25D366",color:"#fff",borderRadius:12,padding:"13px",fontWeight:800,fontSize:14,textDecoration:"none"}}>
+              📲 أرسل إيصال التحويل عبر واتساب
+            </a>
+          </div>
+        ) : (
+          <div style={{background:"#fff",borderRadius:16,padding:18,border:"1px solid rgba(197,172,136,.2)"}}>
+            <div style={{fontWeight:800,color:B,fontSize:15,marginBottom:14}}>📅 احجز الآن</div>
+            <div style={{fontSize:11.5,color:T,marginBottom:14}}>
+              {bkMode==="overnight" ? "اضغط على تاريخ الوصول من التقويم، ثم تاريخ المغادرة" : "اختر اليوم ثم الفترة المناسبة"}
+            </div>
+
+            {chalet.allow_overnight!==false && chalet.allow_hourly && (
+              <div style={{display:"flex",gap:8,marginBottom:16,background:SL,borderRadius:12,padding:4}}>
+                <button onClick={()=>setBkMode("overnight")} style={{flex:1,padding:"9px",borderRadius:10,border:"none",cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:13,background:bkMode==="overnight"?B:"transparent",color:bkMode==="overnight"?S:T}}>🌙 مبيت</button>
+                <button onClick={()=>setBkMode("hourly")} style={{flex:1,padding:"9px",borderRadius:10,border:"none",cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:13,background:bkMode==="hourly"?B:"transparent",color:bkMode==="hourly"?S:T}}>⏱ بالساعة</button>
+              </div>
+            )}
+
+            {bkMode==="overnight" ? (
+              <>
+                <AvailabilityCalendar bookings={bookings} from={bkFrom} to={bkTo} onPick={(f,t)=>{setBkFrom(f);setBkTo(t);}}/>
+
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+                  <div>
+                    <label style={{fontSize:11,color:T,fontWeight:600,display:"block",marginBottom:5}}>تاريخ الوصول</label>
+                    <input type="date" value={bkFrom} min={new Date().toISOString().slice(0,10)} onChange={e=>setBkFrom(e.target.value)}
+                      style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid rgba(197,172,136,.4)",fontSize:13,fontFamily:"'Tajawal',sans-serif",color:B,boxSizing:"border-box"}}/>
+                  </div>
+                  <div>
+                    <label style={{fontSize:11,color:T,fontWeight:600,display:"block",marginBottom:5}}>تاريخ المغادرة</label>
+                    <input type="date" value={bkTo} min={bkFrom||new Date().toISOString().slice(0,10)} onChange={e=>setBkTo(e.target.value)}
+                      style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid rgba(197,172,136,.4)",fontSize:13,fontFamily:"'Tajawal',sans-serif",color:B,boxSizing:"border-box"}}/>
+                  </div>
+                </div>
+
+                {bkFrom&&bkTo&&new Date(bkTo)>new Date(bkFrom)&&(
+                  hasConflict(bkFrom,bkTo)
+                    ? <div style={{background:"#FFF5F5",color:"#8B3A3A",borderRadius:10,padding:"10px 12px",fontSize:12.5,fontWeight:700,marginBottom:10}}>⚠️ هذي التواريخ محجوزة مسبقاً</div>
+                    : <div style={{background:SL,borderRadius:10,padding:"10px 12px",marginBottom:10,display:"flex",justifyContent:"space-between",fontSize:13}}>
+                        <span style={{color:T}}>{nightsCount(bkFrom,bkTo)} ليالي</span>
+                        <span style={{fontWeight:900,color:B}}>{calcPrice(bkFrom,bkTo,chalet).toLocaleString()} ريال</span>
+                      </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div style={{marginBottom:12}}>
+                  <label style={{fontSize:11,color:T,fontWeight:600,display:"block",marginBottom:5}}>اليوم</label>
+                  <input type="date" value={bkDay} min={new Date().toISOString().slice(0,10)} onChange={e=>{setBkDay(e.target.value);setBkSlot(null);}}
+                    style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid rgba(197,172,136,.4)",fontSize:13,fontFamily:"'Tajawal',sans-serif",color:B,boxSizing:"border-box"}}/>
+                </div>
+
+                {bkDay && dayFullyBooked(bkDay) && (
+                  <div style={{background:"#FFF5F5",color:"#8B3A3A",borderRadius:10,padding:"10px 12px",fontSize:12.5,fontWeight:700,marginBottom:10}}>⚠️ هذا اليوم محجوز بالكامل (مبيت)</div>
+                )}
+
+                {bkDay && !dayFullyBooked(bkDay) && (
+                  hourlySlots.length===0
+                    ? <div style={{color:T,fontSize:12.5,marginBottom:10}}>لا توجد فترات محددة لهذا الشاليه بعد</div>
+                    : (()=>{ const taken=slotsTakenForDay(bkDay); return (
+                        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+                          {hourlySlots.map((s,i)=>{
+                            const isTaken=taken.has(i), isSel=bkSlot===i;
+                            return (
+                              <div key={i} onClick={()=>!isTaken&&setBkSlot(i)} style={{
+                                display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",borderRadius:10,cursor:isTaken?"not-allowed":"pointer",
+                                background:isSel?B:isTaken?"#FFF1F1":SL, border:"1px solid "+(isSel?B:"rgba(197,172,136,.3)"),opacity:isTaken?.6:1,
+                              }}>
+                                <div>
+                                  <div style={{fontWeight:800,fontSize:13,color:isSel?S:isTaken?"#A33B3B":B}}>{s.name||"فترة"}{isTaken&&" (محجوزة)"}</div>
+                                  <div style={{fontSize:11,color:isSel?"rgba(255,255,255,.7)":T,direction:"ltr",textAlign:"right"}}>{s.from} – {s.to}</div>
+                                </div>
+                                <div style={{fontWeight:900,fontSize:14,color:isSel?S:B}}>{s.price} ر</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );})()
+                )}
+              </>
+            )}
+
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10,marginTop:bkMode==="hourly"?0:10}}>
+              <div>
+                <label style={{fontSize:11,color:T,fontWeight:600,display:"block",marginBottom:5}}>اسمك</label>
+                <input value={bkName} onChange={e=>setBkName(e.target.value)} placeholder="الاسم الكامل"
+                  style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid rgba(197,172,136,.4)",fontSize:13,fontFamily:"'Tajawal',sans-serif",color:B,boxSizing:"border-box"}}/>
+              </div>
+              <div>
+                <label style={{fontSize:11,color:T,fontWeight:600,display:"block",marginBottom:5}}>رقم الجوال</label>
+                <input value={bkPhone} onChange={e=>setBkPhone(e.target.value)} placeholder="05xxxxxxxx" dir="ltr"
+                  style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid rgba(197,172,136,.4)",fontSize:13,fontFamily:"'Tajawal',sans-serif",color:B,boxSizing:"border-box"}}/>
+              </div>
+            </div>
+
+            <div style={{background:SL,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:12.5,color:T,display:"flex",alignItems:"center",gap:8}}>
+              <span>💳</span><span><b style={{color:B}}>طريقة الدفع:</b> تحويل بنكي</span>
+            </div>
+
+            {bkErr && <div style={{background:"#FFF5F5",color:"#8B3A3A",borderRadius:10,padding:"10px 12px",fontSize:12.5,fontWeight:700,marginBottom:12}}>{bkErr}</div>}
+
+            <button onClick={submitBooking} disabled={bkSubmitting}
+              style={{width:"100%",background:bkSubmitting?"#999":B,color:S,border:"none",borderRadius:14,padding:"14px",fontWeight:800,fontSize:15,cursor:bkSubmitting?"not-allowed":"pointer",fontFamily:"'Tajawal',sans-serif",marginBottom:10}}>
+              {bkSubmitting?"جاري إرسال الطلب...":"تأكيد الحجز"}
+            </button>
+
+            <a href={`https://wa.me/?text=${encodeURIComponent("مرحباً، أبغى أستفسر عن شاليه "+chalet.name)}`} target="_blank" rel="noreferrer"
+              style={{display:"block",textAlign:"center",background:"rgba(37,211,102,.1)",color:"#1a9e4f",borderRadius:12,padding:"11px",fontWeight:700,fontSize:13,textDecoration:"none"}}>
+              📲 أو استفسر عبر واتساب
+            </a>
+          </div>
+        )}
+      </div>
+
+      {lightbox && (
+        <div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.9)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:999,padding:20}}>
+          <img src={lightbox} style={{maxWidth:"100%",maxHeight:"90vh",borderRadius:12,objectFit:"contain"}}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Tbl({heads,rows,footer}) {
   return (
     <div className="tbl-wrap">
@@ -1242,7 +1875,7 @@ function RoomRequestPage({ chalet, room }: { chalet: string; room: string }) {
   );
 }
 
-function LoginPage({onLogin}) {
+function LoginPage({onLogin,onShowSignup}: {onLogin:(u:AppUser)=>void; onShowSignup:()=>void}) {
   const [login,setLogin] = useState("");
   const [pass,setPass] = useState("");
   const [err,setErr] = useState("");
@@ -1251,30 +1884,14 @@ function LoginPage({onLogin}) {
   async function doLogin() {
     if(!login||!pass){setErr("أدخل بيانات الدخول");return;}
     setLoading(true); setErr("");
-    let user = null;
-    const r1 = await db("users","GET",null,"email=eq."+encodeURIComponent(login)+"&select=*");
-    if(r1&&r1[0]) user=r1[0];
-    if(!user){
-      const r2 = await db("users","GET",null,"username=eq."+encodeURIComponent(login)+"&select=*");
-      if(r2&&r2[0]) user=r2[0];
-    }
-    if(!user){setErr("بيانات الدخول غير صحيحة");setLoading(false);return;}
-
-    const hashed = await hashPassword(pass);
-    const isHashed = user.password === hashed;
-    const isPlaintext = !isHashed && user.password === pass;
-
-    if(!isHashed && !isPlaintext){setErr("بيانات الدخول غير صحيحة");setLoading(false);return;}
-
-    // ترقية تلقائية: إذا كانت كلمة المرور بنص واضح، نحولها لـ hash
-    if(isPlaintext){
-      await db("users","PATCH",{password: hashed},user.id);
-      user = {...user, password: hashed};
-    }
-
-    const {password: _omit, ...safeUser} = user;
-    localStorage.setItem("reetam_user",JSON.stringify(safeUser));
-    onLogin(safeUser);
+    const {data,error} = await supabase.auth.signInWithPassword({email:login,password:pass});
+    if(error||!data.user){setErr("بيانات الدخول غير صحيحة");setLoading(false);return;}
+    const profiles = await db("profiles","GET",null,"id=eq."+data.user.id+"&select=*");
+    const profile = profiles&&profiles[0];
+    if(!profile){setErr("لا يوجد ملف تعريف لهذا الحساب");setLoading(false);return;}
+    currentOwnerId = profile.owner_id as string;
+    setCurrentOwnerId(profile.owner_id as string);
+    onLogin(profile as unknown as AppUser);
     setLoading(false);
   }
 
@@ -1289,8 +1906,8 @@ function LoginPage({onLogin}) {
         </div>
         {err&&<div style={{background:"#FFF5F5",border:"1px solid rgba(139,58,58,.2)",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#8B3A3A",fontWeight:600}}>{err}</div>}
         <div style={{marginBottom:14}}>
-          <label className="lbl">البريد أو اسم المستخدم</label>
-          <input className="inp" value={login} onChange={e=>setLogin(e.target.value)} placeholder="admin" onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
+          <label className="lbl">البريد الإلكتروني</label>
+          <input className="inp" type="email" value={login} onChange={e=>setLogin(e.target.value)} placeholder="name@example.com" onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
         </div>
         <div style={{marginBottom:20}}>
           <label className="lbl">كلمة المرور</label>
@@ -1300,6 +1917,71 @@ function LoginPage({onLogin}) {
           style={{width:"100%",border:"none",cursor:loading?"not-allowed":"pointer",borderRadius:12,fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,background:"linear-gradient(135deg,#413523,#2A2218)",color:"#C5AC88"}}>
           {loading?"جاري التحقق...":"تسجيل الدخول"}
         </button>
+        <div style={{textAlign:"center",marginTop:18,fontSize:13,color:T}}>
+          صاحب شاليه جديد؟ <span onClick={onShowSignup} style={{color:B,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>سجّل حسابك</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SignupPage({onSignedUp,onBack}: {onSignedUp:(u:AppUser)=>void; onBack:()=>void}) {
+  const [name,setName]     = useState("");
+  const [business,setBusiness] = useState("");
+  const [email,setEmail]   = useState("");
+  const [pass,setPass]     = useState("");
+  const [err,setErr]       = useState("");
+  const [loading,setLoading] = useState(false);
+
+  async function doSignup() {
+    if(!name||!email||!pass){setErr("أكمل كل الحقول");return;}
+    if(pass.length<6){setErr("كلمة المرور 6 أحرف على الأقل");return;}
+    setLoading(true); setErr("");
+    const {data,error} = await supabase.auth.signUp({email,password:pass});
+    if(error||!data.user){setErr(error?.message||"تعذر إنشاء الحساب");setLoading(false);return;}
+    const uid = data.user.id;
+    const profileRes = await db("profiles","POST",{id:uid,owner_id:uid,role:"owner",name,email,chalet:business||null});
+    if(!profileRes){setErr("تعذر إنشاء الملف الشخصي، حاول مرة أخرى");setLoading(false);return;}
+    await db("subscriptions","POST",{owner_id:uid,plan_name:"تجريبي",status:"trial"});
+    currentOwnerId = uid;
+    setCurrentOwnerId(uid);
+    onSignedUp(profileRes[0] as unknown as AppUser);
+    setLoading(false);
+  }
+
+  return (
+    <div dir="rtl" style={{fontFamily:"'Tajawal',sans-serif",minHeight:"100vh",background:"#FAF8F5",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <style>{CSS}</style>
+      <div style={{background:"#fff",borderRadius:20,padding:32,maxWidth:420,width:"100%",boxShadow:"0 8px 40px rgba(65,53,35,.12)"}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <Logo size={50}/>
+          <div style={{fontWeight:800,color:B,fontSize:20,marginTop:12}}>تسجيل حساب جديد</div>
+          <div style={{color:T,fontSize:13,marginTop:4}}>لأصحاب الشاليهات — أضف شاليهاتك وأدرها بنفسك</div>
+        </div>
+        {err&&<div style={{background:"#FFF5F5",border:"1px solid rgba(139,58,58,.2)",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#8B3A3A",fontWeight:600}}>{err}</div>}
+        <div style={{marginBottom:14}}>
+          <label className="lbl">اسمك</label>
+          <input className="inp" value={name} onChange={e=>setName(e.target.value)} placeholder="محمد"/>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label className="lbl">اسم النشاط/الشاليه (اختياري)</label>
+          <input className="inp" value={business} onChange={e=>setBusiness(e.target.value)} placeholder="شاليهات الواحة"/>
+        </div>
+        <div style={{marginBottom:14}}>
+          <label className="lbl">البريد الإلكتروني</label>
+          <input className="inp" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com"/>
+        </div>
+        <div style={{marginBottom:20}}>
+          <label className="lbl">كلمة المرور</label>
+          <input className="inp" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&doSignup()}/>
+        </div>
+        <button onClick={doSignup} disabled={loading}
+          style={{width:"100%",border:"none",cursor:loading?"not-allowed":"pointer",borderRadius:12,fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,background:"linear-gradient(135deg,#413523,#2A2218)",color:"#C5AC88"}}>
+          {loading?"جاري إنشاء الحساب...":"إنشاء الحساب"}
+        </button>
+        <div style={{textAlign:"center",marginTop:18,fontSize:13,color:T}}>
+          عندك حساب؟ <span onClick={onBack} style={{color:B,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>تسجيل الدخول</span>
+        </div>
       </div>
     </div>
   );
@@ -1592,20 +2274,35 @@ function AppWrapper() {
   const [isGuest,setIsGuest]   = useState(false);
   const [guestParams,setGuestParams] = useState<{bookingId:string|null; mode:string; chalet:string|null; room:string|null}>({bookingId:null,mode:"checkin",chalet:null,room:null});
   const [currentUser,setCurrentUser] = useState<AppUser | null>(null);
+  const [showSignup,setShowSignup]   = useState(false);
 
   useEffect(()=>{
     const p = new URLSearchParams(window.location.search);
     if(p.get("guest")==="1"){
       setGuestParams({bookingId:p.get("b"),mode:p.get("m")||"checkin",chalet:p.get("ch"),room:p.get("rm")});
       setIsGuest(true);
+      setReady(true);
+      return;
     }
-    const saved = localStorage.getItem("reetam_user");
-    if(saved){try{setCurrentUser(JSON.parse(saved));}catch(e){}}
-    setReady(true);
+    (async()=>{
+      const {data:{session}} = await supabase.auth.getSession();
+      if(session?.user){
+        const profiles = await db("profiles","GET",null,"id=eq."+session.user.id+"&select=*");
+        const profile = profiles&&profiles[0];
+        if(profile){
+          currentOwnerId = profile.owner_id as string;
+          setCurrentOwnerId(profile.owner_id as string);
+          setCurrentUser(profile as unknown as AppUser);
+        }
+      }
+      setReady(true);
+    })();
   },[]);
 
   if(!ready) return null;
   if(isGuest){
+    if(guestParams.mode==="chalet"&&guestParams.chalet)
+      return <ChaletPublicPage chaletName={guestParams.chalet}/>;
     if(guestParams.mode==="room"&&guestParams.chalet&&guestParams.room)
       return <RoomRequestPage chalet={guestParams.chalet} room={guestParams.room}/>;
     if(guestParams.mode==="cleantask"){
@@ -1618,8 +2315,11 @@ function AppWrapper() {
     }
     return <GuestPageEmbed bookingId={guestParams.bookingId} mode={guestParams.mode}/>;
   }
-  if(!currentUser) return <LoginPage onLogin={u=>setCurrentUser(u)}/>;
-  return <App currentUser={currentUser} onLogout={()=>{localStorage.removeItem("reetam_user");setCurrentUser(null);}}/>;
+  if(!currentUser){
+    if(showSignup) return <SignupPage onSignedUp={u=>setCurrentUser(u)} onBack={()=>setShowSignup(false)}/>;
+    return <LoginPage onLogin={u=>setCurrentUser(u)} onShowSignup={()=>setShowSignup(true)}/>;
+  }
+  return <App currentUser={currentUser} onLogout={()=>{supabase.auth.signOut();currentOwnerId=null;setCurrentOwnerId(null);setCurrentUser(null);}}/>;
 }
 
 function App({ currentUser = { role: "admin", name: "المستخدم" } as AppUser, onLogout = () => {} }: { currentUser: AppUser; onLogout: () => void }) {
@@ -1659,6 +2359,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [rooms,setRooms]       = useState<Room[]>([]);
   const [reviews,setReviews]   = useState<Review[]>([]);
   const [loading,setLoading]   = useState(true);
+  const [refreshing,setRefreshing] = useState(false);
   const [fch,setFch]           = useState("الكل");
   const [selChalet,setSelChalet] = useState<Chalet | null>(null);
 
@@ -1666,6 +2367,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [mMdl,setMMdl]       = useState<Partial<MaintenanceRequest> | null>(null);
   const [mOld,setMOld]       = useState<MaintenanceRequest | null>(null);
   const [cMdl,setCMdl]       = useState<Partial<Chalet> | null>(null);
+  const [imgUploading,setImgUploading] = useState(false);
   const [iMdl,setIMdl]       = useState(false);
   const [wMdl,setWMdl]       = useState<Partial<WalletTransaction> | null>(null);
   const [coMdl,setCoMdl]     = useState<Booking | null>(null);
@@ -1687,6 +2389,22 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
       document.body.style.overflow="auto";
       document.documentElement.style.overflow="auto";
     }
+    // عرض البيانات المخزنة فوراً إن وُجدت
+    try {
+      const cached = localStorage.getItem("reetam_cache");
+      if(cached) {
+        const d = JSON.parse(cached);
+        if(d.chalets)   setChalets(d.chalets);
+        if(d.bookings)  setBookings(d.bookings);
+        if(d.maint)     setMaint(d.maint);
+        if(d.wallet)    setWallet(d.wallet);
+        if(d.expenses)  setExpenses(d.expenses);
+        if(d.rooms)     setRooms(d.rooms);
+        if(d.maint)     setMaint(d.maint);
+        setLoading(false);
+        setRefreshing(true);
+      }
+    } catch {}
     loadAll();
   },[]);
 
@@ -1713,8 +2431,17 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
       if(!clogs)  console.error("⚠️ cleaning_logs فشل التحميل");
       setBookings(b||[]); setMaint(m||[]); setWallet(w||[]); setCleaning(cl||[]); setClExp(cle||[]); setClTasks(ctasks||[]); setClLogs(clogs||[]);
       setReviews(rv||[]); setExpenses(ex||[]); setUsers(us||[]); setRoomReqs(rr||[]); setFixedExpenses(fx||[]); setCleanWorkers(cw||[]); setLoyaltyCards(lc||[]);
+      // حفظ البيانات الأساسية في cache للتحميل الفوري القادم
+      try {
+        localStorage.setItem("reetam_cache", JSON.stringify({
+          chalets: (c||[]), bookings: (b||[]), maint: (m||[]),
+          wallet: (w||[]), expenses: (ex||[]), rooms: (rm||[]),
+          ts: Date.now()
+        }));
+      } catch {}
       setLoading(false);
-    } catch(e) { console.error(e); setLoading(false); }
+      setRefreshing(false);
+    } catch(e) { console.error(e); setLoading(false); setRefreshing(false); }
   }
 
   const names    = chalets.map(c=>c.name);
@@ -1754,11 +2481,39 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
     });
   },[chalets,bookings,maint,cBal]);
 
-  const eC = {name:"",loc:"",cap:"",price:"",wprice:"",ins:"",description:"",st:"active",img:null};
+  const eC = {name:"",loc:"",cap:"",price:"",wprice:"",ins:"",description:"",st:"active",img:null,allow_overnight:true,allow_hourly:true};
   const eB = {chalet:names[0]||"",guest:"",phone:"",date_from:"",date_to:"",price:"",status:"confirmed",note:""};
   const eM = {chalet:names[0]||"",issue:"",maint_date:"",priority:"متوسط",status:"open",cost:"",note:"",req:"",image:null};
 
-  async function svC(f: Partial<Chalet>): Promise<void> {const openDate=f.open_date?f.open_date+"-01":null;const body={name:f.name,loc:f.loc,cap:Number(f.cap),price:Number(f.price),wprice:Number(f.wprice),ins:Number(f.ins),description:f.description,st:f.st,img:f.img||null,open_date:openDate,prev_revenue:Number(f.prev_revenue)||0};if(f.id){await db("chalets","PATCH",body as Record<string,unknown>,f.id);}else{await db("chalets","POST",body as Record<string,unknown>);if(Number(f.ins)>0)await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet:f.name,cat:"تأمين",amount:Number(f.ins),note:"رصيد افتتاحي"});}await loadAll();setCMdl(null);}
+  // عند تغيير اسم الشاليه، نحدّث الاسم في كل الجداول المرتبطة حتى لا تنكسر الروابط القديمة
+  async function renameChaletEverywhere(oldName: string, newName: string): Promise<void> {
+    if(!oldName || oldName===newName) return;
+    const tables = ["bookings","maintenance","expenses","fixed_expenses","wallet","cleaning","cleaning_expenses","cleaning_tasks","rooms","smart_devices","reviews","room_requests"];
+    await Promise.all(tables.map(t=>{
+      const url = `${SUPA_URL}/rest/v1/${t}?chalet=eq.${encodeURIComponent(oldName)}`;
+      return fetch(url,{
+        method:"PATCH",
+        headers:{apikey:SUPA_KEY,Authorization:`Bearer ${SUPA_KEY}`,"Content-Type":"application/json"},
+        body:JSON.stringify({chalet:newName}),
+      }).catch(()=>null);
+    }));
+  }
+
+  async function svC(f: Partial<Chalet>): Promise<void> {
+    const openDate=f.open_date?f.open_date+"-01":null;
+    const body={name:f.name,loc:f.loc,cap:Number(f.cap),price:Number(f.price),wprice:Number(f.wprice),ins:Number(f.ins),description:f.description,st:f.st,img:f.img||null,gallery:f.gallery||null,amenities:f.amenities||null,allow_overnight:f.allow_overnight!==false,allow_hourly:!!f.allow_hourly,hourly_slots:f.hourly_slots||null,open_date:openDate,prev_revenue:Number(f.prev_revenue)||0};
+    if(f.id){
+      const oldChalet = chalets.find(c=>c.id===f.id);
+      const res = await db("chalets","PATCH",body as Record<string,unknown>,f.id);
+      if(!res){ alert("فشل حفظ التعديلات:\n"+lastDbError); return; }
+      if(oldChalet && f.name && oldChalet.name!==f.name) await renameChaletEverywhere(oldChalet.name, f.name);
+    }else{
+      const res = await db("chalets","POST",body as Record<string,unknown>);
+      if(!res){ alert("فشل إضافة الشاليه:\n"+lastDbError); return; }
+      if(Number(f.ins)>0)await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet:f.name,cat:"تأمين",amount:Number(f.ins),note:"رصيد افتتاحي"});
+    }
+    await loadAll();setCMdl(null);
+  }
   async function dlC(id: number): Promise<void> {if(!window.confirm("حذف الشاليه نهائياً؟ لا يمكن التراجع."))return;await db("chalets","DELETE",null,id);await loadAll();}
   async function svB(f: Partial<Booking>): Promise<void> {const body={chalet:f.chalet,guest:f.guest,phone:f.phone,date_from:f.date_from,date_to:f.date_to,checkin_time:f.checkin_time||null,checkout_time:f.checkout_time||null,price:Number(f.price),status:f.status,note:f.note};if(f.id)await db("bookings","PATCH",body as Record<string,unknown>,f.id);else await db("bookings","POST",body as Record<string,unknown>);await loadAll();setBMdl(null);}
   function buildPreArrivalMsg(b: Booking): string {
@@ -2033,11 +2788,15 @@ ${poolLine}
 
       {/* ── Main Content ── */}
       <div style={{marginRight:isMobile?0:220,minHeight:"100vh"}}>
+        {/* شريط التحديث */}
+        {refreshing&&(
+          <div style={{position:"fixed",top:0,left:0,right:0,height:3,zIndex:9999,background:"linear-gradient(90deg,transparent,#C5AC88,#8B7355,transparent)",backgroundSize:"200% 100%",animation:"shimmer 1.2s linear infinite"}}/>
+        )}
         <main style={{maxWidth:1100,margin:"0 auto",padding:isMobile?"14px 12px":"24px 20px",paddingBottom:isMobile?80:60}}>
 
           {/* ── Dashboard ── */}
           {tab==="dashboard"&&(
-            <div>
+            <div className="stagger">
               {/* ── الترويسة ── */}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
                 <div>
@@ -2376,7 +3135,7 @@ ${poolLine}
                     {/* الصف الأول: بطاقتان كبيرتان */}
                     <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12,marginBottom:12}}>
                       {/* إيرادات الشهر */}
-                      <div style={{background:"linear-gradient(135deg,#1C3A3A,#0F2525)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
+                      <div className="stat-card" style={{background:"linear-gradient(135deg,#1C3A3A,#0F2525)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
                         <div style={{position:"absolute",top:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(197,172,136,.06)"}}/>
                         <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4,fontWeight:700,letterSpacing:".5px"}}>💰 إيرادات {now.toLocaleDateString("ar-SA",{month:"long"})}</div>
                         <div style={{fontSize:32,fontWeight:900,color:"#fff",letterSpacing:"-1px",lineHeight:1}}>{monthRev.toLocaleString()}<span style={{fontSize:15,marginRight:5,opacity:.7}}>ر</span></div>
@@ -2391,7 +3150,7 @@ ${poolLine}
                       </div>
 
                       {/* صافي الربح */}
-                      <div style={{background:netProfit>=0?"linear-gradient(135deg,#0F3320,#0A2018)":"linear-gradient(135deg,#3A1515,#250F0F)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
+                      <div className="stat-card" style={{background:netProfit>=0?"linear-gradient(135deg,#0F3320,#0A2018)":"linear-gradient(135deg,#3A1515,#250F0F)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
                         <div style={{position:"absolute",top:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(197,172,136,.06)"}}/>
                         <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4,fontWeight:700,letterSpacing:".5px"}}>📊 صافي الربح الشهري</div>
                         <div style={{fontSize:32,fontWeight:900,color:netProfit>=0?"#4CAF50":"#FF6B6B",letterSpacing:"-1px",lineHeight:1}}>{netProfit.toLocaleString()}<span style={{fontSize:15,marginRight:5,opacity:.7}}>ر</span></div>
@@ -2474,7 +3233,7 @@ ${poolLine}
                           const urgColor=isIn?"#8B6914":isToday?"#8B3A3A":b.daysLeft<=3?SD:T;
                           const urgBg=isIn?"#F5EFD6":isToday?"#F5E6E6":b.daysLeft<=3?"#EEF0E9":SL;
                           return (
-                            <div key={b.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:i<upcoming.length-1?"1px solid rgba(197,172,136,.08)":"none"}}>
+                            <div key={b.id} className="list-item" style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:i<upcoming.length-1?"1px solid rgba(197,172,136,.08)":"none"}}>
                               <span style={{background:urgBg,color:urgColor,borderRadius:6,padding:"3px 8px",fontSize:11,fontWeight:800,whiteSpace:"nowrap",flexShrink:0}}>{isIn?"داخل":isToday?"اليوم":b.daysLeft===1?"غداً":b.daysLeft+" يوم"}</span>
                               <div style={{flex:1,minWidth:0}}>
                                 <div style={{fontWeight:700,color:B,fontSize:13,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{b.guest}</div>
@@ -2516,41 +3275,168 @@ ${poolLine}
                 </div>
               </div>
 
-              {/* ── الرسم البياني ── */}
-              {(()=>{
-                const months=["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+              {/* ── الرسم البياني التفاعلي ── */}
+              {false&&(()=>{
+                const MONTHS=["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
+                const MONTHS_SHORT=["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
                 const currentYear=new Date().getFullYear();
-                const monthlyData=months.map((_,mi)=>bookings.filter(b=>b.status==="completed"&&b.date_from&&new Date(b.date_from).getFullYear()===currentYear&&new Date(b.date_from).getMonth()===mi).reduce((s,b)=>s+Number(b.price),0));
-                const maxVal=Math.max(...monthlyData,1);
                 const curMonth=new Date().getMonth();
-                const total=monthlyData.reduce((s,v)=>s+v,0);
+                const activeStatuses=["completed","confirmed"];
+
+                // إيرادات + عدد حجوزات + مصاريف لكل شهر
+                const monthlyData=MONTHS.map((_,mi)=>{
+                  const bks=bookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===currentYear&&new Date(b.date_from).getMonth()===mi);
+                  const rev=bks.reduce((s,b)=>s+Number(b.price),0);
+                  const cnt=bks.length;
+                  const exp=expenses.filter(e=>e.expense_date&&new Date(e.expense_date).getFullYear()===currentYear&&new Date(e.expense_date).getMonth()===mi).reduce((s,e)=>s+Number(e.amount),0)
+                    +maint.filter(m=>m.cost&&m.maint_date&&new Date(m.maint_date).getFullYear()===currentYear&&new Date(m.maint_date).getMonth()===mi).reduce((s,m)=>s+Number(m.cost),0);
+                  return {rev,exp,cnt,net:rev-exp};
+                });
+
+                const maxRev=Math.max(...monthlyData.map(d=>d.rev),1);
+                const total=monthlyData.reduce((s,d)=>s+d.rev,0);
+                const totalExp=monthlyData.reduce((s,d)=>s+d.exp,0);
+                const avgRev=total/12;
+                const activeMos=monthlyData.filter(d=>d.rev>0).length;
+                // أفضل شهر
+                const bestIdx=monthlyData.reduce((bi,d,i)=>d.rev>monthlyData[bi].rev?i:bi,0);
+
+                // قيم المحور Y
+                const yStep=Math.ceil(maxRev/4/1000)*1000||1000;
+                const yLines=[1,2,3,4].map(n=>n*yStep).filter(v=>v<=maxRev*1.1);
+
                 return (
                   <div className="card" style={{overflow:"hidden",marginBottom:16}}>
-                    <div style={{padding:"14px 18px",borderBottom:"2px solid rgba(197,172,136,.2)",background:SL,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontWeight:800,color:B,fontSize:14}}>📊 الإيرادات الشهرية {currentYear}</span>
-                      <span style={{fontSize:12,color:T,fontWeight:600}}>الإجمالي: {total.toLocaleString()} ر</span>
+                    {/* الرأس */}
+                    <div style={{padding:"14px 18px",borderBottom:"1px solid rgba(197,172,136,.15)",background:SL,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                      <div>
+                        <div style={{fontWeight:800,color:B,fontSize:14}}>📊 الإيرادات الشهرية {currentYear}</div>
+                        <div style={{fontSize:11,color:SI,marginTop:2}}>{activeMos} أشهر نشطة · أفضل شهر: <span style={{color:B,fontWeight:700}}>{MONTHS[bestIdx]}</span></div>
+                      </div>
+                      <div style={{display:"flex",gap:16,alignItems:"center"}}>
+                        <div style={{textAlign:"center"}}>
+                          <div style={{fontSize:18,fontWeight:900,color:B,lineHeight:1}}>{total.toLocaleString()}</div>
+                          <div style={{fontSize:9,color:SI,fontWeight:600}}>إجمالي الإيرادات ر</div>
+                        </div>
+                        <div style={{textAlign:"center"}}>
+                          <div style={{fontSize:18,fontWeight:900,color:"#C97B63",lineHeight:1}}>{totalExp.toLocaleString()}</div>
+                          <div style={{fontSize:9,color:SI,fontWeight:600}}>إجمالي المصاريف ر</div>
+                        </div>
+                        <div style={{textAlign:"center"}}>
+                          <div style={{fontSize:18,fontWeight:900,color:total>totalExp?"#4CAF50":"#FF6B6B",lineHeight:1}}>{(total-totalExp).toLocaleString()}</div>
+                          <div style={{fontSize:9,color:SI,fontWeight:600}}>صافي الربح ر</div>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{padding:"20px 16px 10px"}}>
-                      <div style={{display:"flex",alignItems:"flex-end",gap:3,height:140}}>
-                        {monthlyData.map((v,i)=>{
-                          const h=maxVal>0?Math.max((v/maxVal)*100,2):2;
+
+                    {/* الرسم */}
+                    <div style={{padding:"20px 18px 12px",position:"relative"}}>
+                      {/* خطوط Y */}
+                      <div style={{position:"absolute",inset:"20px 18px 50px",pointerEvents:"none"}}>
+                        {yLines.map(v=>(
+                          <div key={v} style={{position:"absolute",bottom:(v/maxRev)*100+"%",left:0,right:0,display:"flex",alignItems:"center",gap:6}}>
+                            <div style={{fontSize:9,color:SI,whiteSpace:"nowrap",width:36,textAlign:"left",flexShrink:0}}>
+                              {v>=1000?(v/1000)+"k":v}
+                            </div>
+                            <div style={{flex:1,height:1,background:"rgba(197,172,136,.1)"}}/>
+                          </div>
+                        ))}
+                        {/* خط المتوسط */}
+                        {avgRev>0&&(
+                          <div style={{position:"absolute",bottom:(avgRev/maxRev)*100+"%",left:40,right:0,display:"flex",alignItems:"center",gap:6}}>
+                            <div style={{flex:1,height:1,borderTop:"1.5px dashed rgba(197,172,136,.4)"}}/>
+                            <div style={{fontSize:9,color:T,fontWeight:700,whiteSpace:"nowrap"}}>متوسط</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* الأعمدة */}
+                      <div style={{display:"flex",alignItems:"flex-end",gap:4,height:180,paddingRight:44,paddingLeft:4}}>
+                        {monthlyData.map((d,i)=>{
+                          const revH=maxRev>0?Math.max((d.rev/maxRev)*100,d.rev>0?3:0):0;
+                          const expH=maxRev>0&&d.exp>0?Math.max((d.exp/maxRev)*100,2):0;
                           const isCur=i===curMonth;
                           const isPast=i<curMonth;
+                          const isBest=i===bestIdx&&d.rev>0;
+                          const revColor=isCur
+                            ?"linear-gradient(180deg,#C5AC88,#8B7355)"
+                            :isBest
+                            ?"linear-gradient(180deg,#4CAF50,#2E7D32)"
+                            :isPast
+                            ?"linear-gradient(180deg,rgba(87,109,111,.9),rgba(87,109,111,.5))"
+                            :"rgba(197,172,136,.25)";
                           return (
-                            <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
-                              {v>0&&<div style={{fontSize:8,color:isCur?B:T,fontWeight:isCur?800:500}}>{v>=1000?(v/1000).toFixed(1)+"k":v}</div>}
-                              <div style={{width:"100%",height:h+"%",background:isCur?"linear-gradient(180deg,"+B+","+BD+")":isPast?"linear-gradient(180deg,rgba(87,109,111,.6),rgba(87,109,111,.3))":"rgba(197,172,136,.2)",borderRadius:"6px 6px 0 0",position:"relative",transition:"height .3s"}}>
-                                {isCur&&<div style={{position:"absolute",top:-3,left:"50%",transform:"translateX(-50%)",width:6,height:6,borderRadius:"50%",background:B}}/>}
+                            <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,height:"100%",justifyContent:"flex-end"}}>
+                              {/* القيمة فوق العمود */}
+                              <div style={{fontSize:8,color:isCur?B:isBest?"#4CAF50":isPast&&d.rev>0?T:"transparent",fontWeight:800,textAlign:"center",lineHeight:1.2,marginBottom:1}}>
+                                {d.rev>=1000?(d.rev/1000).toFixed(1)+"k":d.rev>0?d.rev:""}
                               </div>
-                              <div style={{fontSize:8,color:isCur?B:SI,fontWeight:isCur?800:400}}>{months[i].slice(0,3)}</div>
+                              {/* عمود المصاريف (رفيع شفاف) */}
+                              <div style={{width:"100%",display:"flex",gap:1,alignItems:"flex-end",height:"100%"}}>
+                                {/* عمود الإيراد */}
+                                <div style={{flex:1,height:revH+"%",background:revColor,borderRadius:"4px 4px 0 0",position:"relative",transition:"height .4s",boxShadow:isCur?"0 0 12px rgba(197,172,136,.4)":"none",minHeight:d.rev>0?"3px":0}}>
+                                  {isCur&&<div style={{position:"absolute",top:-4,left:"50%",transform:"translateX(-50%)",width:8,height:8,borderRadius:"50%",background:"#C5AC88",boxShadow:"0 0 6px rgba(197,172,136,.8)"}}/>}
+                                </div>
+                                {/* عمود المصاريف */}
+                                {d.exp>0&&(
+                                  <div style={{width:3,height:expH+"%",background:"rgba(201,123,99,.6)",borderRadius:"2px 2px 0 0",minHeight:2}}/>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
                       </div>
+
+                      {/* أسماء الأشهر + عدد الحجوزات */}
+                      <div style={{display:"flex",gap:4,paddingRight:44,paddingLeft:4,marginTop:6}}>
+                        {monthlyData.map((d,i)=>{
+                          const isCur=i===curMonth;
+                          return (
+                            <div key={i} style={{flex:1,textAlign:"center"}}>
+                              <div style={{fontSize:8.5,color:isCur?B:i<curMonth?T:SI,fontWeight:isCur?900:500,lineHeight:1}}>{MONTHS_SHORT[i].slice(0,3)}</div>
+                              {d.cnt>0&&<div style={{fontSize:7.5,color:isCur?"#C5AC88":SI,fontWeight:600,marginTop:1}}>{d.cnt}</div>}
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* المفتاح */}
+                      <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:12,flexWrap:"wrap"}}>
+                        {[
+                          {color:"linear-gradient(90deg,#C5AC88,#8B7355)",label:"الشهر الحالي"},
+                          {color:"linear-gradient(90deg,#4CAF50,#2E7D32)",label:"أفضل شهر"},
+                          {color:"rgba(87,109,111,.7)",label:"الأشهر الماضية"},
+                          {color:"rgba(197,172,136,.25)",label:"الأشهر القادمة"},
+                          {color:"rgba(201,123,99,.6)",label:"المصاريف"},
+                        ].map(({color,label})=>(
+                          <div key={label} style={{display:"flex",alignItems:"center",gap:5}}>
+                            <div style={{width:14,height:8,borderRadius:3,background:color,flexShrink:0}}/>
+                            <span style={{fontSize:9,color:SI}}>{label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* ملخص ربع سنوي */}
+                    <div style={{borderTop:"1px solid rgba(197,172,136,.12)",display:"grid",gridTemplateColumns:"repeat(4,1fr)"}}>
+                      {["Q1","Q2","Q3","Q4"].map((q,qi)=>{
+                        const slice=monthlyData.slice(qi*3,qi*3+3);
+                        const qRev=slice.reduce((s,d)=>s+d.rev,0);
+                        const qExp=slice.reduce((s,d)=>s+d.exp,0);
+                        const isCurQ=Math.floor(curMonth/3)===qi;
+                        return (
+                          <div key={q} style={{padding:"10px 12px",borderLeft:qi>0?"1px solid rgba(197,172,136,.12)":"none",background:isCurQ?SL:"transparent"}}>
+                            <div style={{fontSize:10,color:isCurQ?B:SI,fontWeight:isCurQ?800:600,marginBottom:3}}>{q} {isCurQ&&"← الآن"}</div>
+                            <div style={{fontSize:13,fontWeight:900,color:isCurQ?B:T}}>{qRev>=1000?(qRev/1000).toFixed(1)+"k":qRev} <span style={{fontSize:9,opacity:.6}}>ر</span></div>
+                            <div style={{fontSize:9,color:"#C97B63"}}>{qExp>0?"- "+(qExp>=1000?(qExp/1000).toFixed(1)+"k":qExp)+" مصاريف":""}</div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
               })()}
+              <MonthlyChart bookings={bookings} expenses={expenses} maint={maint} B={B} T={T} SI={SI} SL={SL}/>
             </div>
           )}
 
@@ -3103,11 +3989,87 @@ ${poolLine}
             <div><label className="lbl">الإيراد السابق (ريال)</label><input className="inp" type="number" value={cMdl.prev_revenue||""} onChange={e=>setCMdl(p=>({...p,prev_revenue:e.target.value}))} placeholder="0"/></div>
             <div style={{gridColumn:"span 2"}}><label className="lbl">الوصف</label><textarea className="inp" rows={2} value={cMdl.description||""} onChange={e=>setCMdl(p=>({...p,description:e.target.value}))} placeholder="وصف مختصر..."/></div>
             <div style={{gridColumn:"span 2"}}>
+              <label className="lbl">المميزات (افصل بفاصلة)</label>
+              <input className="inp" value={cMdl.amenities||""} onChange={e=>setCMdl(p=>({...p,amenities:e.target.value}))} placeholder="مسبح خاص، واي فاي، مطبخ مجهز، موقف سيارات"/>
+            </div>
+            <div style={{gridColumn:"span 2"}}>
               <label className="lbl">صورة الشاليه</label>
               <label style={{display:"block",border:"2px dashed rgba(197,172,136,.5)",borderRadius:10,padding:14,textAlign:"center",cursor:"pointer",background:SL}}>
-                {cMdl.img?<div style={{position:"relative"}}><img src={cMdl.img} alt="preview" style={{width:"100%",height:140,objectFit:"cover",borderRadius:7}}/><button type="button" onClick={e=>{e.preventDefault();setCMdl(p=>({...p,img:null}));}} style={{position:"absolute",top:5,left:5,background:"rgba(139,58,58,.85)",color:"#fff",border:"none",borderRadius:5,padding:"3px 7px",cursor:"pointer",fontSize:11}}>حذف</button></div>:<div style={{color:T}}><div style={{fontSize:28,marginBottom:4}}>📷</div><div style={{fontWeight:600,fontSize:13}}>اضغط لرفع صورة</div></div>}
-                <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=ev=>setCMdl(p=>({...p,img:ev.target.result}));r.readAsDataURL(file);}}/>
+                {imgUploading?<div style={{color:T,padding:"30px 0"}}>⏳ جاري الرفع...</div>:cMdl.img?<div style={{position:"relative"}}><img src={cMdl.img} alt="preview" style={{width:"100%",height:140,objectFit:"cover",borderRadius:7}}/><button type="button" onClick={e=>{e.preventDefault();setCMdl(p=>({...p,img:null}));}} style={{position:"absolute",top:5,left:5,background:"rgba(139,58,58,.85)",color:"#fff",border:"none",borderRadius:5,padding:"3px 7px",cursor:"pointer",fontSize:11}}>حذف</button></div>:<div style={{color:T}}><div style={{fontSize:28,marginBottom:4}}>📷</div><div style={{fontWeight:600,fontSize:13}}>اضغط لرفع صورة</div></div>}
+                <input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
+                  const file=e.target.files?.[0]; if(!file) return;
+                  setImgUploading(true);
+                  const url = await uploadChaletImage(file);
+                  setImgUploading(false);
+                  if(url) setCMdl(p=>({...p,img:url}));
+                  else alert("فشل رفع الصورة، تأكد من وجود bucket باسم chalet-images في Supabase Storage");
+                }}/>
               </label>
+            </div>
+            <div style={{gridColumn:"span 2"}}>
+              <label className="lbl">معرض الصور (تظهر للزبون في رابط الشاليه)</label>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8,marginBottom:8}}>
+                {(()=>{
+                  let gal: string[] = [];
+                  try { gal = cMdl.gallery ? JSON.parse(cMdl.gallery as string) : []; } catch { gal = []; }
+                  return gal.map((g,i)=>(
+                    <div key={i} style={{position:"relative",height:70}}>
+                      <img src={g} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:7}}/>
+                      <button type="button" onClick={()=>{
+                        const next = gal.filter((_,gi)=>gi!==i);
+                        setCMdl(p=>({...p,gallery:JSON.stringify(next)}));
+                      }} style={{position:"absolute",top:2,left:2,background:"rgba(139,58,58,.85)",color:"#fff",border:"none",borderRadius:4,width:18,height:18,fontSize:11,cursor:"pointer",lineHeight:1}}>✕</button>
+                    </div>
+                  ));
+                })()}
+                <label style={{height:70,border:"2px dashed rgba(197,172,136,.5)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",background:SL,fontSize:imgUploading?12:22,color:T,textAlign:"center"}}>
+                  {imgUploading?"⏳":"+"}
+                  <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={async e=>{
+                    const files = Array.from(e.target.files||[]) as File[];
+                    if(!files.length) return;
+                    let gal: string[] = [];
+                    try { gal = cMdl.gallery ? JSON.parse(cMdl.gallery as string) : []; } catch { gal = []; }
+                    setImgUploading(true);
+                    for(const file of files){
+                      const url = await uploadChaletImage(file);
+                      if(url) gal = [...gal, url];
+                    }
+                    setImgUploading(false);
+                    setCMdl(p=>({...p,gallery:JSON.stringify(gal)}));
+                  }}/>
+                </label>
+              </div>
+            </div>
+            <div style={{gridColumn:"span 2",background:SL,borderRadius:10,padding:14,border:"1px solid rgba(197,172,136,.25)"}}>
+              <label className="lbl" style={{marginBottom:10}}>أنواع الحجز المسموحة للزبون</label>
+              <div style={{display:"flex",gap:18,marginBottom:cMdl.allow_hourly?14:0}}>
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:B,cursor:"pointer"}}>
+                  <input type="checkbox" checked={cMdl.allow_overnight!==false} onChange={e=>setCMdl(p=>({...p,allow_overnight:e.target.checked}))}/> مبيت (تاريخ وصول/مغادرة)
+                </label>
+                <label style={{display:"flex",alignItems:"center",gap:6,fontSize:13,color:B,cursor:"pointer"}}>
+                  <input type="checkbox" checked={!!cMdl.allow_hourly} onChange={e=>setCMdl(p=>({...p,allow_hourly:e.target.checked}))}/> بالساعة (فترات محددة)
+                </label>
+              </div>
+              {cMdl.allow_hourly && (()=>{
+                let slots: {name:string;from:string;to:string;price:string}[] = [];
+                try { slots = cMdl.hourly_slots ? JSON.parse(cMdl.hourly_slots as string) : []; } catch { slots = []; }
+                const update = (next:typeof slots) => setCMdl(p=>({...p,hourly_slots:JSON.stringify(next)}));
+                return (
+                  <div>
+                    {slots.map((s,i)=>(
+                      <div key={i} style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr auto",gap:6,marginBottom:6,alignItems:"center"}}>
+                        <input className="inp" placeholder="اسم الفترة (صباحي)" value={s.name} onChange={e=>{const n=[...slots];n[i]={...n[i],name:e.target.value};update(n);}} style={{padding:"6px 8px",fontSize:12}}/>
+                        <input className="inp" type="time" value={s.from} onChange={e=>{const n=[...slots];n[i]={...n[i],from:e.target.value};update(n);}} style={{padding:"6px 8px",fontSize:12}}/>
+                        <input className="inp" type="time" value={s.to} onChange={e=>{const n=[...slots];n[i]={...n[i],to:e.target.value};update(n);}} style={{padding:"6px 8px",fontSize:12}}/>
+                        <input className="inp" type="number" placeholder="السعر" value={s.price} onChange={e=>{const n=[...slots];n[i]={...n[i],price:e.target.value};update(n);}} style={{padding:"6px 8px",fontSize:12}}/>
+                        <button type="button" onClick={()=>update(slots.filter((_,si)=>si!==i))} style={{background:"rgba(139,58,58,.15)",color:"#8B3A3A",border:"none",borderRadius:6,width:28,height:28,cursor:"pointer"}}>✕</button>
+                      </div>
+                    ))}
+                    <button type="button" onClick={()=>update([...slots,{name:"",from:"",to:"",price:""}])}
+                      style={{background:"transparent",border:"1.5px dashed rgba(197,172,136,.5)",borderRadius:8,padding:"6px 14px",fontSize:12,color:T,cursor:"pointer",fontFamily:"'Tajawal',sans-serif"}}>+ إضافة فترة</button>
+                  </div>
+                );
+              })()}
             </div>
           </div>
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>

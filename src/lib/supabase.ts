@@ -13,5 +13,5 @@ const safeFetch: typeof fetch = (input, init) => {
 export const supabase = createClient(SUPA_URL, SUPA_KEY, {
   global: { fetch: safeFetch },
   realtime: { params: { eventsPerSecond: 10 } },
-  auth: { persistSession: false },
+  auth: { persistSession: true, autoRefreshToken: true },
 });

@@ -1,5 +1,17 @@
+import { supabase } from "./supabase";
+
 const SUPA_URL = process.env.EXPO_PUBLIC_SUPA_URL!;
 const SUPA_KEY = process.env.EXPO_PUBLIC_SUPA_KEY!;
+
+// owner_id of the signed-in tenant, set after login/session restore so every
+// insert can be tagged automatically — required for the RLS WITH CHECK clauses
+// added in supabase/migrations/0001_multi_tenant.sql to pass.
+let currentOwnerId: string | null = null;
+export function setCurrentOwnerId(id: string | null) {
+  currentOwnerId = id;
+}
+
+const UNSCOPED_TABLES = new Set(["profiles", "subscriptions"]);
 
 export async function db(
   table: string,
@@ -15,9 +27,16 @@ export async function db(
     url += `?id=eq.${id}`;
   }
 
+  if (method === "POST" && body && !("owner_id" in body) && currentOwnerId && !UNSCOPED_TABLES.has(table)) {
+    body = { ...body, owner_id: currentOwnerId };
+  }
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token || SUPA_KEY;
+
   const headers: Record<string, string> = {
     apikey: SUPA_KEY,
-    Authorization: `Bearer ${SUPA_KEY}`,
+    Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
     "Cache-Control": "no-cache",
   };

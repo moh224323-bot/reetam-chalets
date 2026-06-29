@@ -1,7 +1,17 @@
+import { useState, useEffect } from "react";
 import { AppUser } from "../lib/types";
 import { B, T, SL } from "../lib/colors";
 import { db } from "../lib/db";
 import { Bdg, SectionTitle, DataTable } from "./ui";
+
+const SUPA_URL = process.env.EXPO_PUBLIC_SUPA_URL!;
+const SUPA_KEY = process.env.EXPO_PUBLIC_SUPA_KEY!;
+
+interface BankSettings {
+  bank_name?: string;
+  bank_account_name?: string;
+  bank_iban?: string;
+}
 
 interface Props {
   users:    AppUser[];
@@ -17,9 +27,58 @@ const ROLE_INFO = {
 };
 
 export default function SettingsTab({ users, onAdd, onEdit, onReload }: Props) {
+  const [bank, setBank] = useState<BankSettings>({});
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    fetch(`${SUPA_URL}/rest/v1/business_settings?id=eq.1&select=*`, {
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
+    }).then(r => r.json()).then(rows => { if (rows?.[0]) setBank(rows[0]); }).catch(()=>{});
+  }, []);
+
+  async function saveBank() {
+    setSaving(true);
+    await fetch(`${SUPA_URL}/rest/v1/business_settings?id=eq.1`, {
+      method: "PATCH",
+      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify(bank),
+    });
+    setSaving(false);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
   return (
     <div>
       <SectionTitle title="⚙️ الإعدادات"/>
+
+      {/* الحساب البنكي للتحويل */}
+      <div className="card" style={{ padding:24, marginBottom:20 }}>
+        <div style={{ fontWeight:800, color:B, fontSize:15, marginBottom:6 }}>🏦 الحساب البنكي</div>
+        <div style={{ fontSize:12, color:T, marginBottom:18 }}>تظهر هذي البيانات للزبون عند اختياره الدفع بالتحويل البنكي في صفحة حجز الشاليه</div>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:14, marginBottom:20 }}>
+          <div>
+            <label style={{ fontSize:13, fontWeight:600, color:B, display:"block", marginBottom:6 }}>اسم البنك</label>
+            <input value={bank.bank_name||""} onChange={e=>setBank(p=>({...p,bank_name:e.target.value}))} placeholder="مثال: البنك الأهلي"
+              style={{ width:"100%", border:"1.5px solid rgba(197,172,136,.4)", borderRadius:10, padding:"10px 14px", fontSize:14, fontFamily:"'Tajawal',sans-serif", color:B, background:"#FAFAF8", boxSizing:"border-box" }}/>
+          </div>
+          <div>
+            <label style={{ fontSize:13, fontWeight:600, color:B, display:"block", marginBottom:6 }}>اسم صاحب الحساب</label>
+            <input value={bank.bank_account_name||""} onChange={e=>setBank(p=>({...p,bank_account_name:e.target.value}))} placeholder="مثال: محمد العتيبي"
+              style={{ width:"100%", border:"1.5px solid rgba(197,172,136,.4)", borderRadius:10, padding:"10px 14px", fontSize:14, fontFamily:"'Tajawal',sans-serif", color:B, background:"#FAFAF8", boxSizing:"border-box" }}/>
+          </div>
+          <div>
+            <label style={{ fontSize:13, fontWeight:600, color:B, display:"block", marginBottom:6 }}>رقم الآيبان (IBAN)</label>
+            <input value={bank.bank_iban||""} onChange={e=>setBank(p=>({...p,bank_iban:e.target.value}))} placeholder="SA00 0000 0000 0000 0000 0000" dir="ltr"
+              style={{ width:"100%", border:"1.5px solid rgba(197,172,136,.4)", borderRadius:10, padding:"10px 14px", fontSize:14, fontFamily:"monospace", color:B, background:"#FAFAF8", boxSizing:"border-box" }}/>
+          </div>
+        </div>
+        <button onClick={saveBank} disabled={saving}
+          style={{ background: saved?"#52B788":"linear-gradient(135deg,#413523,#2A2218)", color:"#C5AC88", border:"none", borderRadius:12, padding:"12px 28px", fontFamily:"'Tajawal',sans-serif", fontWeight:700, fontSize:15, cursor:saving?"not-allowed":"pointer" }}>
+          {saving ? "جاري الحفظ..." : saved ? "✓ تم الحفظ!" : "حفظ بيانات الحساب"}
+        </button>
+      </div>
 
       {/* شرح الصلاحيات */}
       <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))", gap:12, marginBottom:20 }}>

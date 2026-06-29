@@ -164,8 +164,29 @@ const ChaletCard = memo(function ChaletCard({ c, rooms, onEdit, onDelete, onGoal
         }} style={{
           width:"100%", background:"#4C1D95", color:"#fff", border:"none",
           borderRadius:10, padding:"9px", fontSize:13, fontWeight:700,
-          cursor:"pointer", fontFamily:"'Tajawal',sans-serif",
+          cursor:"pointer", fontFamily:"'Tajawal',sans-serif", marginBottom:7,
         }}>📱 باركودات الغرف</button>
+
+        <div style={{ display:"flex", gap:7 }}>
+          <button onClick={async () => {
+            const link = `${typeof window!=="undefined"?window.location.origin:""}?guest=1&m=chalet&ch=${encodeURIComponent(c.name)}`;
+            await navigator.clipboard.writeText(link);
+            alert("تم نسخ رابط الشاليه ✅\n" + link);
+          }} style={{
+            flex:1, background:"rgba(197,172,136,.15)", color:B, border:"1px solid rgba(197,172,136,.3)",
+            borderRadius:10, padding:"9px", fontSize:13, fontWeight:700,
+            cursor:"pointer", fontFamily:"'Tajawal',sans-serif",
+          }}>🔗 رابط الزبون</button>
+          <button onClick={() => {
+            const link = `${typeof window!=="undefined"?window.location.origin:""}?guest=1&m=chalet&ch=${encodeURIComponent(c.name)}`;
+            const msg = `شاليه ${c.name} 🏡%0aشوف الصور والمميزات واحجز مباشرة:%0a${encodeURIComponent(link)}`;
+            window.open(`https://wa.me/?text=${msg}`,"_blank");
+          }} style={{
+            flex:1, background:"#25D366", color:"#fff", border:"none",
+            borderRadius:10, padding:"9px", fontSize:13, fontWeight:700,
+            cursor:"pointer", fontFamily:"'Tajawal',sans-serif",
+          }}>📲 مشاركة</button>
+        </div>
       </div>
     </div>
   );
@@ -176,10 +197,10 @@ export default function ChaletsTab({ cStats, rooms, loading, onAdd, onEdit, onDe
     return (
       <div className="cg">
         {[1,2,3].map(i => (
-          <div key={i} className="cc" style={{ opacity:.4 }}>
-            <div style={{ height:170, background:`linear-gradient(135deg,${B},${BD})`, borderRadius:"12px 12px 0 0" }}/>
+          <div key={i} className="cc">
+            <div className="skeleton" style={{ height:170, borderRadius:"12px 12px 0 0" }}/>
             <div style={{ padding:16 }}>
-              {[1,2,3].map(j => <div key={j} style={{ height:14, background:"rgba(197,172,136,.2)", borderRadius:6, marginBottom:10 }}/>)}
+              {[80,60,40].map((w,j) => <div key={j} className="skeleton" style={{ height:13, width:w+"%", marginBottom:10 }}/>)}
             </div>
           </div>
         ))}
