@@ -1,11 +1,22 @@
 import { useState, useEffect } from "react";
 import { db } from "../lib/db";
-import { B, S, T, W } from "../lib/colors";
 
 interface Props {
   bookingId: string | null;
   mode: "checkin" | "review";
 }
+
+// ── هوية بصرية جديدة مستوحاة من دليل عمارة واحات الأحساء (أبيض جيري + خشب + طيني)
+// مطبّقة محلياً على هذه الصفحة فقط، بدون المساس بألوان لوحة تحكم الموظفين
+const NIGHT      = "#4A3520"; // بني الخشب الداكن
+const DUSK        = "#6B4A30";
+const SAND         = "#EFE3C8"; // بيج
+const PAPER         = "#FBF7EC"; // أبيض جيري
+const INK             = "#2B2119";
+const INK_SOFT         = "#6B5D50";
+const EMBER               = "#C1652E"; // طيني (لون تمييز، الأزرار الأساسية)
+const EMBER_DEEP           = "#9C4E22";
+const GOLD                   = "#B08D2B";
 
 const TERMS = `شروط وأحكام الإقامة — مجموعة ريتام
 
@@ -17,7 +28,7 @@ const TERMS = `شروط وأحكام الإقامة — مجموعة ريتام
 ٦. يُمنع إدخال حيوانات أليفة.
 ٧. في حالة الإلغاء قبل ٤٨ ساعة يُسترد المبلغ.`;
 
-const GS = `@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Tajawal',sans-serif;background:#FAF8F5;min-height:100vh}`;
+const GS = `@import url('https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@700&family=Tajawal:wght@400;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Tajawal',sans-serif;background:${SAND};min-height:100vh}`;
 
 export default function GuestPage({ bookingId, mode }: Props) {
   const [step,      setStep]      = useState("loading");
@@ -27,8 +38,14 @@ export default function GuestPage({ bookingId, mode }: Props) {
   const [comment,   setComment]   = useState("");
   const [submitted, setSubmitted] = useState(false);
 
-  const wrap: React.CSSProperties = { fontFamily:"'Tajawal',sans-serif", minHeight:"100vh", background:"#FAF8F5", display:"flex", alignItems:"center", justifyContent:"center", padding:16 };
-  const card: React.CSSProperties = { background:W, borderRadius:20, padding:24, maxWidth:480, width:"100%", boxShadow:"0 4px 24px rgba(65,53,35,.1)" };
+  const wrap: React.CSSProperties = { fontFamily:"'Tajawal',sans-serif", minHeight:"100vh", background:SAND, display:"flex", alignItems:"center", justifyContent:"center", padding:16 };
+  const card: React.CSSProperties = { background:PAPER, borderRadius:20, padding:24, maxWidth:480, width:"100%", boxShadow:"0 4px 24px rgba(43,33,25,.12)", border:`1px solid rgba(43,33,25,.08)` };
+  const heading: React.CSSProperties = { fontFamily:"'Aref Ruqaa', serif" };
+  // شارة أيقونة بأعلى مقوّس، محاكاة للنوافذ والمداخل المقوسة بالطراز الأحسائي
+  const iconBadge = (bg: string): React.CSSProperties => ({
+    width:72, height:82, margin:"0 auto 14px", borderRadius:"44px 44px 10px 10px",
+    background:bg, display:"flex", alignItems:"center", justifyContent:"center", fontSize:32,
+  });
 
   useEffect(() => {
     if (!bookingId) { setStep("error"); return; }
@@ -63,10 +80,10 @@ export default function GuestPage({ bookingId, mode }: Props) {
   }
 
   if (step === "loading" || (!booking && step !== "error")) {
-    return <div dir="rtl" style={wrap}><style>{GS}</style><div style={{textAlign:"center",color:T}}><div style={{fontSize:40}}>⌛</div><div style={{marginTop:12,fontWeight:600}}>جاري التحميل...</div></div></div>;
+    return <div dir="rtl" style={wrap}><style>{GS}</style><div style={{textAlign:"center",color:INK_SOFT}}><div style={{fontSize:40}}>⌛</div><div style={{marginTop:12,fontWeight:600}}>جاري التحميل...</div></div></div>;
   }
   if (step === "error") {
-    return <div dir="rtl" style={wrap}><style>{GS}</style><div style={{...card,textAlign:"center"}}><div style={{fontSize:48}}>❌</div><div style={{fontSize:18,fontWeight:800,color:B,marginTop:12}}>رابط غير صحيح</div></div></div>;
+    return <div dir="rtl" style={wrap}><style>{GS}</style><div style={{...card,textAlign:"center"}}><div style={{fontSize:48}}>❌</div><div style={{...heading,fontSize:18,fontWeight:800,color:INK,marginTop:12}}>رابط غير صحيح</div></div></div>;
   }
 
   return (
@@ -76,15 +93,15 @@ export default function GuestPage({ bookingId, mode }: Props) {
       {step === "terms" && (
         <div style={card}>
           <div style={{textAlign:"center",marginBottom:20}}>
-            <div style={{fontSize:40,marginBottom:8}}>📋</div>
-            <div style={{fontSize:20,fontWeight:800,color:B}}>أهلاً {booking.guest}!</div>
-            <div style={{fontSize:13,color:T,marginTop:4}}>{booking.chalet}</div>
+            <div style={iconBadge(SAND)}>📋</div>
+            <div style={{...heading,fontSize:21,fontWeight:800,color:INK}}>أهلاً {booking.guest}!</div>
+            <div style={{fontSize:13,color:INK_SOFT,marginTop:4}}>{booking.chalet}</div>
           </div>
-          <div style={{background:"#F5EFE6",borderRadius:12,padding:16,marginBottom:20,maxHeight:280,overflowY:"auto"}}>
-            <div style={{fontWeight:800,color:B,marginBottom:10,fontSize:14}}>📄 شروط وأحكام الإقامة</div>
-            <div style={{fontSize:13,color:B,lineHeight:2,whiteSpace:"pre-line"}}>{TERMS}</div>
+          <div style={{background:SAND,borderRadius:12,padding:16,marginBottom:20,maxHeight:280,overflowY:"auto"}}>
+            <div style={{fontWeight:800,color:INK,marginBottom:10,fontSize:14}}>📄 شروط وأحكام الإقامة</div>
+            <div style={{fontSize:13,color:INK,lineHeight:2,whiteSpace:"pre-line"}}>{TERMS}</div>
           </div>
-          <button onClick={acceptTerms} style={{width:"100%",border:"none",cursor:"pointer",borderRadius:12,fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,background:`linear-gradient(135deg,${B},#2A2218)`,color:S}}>
+          <button onClick={acceptTerms} style={{width:"100%",border:"none",cursor:"pointer",borderRadius:12,fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,background:`linear-gradient(135deg,${EMBER},${EMBER_DEEP})`,color:PAPER}}>
             ✅ أوافق وأسجّل دخولي
           </button>
         </div>
@@ -92,10 +109,10 @@ export default function GuestPage({ bookingId, mode }: Props) {
 
       {step === "confirmed" && (
         <div style={{...card,textAlign:"center"}}>
-          <div style={{fontSize:60,marginBottom:12}}>✅</div>
-          <div style={{fontSize:22,fontWeight:800,color:B,marginBottom:8}}>تم تسجيل دخولك!</div>
-          <div style={{fontSize:14,color:T,marginBottom:20}}>أهلاً وسهلاً في {booking.chalet}</div>
-          <div style={{background:"rgba(87,109,111,.08)",borderRadius:12,padding:14,fontSize:13,color:T}}>
+          <div style={iconBadge(SAND)}>✅</div>
+          <div style={{...heading,fontSize:23,fontWeight:800,color:INK,marginBottom:8}}>تم تسجيل دخولك!</div>
+          <div style={{fontSize:14,color:INK_SOFT,marginBottom:20}}>أهلاً وسهلاً في {booking.chalet}</div>
+          <div style={{background:"rgba(193,101,46,.08)",borderRadius:12,padding:14,fontSize:13,color:INK_SOFT}}>
             🌡️ المكيف متاح · 📶 الواي فاي · 📞 للطوارئ اتصل بالإدارة
           </div>
         </div>
@@ -104,23 +121,23 @@ export default function GuestPage({ bookingId, mode }: Props) {
       {step === "review" && (
         <div style={card}>
           <div style={{textAlign:"center",marginBottom:20}}>
-            <div style={{fontSize:40,marginBottom:8}}>⭐</div>
-            <div style={{fontSize:20,fontWeight:800,color:B}}>كيف كانت إقامتك؟</div>
-            <div style={{fontSize:13,color:T,marginTop:4}}>{booking.chalet} · {booking.guest}</div>
+            <div style={iconBadge(SAND)}>⭐</div>
+            <div style={{...heading,fontSize:21,fontWeight:800,color:INK}}>كيف كانت إقامتك؟</div>
+            <div style={{fontSize:13,color:INK_SOFT,marginTop:4}}>{booking.chalet} · {booking.guest}</div>
           </div>
           <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:16}}>
             {[1,2,3,4,5].map(s => (
               <span key={s} onMouseEnter={()=>setHover(s)} onMouseLeave={()=>setHover(0)} onClick={()=>setRating(s)}
-                style={{fontSize:44,cursor:"pointer",color:(hover||rating)>=s?"#F59E0B":"#D1D5DB"}}>
+                style={{fontSize:44,cursor:"pointer",color:(hover||rating)>=s?GOLD:"#D1D5DB"}}>
                 {(hover||rating)>=s?"★":"☆"}
               </span>
             ))}
           </div>
-          {rating > 0 && <div style={{textAlign:"center",marginBottom:12,fontSize:14,fontWeight:600,color:T}}>{["","ضعيف 😞","مقبول 😐","جيد 😊","ممتاز 😄","رائع! 🌟"][rating]}</div>}
+          {rating > 0 && <div style={{textAlign:"center",marginBottom:12,fontSize:14,fontWeight:600,color:INK_SOFT}}>{["","ضعيف 😞","مقبول 😐","جيد 😊","ممتاز 😄","رائع! 🌟"][rating]}</div>}
           <textarea placeholder="شاركنا تجربتك... (اختياري)" value={comment} onChange={e=>setComment(e.target.value)} rows={3}
-            style={{width:"100%",padding:"12px 14px",border:"1.5px solid rgba(197,172,136,.4)",borderRadius:12,fontSize:14,fontFamily:"'Tajawal',sans-serif",color:B,background:"#FAF8F5",outline:"none",resize:"none",marginBottom:16}}/>
+            style={{width:"100%",padding:"12px 14px",border:`1.5px solid rgba(107,74,48,.35)`,borderRadius:12,fontSize:14,fontFamily:"'Tajawal',sans-serif",color:INK,background:SAND,outline:"none",resize:"none",marginBottom:16}}/>
           <button onClick={submitReview} disabled={!rating}
-            style={{width:"100%",border:"none",cursor:rating?"pointer":"not-allowed",borderRadius:12,fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,background:rating?`linear-gradient(135deg,${B},#2A2218)`:"#D1D5DB",color:rating?S:"#fff"}}>
+            style={{width:"100%",border:"none",cursor:rating?"pointer":"not-allowed",borderRadius:12,fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,background:rating?`linear-gradient(135deg,${EMBER},${EMBER_DEEP})`:"#D1D5DB",color:rating?PAPER:"#fff"}}>
             إرسال التقييم ✈️
           </button>
         </div>
@@ -128,10 +145,10 @@ export default function GuestPage({ bookingId, mode }: Props) {
 
       {step === "done" && (
         <div style={{...card,textAlign:"center"}}>
-          <div style={{fontSize:60,marginBottom:12}}>🌟</div>
-          <div style={{fontSize:22,fontWeight:800,color:B,marginBottom:8}}>شكراً لك!</div>
-          <div style={{fontSize:14,color:T}}>{submitted?"تم إرسال تقييمك 😊":"لقد قيّمت هذا الحجز مسبقاً"}</div>
-          <div style={{marginTop:16,fontSize:13,color:T}}>مجموعة ريتام للشاليهات 🏖️</div>
+          <div style={iconBadge(SAND)}>🌟</div>
+          <div style={{...heading,fontSize:23,fontWeight:800,color:INK,marginBottom:8}}>شكراً لك!</div>
+          <div style={{fontSize:14,color:INK_SOFT}}>{submitted?"تم إرسال تقييمك 😊":"لقد قيّمت هذا الحجز مسبقاً"}</div>
+          <div style={{marginTop:16,fontSize:13,color:INK_SOFT}}>مجموعة ريتام للشاليهات 🏖️</div>
         </div>
       )}
     </div>
