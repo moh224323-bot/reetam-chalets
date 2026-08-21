@@ -3554,69 +3554,57 @@ ${poolLine}
                 </div>
               </div>
               <div className="card" style={{overflow:"hidden"}}>
-                <table style={{width:"100%",borderCollapse:"collapse"}}>
-                  <thead>
-                    <tr style={{background:SL}}>
-                      {["الضيف","الشاليه","الفترة","الليالي","السعر","الحالة","إجراءات"].map(h=>(
-                        <th key={h} style={{padding:"12px 14px",textAlign:"right",fontSize:12,fontWeight:700,color:B,borderBottom:"2px solid rgba(197,172,136,.2)"}}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {bookings.filter(b=>(fch==="الكل"||b.chalet===fch)&&(isAdmin||isStaff||(isChaletMgr&&b.chalet===currentUser.chalet))).map((b,idx)=>{
-                      const sc=STATUS[b.status]||{bg:"#eee",color:"#333",label:b.status};
-                      const nights=fn(b.date_from,b.date_to);
-                      return (
-                        <tr key={b.id} style={{borderBottom:"1px solid rgba(197,172,136,.1)",transition:"background .15s",cursor:"pointer"}}
-                          onClick={()=>setBkDetail(b)}
-                          onMouseEnter={e=>e.currentTarget.style.background="rgba(197,172,136,.05)"}
-                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                          <td style={{padding:"12px 14px"}}>
-                            <div style={{display:"flex",alignItems:"center",gap:8}}>
-                              <div style={{width:4,height:36,borderRadius:4,background:sc.color,flexShrink:0}}/>
-                              <div>
-                                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                  <span style={{fontWeight:800,color:B,fontSize:13}}>{b.guest}</span>
-                                  {b.pre_arrival_sent&&<span style={{fontSize:9,background:"#DCFCE7",color:"#166534",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ رسالة</span>}
-                                  {isGuestBlocked(b.phone)&&<span style={{fontSize:9,background:"#F5E6E6",color:"#8B3A3A",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>🚫 محظور</span>}
-                                </div>
-                                <div style={{fontSize:11,color:T,marginTop:1,direction:"ltr",textAlign:"right"}}>{b.phone||"-"}</div>
+                <Tbl heads={["الضيف","الشاليه","الفترة","الليالي","السعر","الحالة","إجراءات"]}
+                  rows={bookings.filter(b=>(fch==="الكل"||b.chalet===fch)&&(isAdmin||isStaff||(isChaletMgr&&b.chalet===currentUser.chalet))).map((b,idx)=>{
+                    const sc=STATUS[b.status]||{bg:"#eee",color:"#333",label:b.status};
+                    const nights=fn(b.date_from,b.date_to);
+                    return (
+                      <tr key={b.id} style={{cursor:"pointer"}} onClick={()=>setBkDetail(b)}>
+                        <td data-label="الضيف">
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <div style={{width:4,height:36,borderRadius:4,background:sc.color,flexShrink:0}}/>
+                            <div>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                <span style={{fontWeight:800,color:B,fontSize:13}}>{b.guest}</span>
+                                {b.pre_arrival_sent&&<span style={{fontSize:9,background:"#DCFCE7",color:"#166534",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ رسالة</span>}
+                                {isGuestBlocked(b.phone)&&<span style={{fontSize:9,background:"#F5E6E6",color:"#8B3A3A",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>🚫 محظور</span>}
                               </div>
+                              <div style={{fontSize:11,color:T,marginTop:1,direction:"ltr",textAlign:"right"}}>{b.phone||"-"}</div>
                             </div>
-                          </td>
-                          <td style={{padding:"12px 14px"}}>
-                            <div style={{fontWeight:600,color:B,fontSize:13}}>{b.chalet}</div>
-                          </td>
-                          <td style={{padding:"12px 14px"}}>
-                            <div style={{fontSize:12,color:B,fontWeight:600}}>{fd(b.date_from)}</div>
-                            <div style={{fontSize:11,color:T,marginTop:1}}>{"← "+fd(b.date_to)}</div>
-                          </td>
-                          <td style={{padding:"12px 14px",textAlign:"center"}}>
-                            <div style={{background:SL,borderRadius:8,padding:"4px 10px",display:"inline-block",fontWeight:800,color:B,fontSize:13}}>{nights}</div>
-                          </td>
-                          <td style={{padding:"12px 14px"}}>
-                            <div style={{fontWeight:900,color:T,fontSize:14}}>{Number(b.price).toLocaleString()}</div>
-                            <div style={{fontSize:10,color:SI}}>ريال</div>
-                          </td>
-                          <td style={{padding:"12px 14px"}}>
-                            <span style={{background:sc.bg,color:sc.color,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{sc.label}</span>
-                          </td>
-                          <td style={{padding:"12px 14px"}}>
-                            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                              <button className="btn be bsm" onClick={e=>{e.stopPropagation();setBMdl({...b})}}>تعديل</button>
-                              <button className="btn bd bsm" onClick={async e=>{e.stopPropagation();if(window.confirm("حذف الحجز؟")){await db("bookings","DELETE",null,b.id);await loadAll();}}}>حذف</button>
-                              <button onClick={e=>{e.stopPropagation();setPreArrMdl({booking:b});}} style={{background:"#6366F1",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>📋 قبل الوصول</button>
-                              <button onClick={e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=checkin`;const msg=`مرحباً ${b.guest} 👋%0aأهلاً بك في ${b.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}} style={{background:"#25D366",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>واتساب</button>
-                              <button onClick={e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=review`;const msg=`${b.guest} 😊%0aرابط التقييم:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}} style={{background:"#F59E0B",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>تقييم</button>
-                              {isCheckedOut(b)&&<button onClick={e=>{e.stopPropagation();setGrMdl({booking:b,rating:0,note:""});}} style={{background:"#B08D2B",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>⭐ تقييم الضيف</button>}
-                              <button onClick={e=>{e.stopPropagation();if(isGuestBlocked(b.phone))unblockGuest(b.phone);else setBlockMdl({booking:b,reason:""});}} style={{background:isGuestBlocked(b.phone)?"rgba(139,58,58,.1)":"#8B3A3A",color:isGuestBlocked(b.phone)?"#8B3A3A":"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>{isGuestBlocked(b.phone)?"✅ إلغاء الحظر":"🚫 حظر"}</button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          </div>
+                        </td>
+                        <td data-label="الشاليه">
+                          <div style={{fontWeight:600,color:B,fontSize:13}}>{b.chalet}</div>
+                        </td>
+                        <td data-label="الفترة">
+                          <div style={{fontSize:12,color:B,fontWeight:600}}>{fd(b.date_from)}</div>
+                          <div style={{fontSize:11,color:T,marginTop:1}}>{"← "+fd(b.date_to)}</div>
+                        </td>
+                        <td data-label="الليالي" style={{textAlign:"center"}}>
+                          <div style={{background:SL,borderRadius:8,padding:"4px 10px",display:"inline-block",fontWeight:800,color:B,fontSize:13}}>{nights}</div>
+                        </td>
+                        <td data-label="السعر">
+                          <div style={{fontWeight:900,color:T,fontSize:14}}>{Number(b.price).toLocaleString()}</div>
+                          <div style={{fontSize:10,color:SI}}>ريال</div>
+                        </td>
+                        <td data-label="الحالة">
+                          <span style={{background:sc.bg,color:sc.color,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{sc.label}</span>
+                        </td>
+                        <td data-label="">
+                          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                            <button className="btn be bsm" onClick={e=>{e.stopPropagation();setBMdl({...b})}}>تعديل</button>
+                            <button className="btn bd bsm" onClick={async e=>{e.stopPropagation();if(window.confirm("حذف الحجز؟")){await db("bookings","DELETE",null,b.id);await loadAll();}}}>حذف</button>
+                            <button onClick={e=>{e.stopPropagation();setPreArrMdl({booking:b});}} style={{background:"#6366F1",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>📋 قبل الوصول</button>
+                            <button onClick={e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=checkin`;const msg=`مرحباً ${b.guest} 👋%0aأهلاً بك في ${b.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}} style={{background:"#25D366",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>واتساب</button>
+                            <button onClick={e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=review`;const msg=`${b.guest} 😊%0aرابط التقييم:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}} style={{background:"#F59E0B",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>تقييم</button>
+                            {isCheckedOut(b)&&<button onClick={e=>{e.stopPropagation();setGrMdl({booking:b,rating:0,note:""});}} style={{background:"#B08D2B",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>⭐ تقييم الضيف</button>}
+                            <button onClick={e=>{e.stopPropagation();if(isGuestBlocked(b.phone))unblockGuest(b.phone);else setBlockMdl({booking:b,reason:""});}} style={{background:isGuestBlocked(b.phone)?"rgba(139,58,58,.1)":"#8B3A3A",color:isGuestBlocked(b.phone)?"#8B3A3A":"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>{isGuestBlocked(b.phone)?"✅ إلغاء الحظر":"🚫 حظر"}</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                />
               </div>
             </div>
           )}
