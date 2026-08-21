@@ -160,6 +160,25 @@ export interface Review {
   created_at: string;
 }
 
+export interface GuestRating {
+  id: number;
+  booking_id: number;
+  chalet: string;
+  guest: string;
+  phone?: string;
+  rating: number;
+  note?: string;
+  created_at: string;
+}
+
+export interface BlockedGuest {
+  id: number;
+  phone: string;
+  guest: string;
+  reason?: string;
+  created_at: string;
+}
+
 export interface LoyaltyCard {
   id: number;
   phone: string;
