@@ -2511,7 +2511,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   }
 
   const names    = chalets.map(c=>c.name);
-  const totRev   = useMemo(()=>{const br=bookings.filter(b=>b.status==="completed").reduce((s,b)=>s+Number(b.price),0);const pr=chalets.reduce((s,c)=>s+Number(c.prev_revenue||0),0);return br+pr;},[bookings,chalets]);
+  const totRev   = useMemo(()=>{const br=bookings.filter(b=>b.status==="completed"||b.status==="confirmed").reduce((s,b)=>s+Number(b.price),0);const pr=chalets.reduce((s,c)=>s+Number(c.prev_revenue||0),0);return br+pr;},[bookings,chalets]);
   const walletBal  = useMemo(()=>wallet.reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[wallet]);
   const cleaningBal= useMemo(()=>cleaning.reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[cleaning]);
   const actB     = bookings.filter(b=>b.status==="confirmed"||b.status==="pending").length;
@@ -2528,9 +2528,9 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
     return chalets.map(c=>{
       const cb=bMap[c.name]||[];
       const cm=mMap[c.name]||[];
-      const completed=cb.filter(b=>b.status==="completed");
-      const rev=completed.reduce((s,b)=>s+Number(b.price),0);
-      const monthRev=completed.filter(b=>b.date_from&&new Date(b.date_from).getFullYear()===y&&new Date(b.date_from).getMonth()===mo).reduce((s,b)=>s+Number(b.price),0);
+      const earned=cb.filter(b=>b.status==="completed"||b.status==="confirmed");
+      const rev=earned.reduce((s,b)=>s+Number(b.price),0);
+      const monthRev=earned.filter(b=>b.date_from&&new Date(b.date_from).getFullYear()===y&&new Date(b.date_from).getMonth()===mo).reduce((s,b)=>s+Number(b.price),0);
       const monthExp=cm.filter(m=>Number(m.cost)>0&&m.maint_date&&new Date(m.maint_date).getFullYear()===y&&new Date(m.maint_date).getMonth()===mo).reduce((s,m)=>s+Number(m.cost),0);
       return {
         ...c,
