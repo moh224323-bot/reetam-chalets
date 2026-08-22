@@ -334,7 +334,7 @@ export default function BookingCalendar({ bookings, names }: Props) {
         }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
             <span style={{ fontWeight:800, color:"var(--text)", fontSize:14 }}>
-              {selDay.toLocaleDateString("ar-SA", { weekday:"long", day:"numeric", month:"long" })}
+              {selDay.toLocaleDateString("ar-SA-u-ca-gregory", { weekday:"long", day:"numeric", month:"long" })}
             </span>
             <button onClick={() => setSelDay(null)} style={{
               background:"none", border:"none", cursor:"pointer", fontSize:18, color:"var(--text3)",
