@@ -130,6 +130,8 @@ const MS = {
 const fd = (d?: string | null): string => d ? new Date(d).toLocaleDateString("ar-SA") : "-";
 const fn = (f?: string, t?: string): number => (!f||!t) ? 0 : Math.max(0, Math.round((new Date(t).getTime()-new Date(f).getTime())/86400000));
 const td = (): string => new Date().toISOString().slice(0,10);
+const monthStart = (): string => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`; };
+const monthEnd = (): string => { const d=new Date(); const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(last).padStart(2,"0")}`; };
 
 function useIsMobile() {
   const [mobile, setMobile] = useState(
@@ -2417,6 +2419,9 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [loading,setLoading]   = useState(true);
   const [refreshing,setRefreshing] = useState(false);
   const [fch,setFch]           = useState("الكل");
+  const [bkStatus,setBkStatus] = useState("الكل");
+  const [bkFrom,setBkFrom]     = useState(monthStart());
+  const [bkTo,setBkTo]         = useState(monthEnd());
   const [selChalet,setSelChalet] = useState<Chalet | null>(null);
 
   const [bMdl,setBMdl]       = useState<Partial<Booking> | null>(null);
@@ -3564,19 +3569,46 @@ ${poolLine}
             <div>
               <BookingCalendar bookings={isChaletMgr?bookings.filter(b=>b.chalet===currentUser.chalet):bookings} names={isChaletMgr?[currentUser.chalet]:names}/>
               {(isAdmin||isStaff)&&<BlockedGuestsBanner guests={blockedGuests} onUnblock={unblockGuest}/>}
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
                 <TH title="جدول الحجوزات"/>
-                <div style={{display:"flex",gap:8}}>
+                <button className="btn bp" onClick={()=>setBMdl({...eB})}>+ إضافة حجز</button>
+              </div>
+              <div className="card" style={{padding:"14px 16px",marginBottom:16,display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+                <div>
+                  <label className="lbl">الشاليه</label>
                   <select className="inp" style={{width:"auto"}} value={fch} onChange={e=>setFch(e.target.value)}>
-                    <option value="الكل">الكل</option>
+                    <option value="الكل">كل الشاليهات</option>
                     {names.map(c=><option key={c} value={c}>{c}</option>)}
                   </select>
-                  <button className="btn bp" onClick={()=>setBMdl({...eB})}>+ إضافة حجز</button>
                 </div>
+                <div>
+                  <label className="lbl">الحالة</label>
+                  <select className="inp" style={{width:"auto"}} value={bkStatus} onChange={e=>setBkStatus(e.target.value)}>
+                    <option value="الكل">كل الحالات</option>
+                    {Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="lbl">من تاريخ</label>
+                  <input className="inp" type="date" style={{width:"auto"}} value={bkFrom} onChange={e=>setBkFrom(e.target.value)}/>
+                </div>
+                <div>
+                  <label className="lbl">إلى تاريخ</label>
+                  <input className="inp" type="date" style={{width:"auto"}} value={bkTo} onChange={e=>setBkTo(e.target.value)}/>
+                </div>
+                <button className="btn be bsm" onClick={()=>{setBkFrom(monthStart());setBkTo(monthEnd());}}>📅 الشهر الحالي</button>
+                {(fch!=="الكل"||bkStatus!=="الكل"||bkFrom||bkTo)&&
+                  <button className="btn be bsm" onClick={()=>{setFch("الكل");setBkStatus("الكل");setBkFrom("");setBkTo("");}}>✕ عرض الكل</button>}
               </div>
               <div className="card" style={{overflow:"hidden"}}>
                 <Tbl heads={["الضيف","الشاليه","الفترة","الليالي","السعر","الحالة","إجراءات"]}
-                  rows={bookings.filter(b=>(fch==="الكل"||b.chalet===fch)&&(isAdmin||isStaff||(isChaletMgr&&b.chalet===currentUser.chalet))).map((b,idx)=>{
+                  rows={bookings.filter(b=>
+                    (fch==="الكل"||b.chalet===fch)&&
+                    (bkStatus==="الكل"||b.status===bkStatus)&&
+                    (!bkFrom||!b.date_to||b.date_to>=bkFrom)&&
+                    (!bkTo||!b.date_from||b.date_from<=bkTo)&&
+                    (isAdmin||isStaff||(isChaletMgr&&b.chalet===currentUser.chalet))
+                  ).map((b,idx)=>{
                     const sc=STATUS[b.status]||{bg:"#eee",color:"#333",label:b.status};
                     const nights=fn(b.date_from,b.date_to);
                     return (
