@@ -127,7 +127,7 @@ const MS = {
   done:        {label:"منتهي",       color:SD,        bg:"#EEF0E9"},
 };
 
-const fd = (d?: string | null): string => d ? new Date(d).toLocaleDateString("ar-SA") : "-";
+const fd = (d?: string | null): string => d ? new Date(d).toLocaleDateString("ar-SA-u-ca-gregory") : "-";
 const fn = (f?: string, t?: string): number => (!f||!t) ? 0 : Math.max(0, Math.round((new Date(t).getTime()-new Date(f).getTime())/86400000));
 const td = (): string => new Date().toISOString().slice(0,10);
 const monthStart = (): string => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`; };
@@ -1489,7 +1489,7 @@ function LoyaltyAdminPage({ cards, reviews, onReload }: { cards: LoyaltyCard[]; 
                     </div>
                   </div>
                   {r.comment && <div style={{ fontSize:13, opacity:.8, background:"var(--surface)", borderRadius:8, padding:"8px 12px", lineHeight:1.7, marginBottom:8 }}>{r.comment}</div>}
-                  <div style={{ fontSize:11, opacity:.5 }}>{new Date(r.created_at).toLocaleDateString("ar-SA")}</div>
+                  <div style={{ fontSize:11, opacity:.5 }}>{new Date(r.created_at).toLocaleDateString("ar-SA-u-ca-gregory")}</div>
                 </div>
               ))}
             </div>
@@ -2907,7 +2907,7 @@ ${poolLine}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
                 <div>
                   <div style={{fontSize:22,fontWeight:900,color:"var(--text)"}}>لوحة التحكم</div>
-                  <div style={{fontSize:12,color:"var(--text2)",marginTop:2}}>{new Date().toLocaleDateString("ar-SA",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
+                  <div style={{fontSize:12,color:"var(--text2)",marginTop:2}}>{new Date().toLocaleDateString("ar-SA-u-ca-gregory",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
                 </div>
               </div>
 
@@ -3243,7 +3243,7 @@ ${poolLine}
                       {/* إيرادات الشهر */}
                       <div className="stat-card" style={{background:"linear-gradient(135deg,#1C3A3A,#0F2525)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
                         <div style={{position:"absolute",top:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(197,172,136,.06)"}}/>
-                        <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4,fontWeight:700,letterSpacing:".5px"}}>💰 إيرادات {now.toLocaleDateString("ar-SA",{month:"long"})}</div>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4,fontWeight:700,letterSpacing:".5px"}}>💰 إيرادات {now.toLocaleDateString("ar-SA-u-ca-gregory",{month:"long"})}</div>
                         <div style={{fontSize:32,fontWeight:900,color:"#fff",letterSpacing:"-1px",lineHeight:1}}>{monthRev.toLocaleString()}<span style={{fontSize:15,marginRight:5,opacity:.7}}>ر</span></div>
                         <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,flexWrap:"wrap"}}>
                           {diff!==0&&(

@@ -54,7 +54,7 @@ export default function ReviewsTab({ reviews }: Props) {
                 {r.comment && (
                   <div style={{ fontSize:13, color:T, background:"#FAF8F5", borderRadius:8, padding:"8px 12px", lineHeight:1.7 }}>{r.comment}</div>
                 )}
-                <div style={{ fontSize:11, color:SI, marginTop:8 }}>{new Date(r.created_at).toLocaleDateString("ar-SA")}</div>
+                <div style={{ fontSize:11, color:SI, marginTop:8 }}>{new Date(r.created_at).toLocaleDateString("ar-SA-u-ca-gregory")}</div>
               </div>
             ))}
           </div>
