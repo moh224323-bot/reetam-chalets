@@ -1010,6 +1010,27 @@ function ChaletPublicPage({chaletName}:{chaletName:string}) {
   );
 }
 
+function RowActionsMenu({actions}:{actions:{label:string; onClick:(e:React.MouseEvent)=>void; color?:string}[]}) {
+  const [open,setOpen]=useState(false);
+  return (
+    <div style={{position:"relative",display:"inline-block"}} onClick={e=>e.stopPropagation()}>
+      <button onClick={()=>setOpen(o=>!o)} style={{background:"rgba(197,172,136,.15)",color:B,border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",fontSize:18,fontWeight:900,lineHeight:1}}>⋮</button>
+      {open&&(
+        <>
+          <div style={{position:"fixed",inset:0,zIndex:299}} onClick={()=>setOpen(false)}/>
+          <div style={{position:"absolute",top:"110%",left:0,zIndex:300,background:"#fff",borderRadius:10,boxShadow:"0 8px 24px rgba(0,0,0,.2)",border:"1px solid rgba(197,172,136,.2)",minWidth:180,overflow:"hidden"}}>
+            {actions.map((a,i)=>(
+              <button key={i} onClick={e=>{setOpen(false);a.onClick(e);}}
+                style={{display:"block",width:"100%",textAlign:"right",padding:"10px 14px",background:"none",border:"none",borderBottom:i<actions.length-1?"1px solid rgba(197,172,136,.12)":"none",cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontSize:13,fontWeight:600,color:a.color||B}}>
+                {a.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 function Tbl({heads,rows,footer}) {
   return (
     <div className="tbl-wrap">
@@ -3590,16 +3611,16 @@ ${poolLine}
                         <td data-label="الحالة">
                           <span style={{background:sc.bg,color:sc.color,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{sc.label}</span>
                         </td>
-                        <td data-label="">
-                          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                            <button className="btn be bsm" onClick={e=>{e.stopPropagation();setBMdl({...b})}}>تعديل</button>
-                            <button className="btn bd bsm" onClick={async e=>{e.stopPropagation();if(window.confirm("حذف الحجز؟")){await db("bookings","DELETE",null,b.id);await loadAll();}}}>حذف</button>
-                            <button onClick={e=>{e.stopPropagation();setPreArrMdl({booking:b});}} style={{background:"#6366F1",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>📋 قبل الوصول</button>
-                            <button onClick={e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=checkin`;const msg=`مرحباً ${b.guest} 👋%0aأهلاً بك في ${b.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}} style={{background:"#25D366",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>واتساب</button>
-                            <button onClick={e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=review`;const msg=`${b.guest} 😊%0aرابط التقييم:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}} style={{background:"#F59E0B",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>تقييم</button>
-                            {isCheckedOut(b)&&<button onClick={e=>{e.stopPropagation();setGrMdl({booking:b,rating:0,note:""});}} style={{background:"#B08D2B",color:"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>⭐ تقييم الضيف</button>}
-                            <button onClick={e=>{e.stopPropagation();if(isGuestBlocked(b.phone))unblockGuest(b.phone);else setBlockMdl({booking:b,reason:""});}} style={{background:isGuestBlocked(b.phone)?"rgba(139,58,58,.1)":"#8B3A3A",color:isGuestBlocked(b.phone)?"#8B3A3A":"#fff",border:"none",borderRadius:6,padding:"5px 10px",fontSize:12,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>{isGuestBlocked(b.phone)?"✅ إلغاء الحظر":"🚫 حظر"}</button>
-                          </div>
+                        <td data-label="" style={{textAlign:"left"}}>
+                          <RowActionsMenu actions={[
+                            {label:"✏️ تعديل", onClick:e=>{e.stopPropagation();setBMdl({...b})}},
+                            {label:"🗑️ حذف", color:"#8B3A3A", onClick:async e=>{e.stopPropagation();if(window.confirm("حذف الحجز؟")){await db("bookings","DELETE",null,b.id);await loadAll();}}},
+                            {label:"📋 قبل الوصول", onClick:e=>{e.stopPropagation();setPreArrMdl({booking:b});}},
+                            {label:"📲 واتساب (دخول)", onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=checkin`;const msg=`مرحباً ${b.guest} 👋%0aأهلاً بك في ${b.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
+                            {label:"⭐ إرسال رابط التقييم", onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=review`;const msg=`${b.guest} 😊%0aرابط التقييم:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
+                            ...(isCheckedOut(b)?[{label:"⭐ تقييم الضيف بعد الخروج", onClick:(e:React.MouseEvent)=>{e.stopPropagation();setGrMdl({booking:b,rating:0,note:""});}}]:[]),
+                            {label:isGuestBlocked(b.phone)?"✅ إلغاء الحظر":"🚫 حظر الضيف", color:"#8B3A3A", onClick:e=>{e.stopPropagation();if(isGuestBlocked(b.phone))unblockGuest(b.phone);else setBlockMdl({booking:b,reason:""});}},
+                          ]}/>
                         </td>
                       </tr>
                     );
