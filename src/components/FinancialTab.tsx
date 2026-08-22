@@ -58,8 +58,9 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
 
   const byCh  = (item: { chalet: string }) => fch === "الكل" || item.chalet === fch;
   const byPer = (d?: string) => period === "all" || inRange(d);
+  const isRevenue = (b: { status: string }) => b.status === "completed" || b.status === "confirmed";
 
-  const fb  = bookings.filter(b  => b.status === "completed" && byCh(b) && byPer(b.date_from));
+  const fb  = bookings.filter(b  => isRevenue(b) && byCh(b) && byPer(b.date_from));
   const fm  = maintenance.filter(m => Number(m.cost) > 0 && byCh(m) && byPer(m.maint_date));
   const ft  = wallet.filter(t     => byCh(t) && byPer(t.trans_date));
   const fex = expenses.filter(e   => byCh(e) && byPer(e.expense_date));
@@ -73,7 +74,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
   const nts      = fb.reduce((s, b) => s + nightsBetween(b.date_from, b.date_to), 0);
 
   const csum = names.map(n => {
-    const r = bookings.filter(b => b.chalet === n && b.status === "completed" && byPer(b.date_from)).reduce((s, b) => s + Number(b.price), 0);
+    const r = bookings.filter(b => b.chalet === n && isRevenue(b) && byPer(b.date_from)).reduce((s, b) => s + Number(b.price), 0);
     const e = maintenance.filter(m => m.chalet === n && Number(m.cost) > 0 && byPer(m.maint_date)).reduce((s, m) => s + Number(m.cost), 0);
     return { n, r, e, net: r - e };
   }).filter(c => c.r > 0 || c.e > 0);
