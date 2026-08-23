@@ -3209,20 +3209,18 @@ ${poolLine}
                 // حجوزات مكتملة أو مؤكدة (confirmed تُحسب إيراداً فعلياً)
                 const activeStatuses=["completed","confirmed"];
 
-                // هذا الشهر: date_from أو date_to يقع في الشهر الحالي
-                const monthBks=bookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&(
-                  (new Date(b.date_from).getFullYear()===y&&new Date(b.date_from).getMonth()===mo)||
-                  (b.date_to&&new Date(b.date_to).getFullYear()===y&&new Date(b.date_to).getMonth()===mo)
-                ));
+                // هذا الشهر: date_from يقع في الشهر الحالي (نفس منطق صفحة المالية)
+                const monthBks=bookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&
+                  new Date(b.date_from).getFullYear()===y&&new Date(b.date_from).getMonth()===mo
+                );
                 const monthRev=monthBks.reduce((s,b)=>s+Number(b.price),0);
                 const monthCount=monthBks.length;
 
                 // الشهر الماضي
                 const lastMo=mo===0?11:mo-1; const lastY=mo===0?y-1:y;
-                const lastMonthRev=bookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&(
-                  (new Date(b.date_from).getFullYear()===lastY&&new Date(b.date_from).getMonth()===lastMo)||
-                  (b.date_to&&new Date(b.date_to).getFullYear()===lastY&&new Date(b.date_to).getMonth()===lastMo)
-                )).reduce((s,b)=>s+Number(b.price),0);
+                const lastMonthRev=bookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&
+                  new Date(b.date_from).getFullYear()===lastY&&new Date(b.date_from).getMonth()===lastMo
+                ).reduce((s,b)=>s+Number(b.price),0);
 
                 const diff=lastMonthRev>0?Math.round((monthRev-lastMonthRev)/lastMonthRev*100):0;
 
