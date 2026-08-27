@@ -1,4 +1,9 @@
 
+[functions.create-team-member]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/create-team-member/index.ts"
+
 [functions.tuya-control]
 enabled = true
 verify_jwt = false

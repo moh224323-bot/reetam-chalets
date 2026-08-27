@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
-import { hashPassword, setCurrentOwnerId } from "../lib/db";
+import { setCurrentOwnerId } from "../lib/db";
 import { supabase } from "../lib/supabase";
 import useRealtimeSync   from "../hooks/useRealtimeSync";
 import useDarkMode       from "../hooks/useDarkMode";
@@ -68,6 +68,22 @@ async function sendACCommand(roomId: number, field: string, value: unknown): Pro
   if (field === "ac_mode")  { const m: Record<string,number> = {"cool":1,"heat":2,"fan":3,"dry":4,"auto":0}; commands = [{ code: "M", value: m[value as string]??0 }]; }
   if (field === "ac_speed") { const m: Record<string,number> = {"auto":0,"low":1,"medium":2,"high":3}; commands = [{ code: "F", value: m[value as string]??0 }]; }
   if (commands.length > 0) await tuyaControl(deviceId, commands);
+}
+
+async function callTeamMemberFn(payload: Record<string, unknown>): Promise<{success?:boolean; id?:string; error?:string}> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) return { error: "الجلسة منتهية، سجّل الدخول من جديد" };
+  try {
+    const res = await fetch(`${SUPA_URL}/functions/v1/create-team-member`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}`, apikey: SUPA_KEY },
+      body: JSON.stringify(payload),
+    });
+    return await res.json();
+  } catch {
+    return { error: "تعذر الاتصال بالخادم" };
+  }
 }
 
 let lastDbError: string | null = null;
@@ -2433,7 +2449,8 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [wMdl,setWMdl]       = useState<Partial<WalletTransaction> | null>(null);
   const [coMdl,setCoMdl]     = useState<Booking | null>(null);
   const [exMdl,setExMdl]     = useState<Partial<Expense> | null>(null);
-  const [uMdl,setUMdl]       = useState<Partial<AppUser> | null>(null);
+  const [uMdl,setUMdl]       = useState<(Partial<AppUser> & {password?:string}) | null>(null);
+  const [uErr,setUErr]       = useState("");
   const [addRoomMdl,setAddRoomMdl] = useState<Partial<Room> | null>(null);
   const [grMdl,setGrMdl]     = useState<{booking:Booking; rating:number; note:string} | null>(null);
   const [blockMdl,setBlockMdl] = useState<{booking:Booking; reason:string} | null>(null);
@@ -2478,7 +2495,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
     try {
       const [c,b,m,w,cl,cle,ctasks,clogs,sd,rm,rv,ex,us,rr] = await Promise.all([
         db("chalets"), db("bookings"), db("maintenance"), db("wallet"), db("cleaning"), db("cleaning_expenses"), db("cleaning_tasks"), db("cleaning_logs"),
-        db("smart_devices"), db("rooms"), db("reviews"), db("expenses"), db("users"),
+        db("smart_devices"), db("rooms"), db("reviews"), db("expenses"), db("profiles"),
         db("room_requests","GET",null,"resolved=eq.false&order=created_at.desc"),
       ]);
       const [fx,cw,lc,gr,bg] = await Promise.all([
@@ -4336,12 +4353,13 @@ ${poolLine}
       )}
 
       {uMdl&&(
-        <Mdl onClose={()=>setUMdl(null)} title={uMdl.id?"تعديل المستخدم":"إضافة مستخدم جديد"}>
+        <Mdl onClose={()=>{setUMdl(null);setUErr("");}} title={uMdl.id?"تعديل المستخدم":"إضافة مستخدم جديد"}>
+          {uErr&&<div style={{background:"#FFF5F5",border:"1px solid rgba(139,58,58,.2)",borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,color:"#8B3A3A",fontWeight:600}}>{uErr}</div>}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <div><label className="lbl">الاسم</label><input className="inp" value={uMdl.name||""} onChange={e=>setUMdl(p=>({...p,name:e.target.value}))} placeholder="مثال: سالم"/></div>
             <div><label className="lbl">اسم المستخدم</label><input className="inp" value={uMdl.username||""} onChange={e=>setUMdl(p=>({...p,username:e.target.value}))} placeholder="staff1"/></div>
-            <div><label className="lbl">البريد الإلكتروني</label><input className="inp" value={uMdl.email||""} onChange={e=>setUMdl(p=>({...p,email:e.target.value}))} placeholder="example@email.com"/></div>
-            <div><label className="lbl">كلمة المرور</label><input className="inp" type="password" value={uMdl.password||""} onChange={e=>setUMdl(p=>({...p,password:e.target.value}))} placeholder={uMdl.id?"اتركها فارغة إذا لم تتغير":"كلمة المرور"}/></div>
+            <div><label className="lbl">البريد الإلكتروني</label><input className="inp" value={uMdl.email||""} disabled={!!uMdl.id} onChange={e=>setUMdl(p=>({...p,email:e.target.value}))} placeholder="example@email.com" style={uMdl.id?{opacity:.6}:{}}/></div>
+            <div><label className="lbl">كلمة المرور</label><input className="inp" type="password" value={uMdl.password||""} onChange={e=>setUMdl(p=>({...p,password:e.target.value}))} placeholder={uMdl.id?"اتركها فارغة إذا لم تتغير":"6 أحرف على الأقل"}/></div>
             <div style={{gridColumn:"span 2"}}>
               <label className="lbl">الصلاحية</label>
               <div style={{display:"flex",gap:8}}>
@@ -4365,16 +4383,19 @@ ${poolLine}
           </div>
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setUMdl(null)}>إلغاء</button>
-            <SaveBtn disabled={!uMdl.name} onClick={async()=>{
+            <SaveBtn disabled={!uMdl.name||(!uMdl.id&&(!uMdl.email||!uMdl.password))} onClick={async()=>{
               if(!uMdl.name) return;
-              const body: Record<string,unknown>={name:uMdl.name,username:uMdl.username||null,email:uMdl.email||null,role:uMdl.role,chalet:uMdl.chalet||null};
-              if(uMdl.password){
-                body.password = await hashPassword(uMdl.password);
-              } else if(!uMdl.id){
-                body.password = await hashPassword("1234");
-              }
-              if(uMdl.id) await db("users","PATCH",body,uMdl.id);
-              else await db("users","POST",body);
+              setUErr("");
+              const result = await callTeamMemberFn({
+                userId: uMdl.id||undefined,
+                email: uMdl.email||undefined,
+                password: uMdl.password||undefined,
+                name: uMdl.name,
+                username: uMdl.username||null,
+                role: uMdl.role,
+                chalet: uMdl.role==="chalet_manager"?(uMdl.chalet||null):null,
+              });
+              if(result?.error){ setUErr(result.error); return; }
               await loadAll(); setUMdl(null);
             }}/>
           </div>

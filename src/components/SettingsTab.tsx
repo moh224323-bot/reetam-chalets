@@ -118,8 +118,8 @@ export default function SettingsTab({ users, onAdd, onEdit, onReload }: Props) {
                     <button className="btn be bsm" onClick={() => onEdit(u)}>تعديل</button>
                     {u.role !== "admin" && (
                       <button className="btn bd bsm" onClick={async () => {
-                        if (!window.confirm("حذف "+u.name+"؟")) return;
-                        await db("users","DELETE",null,u.id);
+                        if (!window.confirm("حذف "+u.name+"؟ (يفقد صلاحية الدخول للنظام)")) return;
+                        await db("profiles","DELETE",null,u.id);
                         onReload();
                       }}>حذف</button>
                     )}
