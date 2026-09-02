@@ -149,6 +149,57 @@ const td = (): string => new Date().toISOString().slice(0,10);
 const monthStart = (): string => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`; };
 const monthEnd = (): string => { const d=new Date(); const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(last).padStart(2,"0")}`; };
 
+// ── ترجمة تبويب الحجوزات فقط (عربي/هندي) ──
+const STATUS_LABEL_KEY: Record<string,string> = {
+  confirmed:"statusConfirmed", pending:"statusPending", cancelled:"statusCancelled", completed:"statusCompleted",
+};
+const BK_I18N: Record<"ar"|"hi", Record<string,string>> = {
+  ar: {
+    title:"جدول الحجوزات", addBooking:"+ إضافة حجز", chalet:"الشاليه", allChalets:"كل الشاليهات",
+    status:"الحالة", allStatuses:"كل الحالات", from:"من تاريخ", to:"إلى تاريخ",
+    thisMonth:"📅 الشهر الحالي", showAll:"✕ عرض الكل",
+    guest:"الضيف", period:"الفترة", nights:"الليالي", price:"السعر", actions:"إجراءات",
+    edit:"✏️ تعديل", delete:"🗑️ حذف", preArrival:"📋 قبل الوصول",
+    whatsappCheckin:"📲 واتساب (دخول)", sendReview:"⭐ إرسال رابط التقييم",
+    rateGuest:"⭐ تقييم الضيف بعد الخروج", block:"🚫 حظر الضيف", unblock:"✅ إلغاء الحظر", blocked:"🚫 محظور",
+    statusConfirmed:"مؤكد", statusPending:"معلق", statusCancelled:"ملغي", statusCompleted:"مكتمل",
+    rateTitle:"تقييم الضيف", ratePlaceholder:"سلوك الضيف، أي ملاحظات تفيد الحجوزات القادمة...",
+    cancel:"إلغاء", saveRating:"حفظ التقييم",
+    blockTitle:"حظر الضيف", blockDesc:"سيتم وضع علامة على هذا الرقم وتنبيه الموظفين عند محاولة إنشاء حجز جديد له.",
+    blockReasonPlaceholder:"مثال: إتلاف ممتلكات، سلوك غير لائق...", confirmBlock:"تأكيد الحظر",
+    unblockConfirm:"إلغاء حظر هذا الضيف؟",
+    detailsTitle:"تفاصيل الحجز", nightsLabel:"عدد الليالي", arrival:"تاريخ الوصول", departure:"تاريخ المغادرة",
+    totalPrice:"السعر الكلي", paymentMethod:"طريقة الدفع", notes:"📝 ملاحظات",
+    whatsappBtn:"واتساب 📲", checkout:"🚪 خروج", previousRatings:"⭐ تقييمات سابقة لهذا الضيف",
+    thisGuestBlocked:"🚫 هذا الضيف محظور",
+    editBookingTitle:"تعديل الحجز", addBookingTitle:"إضافة حجز جديد",
+    guestName:"اسم الضيف", phone:"رقم الهاتف", checkinTime:"وقت الدخول", checkoutTime:"وقت الخروج",
+    save:"حفظ", deleteConfirm:"حذف الحجز؟", blockedWarning:"🚫 هذا الرقم محظور — تأكد قبل المتابعة",
+  },
+  hi: {
+    title:"बुकिंग तालिका", addBooking:"+ बुकिंग जोड़ें", chalet:"शैले", allChalets:"सभी शैले",
+    status:"स्थिति", allStatuses:"सभी स्थितियाँ", from:"तारीख से", to:"तारीख तक",
+    thisMonth:"📅 इस महीने", showAll:"✕ सभी दिखाएं",
+    guest:"मेहमान", period:"अवधि", nights:"रातें", price:"कीमत", actions:"कार्रवाई",
+    edit:"✏️ संपादित करें", delete:"🗑️ हटाएं", preArrival:"📋 आगमन से पहले",
+    whatsappCheckin:"📲 व्हाट्सएप (चेक-इन)", sendReview:"⭐ समीक्षा लिंक भेजें",
+    rateGuest:"⭐ चेक-आउट के बाद मेहमान को रेट करें", block:"🚫 मेहमान को ब्लॉक करें", unblock:"✅ अनब्लॉक करें", blocked:"🚫 ब्लॉक किया गया",
+    statusConfirmed:"पुष्टि की गई", statusPending:"लंबित", statusCancelled:"रद्द", statusCompleted:"पूर्ण",
+    rateTitle:"मेहमान को रेट करें", ratePlaceholder:"मेहमान का व्यवहार, कोई भी टिप्पणी जो भविष्य की बुकिंग में मदद करे...",
+    cancel:"रद्द करें", saveRating:"रेटिंग सहेजें",
+    blockTitle:"मेहमान को ब्लॉक करें", blockDesc:"इस नंबर को चिह्नित किया जाएगा और नई बुकिंग बनाते समय कर्मचारियों को सूचित किया जाएगा।",
+    blockReasonPlaceholder:"उदाहरण: संपत्ति को नुकसान, अनुचित व्यवहार...", confirmBlock:"ब्लॉक की पुष्टि करें",
+    unblockConfirm:"इस मेहमान को अनब्लॉक करें?",
+    detailsTitle:"बुकिंग विवरण", nightsLabel:"रातों की संख्या", arrival:"आगमन तिथि", departure:"प्रस्थान तिथि",
+    totalPrice:"कुल कीमत", paymentMethod:"भुगतान का तरीका", notes:"📝 टिप्पणियाँ",
+    whatsappBtn:"व्हाट्सएप 📲", checkout:"🚪 चेक-आउट", previousRatings:"⭐ इस मेहमान की पिछली रेटिंग",
+    thisGuestBlocked:"🚫 यह मेहमान ब्लॉक है",
+    editBookingTitle:"बुकिंग संपादित करें", addBookingTitle:"नई बुकिंग जोड़ें",
+    guestName:"मेहमान का नाम", phone:"फोन नंबर", checkinTime:"चेक-इन समय", checkoutTime:"चेक-आउट समय",
+    save:"सहेजें", deleteConfirm:"बुकिंग हटाएं?", blockedWarning:"🚫 यह नंबर ब्लॉक है — आगे बढ़ने से पहले जांच लें",
+  },
+};
+
 function useIsMobile() {
   const [mobile, setMobile] = useState(
     typeof window !== "undefined" ? window.innerWidth < 768 : false
@@ -2438,6 +2489,9 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [bkStatus,setBkStatus] = useState("الكل");
   const [bkFrom,setBkFrom]     = useState(monthStart());
   const [bkTo,setBkTo]         = useState(monthEnd());
+  const [bkLang,setBkLang]     = useState<"ar"|"hi">(()=>{ try{ return (localStorage.getItem("bk_lang") as "ar"|"hi") || "ar"; }catch{ return "ar"; } });
+  const bt = (key: string): string => BK_I18N[bkLang][key] ?? BK_I18N.ar[key] ?? key;
+  useEffect(()=>{ try{ localStorage.setItem("bk_lang", bkLang); }catch{} },[bkLang]);
   const [selChalet,setSelChalet] = useState<Chalet | null>(null);
 
   const [bMdl,setBMdl]       = useState<Partial<Booking> | null>(null);
@@ -2635,7 +2689,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   async function unblockGuest(phone?: string | null): Promise<void> {
     const rec = findBlockRecord(phone);
     if(!rec) return;
-    if(!window.confirm("إلغاء حظر هذا الضيف؟")) return;
+    if(!window.confirm(bt("unblockConfirm"))) return;
     await db("blocked_guests","DELETE",null,rec.id);
     await loadAll();
   }
@@ -3585,38 +3639,41 @@ ${poolLine}
               <BookingCalendar bookings={isChaletMgr?bookings.filter(b=>b.chalet===currentUser.chalet):bookings} names={isChaletMgr?[currentUser.chalet]:names}/>
               {(isAdmin||isStaff)&&<BlockedGuestsBanner guests={blockedGuests} onUnblock={unblockGuest}/>}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
-                <TH title="جدول الحجوزات"/>
-                <button className="btn bp" onClick={()=>setBMdl({...eB})}>+ إضافة حجز</button>
+                <TH title={bt("title")}/>
+                <div style={{display:"flex",gap:8}}>
+                  <button className="btn be bsm" onClick={()=>setBkLang(l=>l==="ar"?"hi":"ar")}>{bkLang==="ar"?"🌐 हिंदी":"🌐 عربي"}</button>
+                  <button className="btn bp" onClick={()=>setBMdl({...eB})}>{bt("addBooking")}</button>
+                </div>
               </div>
               <div className="card" style={{padding:"14px 16px",marginBottom:16,display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
                 <div>
-                  <label className="lbl">الشاليه</label>
+                  <label className="lbl">{bt("chalet")}</label>
                   <select className="inp" style={{width:"auto"}} value={fch} onChange={e=>setFch(e.target.value)}>
-                    <option value="الكل">كل الشاليهات</option>
+                    <option value="الكل">{bt("allChalets")}</option>
                     {names.map(c=><option key={c} value={c}>{c}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="lbl">الحالة</label>
+                  <label className="lbl">{bt("status")}</label>
                   <select className="inp" style={{width:"auto"}} value={bkStatus} onChange={e=>setBkStatus(e.target.value)}>
-                    <option value="الكل">كل الحالات</option>
-                    {Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+                    <option value="الكل">{bt("allStatuses")}</option>
+                    {Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{bt(STATUS_LABEL_KEY[k]||"")||v.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="lbl">من تاريخ</label>
+                  <label className="lbl">{bt("from")}</label>
                   <input className="inp" type="date" style={{width:"auto"}} value={bkFrom} onChange={e=>setBkFrom(e.target.value)}/>
                 </div>
                 <div>
-                  <label className="lbl">إلى تاريخ</label>
+                  <label className="lbl">{bt("to")}</label>
                   <input className="inp" type="date" style={{width:"auto"}} value={bkTo} onChange={e=>setBkTo(e.target.value)}/>
                 </div>
-                <button className="btn be bsm" onClick={()=>{setBkFrom(monthStart());setBkTo(monthEnd());}}>📅 الشهر الحالي</button>
+                <button className="btn be bsm" onClick={()=>{setBkFrom(monthStart());setBkTo(monthEnd());}}>{bt("thisMonth")}</button>
                 {(fch!=="الكل"||bkStatus!=="الكل"||bkFrom||bkTo)&&
-                  <button className="btn be bsm" onClick={()=>{setFch("الكل");setBkStatus("الكل");setBkFrom("");setBkTo("");}}>✕ عرض الكل</button>}
+                  <button className="btn be bsm" onClick={()=>{setFch("الكل");setBkStatus("الكل");setBkFrom("");setBkTo("");}}>{bt("showAll")}</button>}
               </div>
               <div className="card" style={{overflow:"hidden"}}>
-                <Tbl heads={["الضيف","الشاليه","الفترة","الليالي","السعر","الحالة","إجراءات"]}
+                <Tbl heads={[bt("guest"),bt("chalet"),bt("period"),bt("nights"),bt("price"),bt("status"),bt("actions")]}
                   rows={bookings.filter(b=>
                     (fch==="الكل"||b.chalet===fch)&&
                     (bkStatus==="الكل"||b.status===bkStatus)&&
@@ -3625,48 +3682,49 @@ ${poolLine}
                     (isAdmin||isStaff||(isChaletMgr&&b.chalet===currentUser.chalet))
                   ).map((b,idx)=>{
                     const sc=STATUS[b.status]||{bg:"#eee",color:"#333",label:b.status};
+                    const scLabel=bt(STATUS_LABEL_KEY[b.status]||"")||sc.label;
                     const nights=fn(b.date_from,b.date_to);
                     return (
                       <tr key={b.id} style={{cursor:"pointer"}} onClick={()=>setBkDetail(b)}>
-                        <td data-label="الضيف">
+                        <td data-label={bt("guest")}>
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
                             <div style={{width:4,height:36,borderRadius:4,background:sc.color,flexShrink:0}}/>
                             <div>
                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                                 <span style={{fontWeight:800,color:B,fontSize:13}}>{b.guest}</span>
                                 {b.pre_arrival_sent&&<span style={{fontSize:9,background:"#DCFCE7",color:"#166534",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ رسالة</span>}
-                                {isGuestBlocked(b.phone)&&<span style={{fontSize:9,background:"#F5E6E6",color:"#8B3A3A",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>🚫 محظور</span>}
+                                {isGuestBlocked(b.phone)&&<span style={{fontSize:9,background:"#F5E6E6",color:"#8B3A3A",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>{bt("blocked")}</span>}
                               </div>
                               <div style={{fontSize:11,color:T,marginTop:1,direction:"ltr",textAlign:"right"}}>{b.phone||"-"}</div>
                             </div>
                           </div>
                         </td>
-                        <td data-label="الشاليه">
+                        <td data-label={bt("chalet")}>
                           <div style={{fontWeight:600,color:B,fontSize:13}}>{b.chalet}</div>
                         </td>
-                        <td data-label="الفترة">
+                        <td data-label={bt("period")}>
                           <div style={{fontSize:12,color:B,fontWeight:600}}>{fd(b.date_from)}</div>
                           <div style={{fontSize:11,color:T,marginTop:1}}>{"← "+fd(b.date_to)}</div>
                         </td>
-                        <td data-label="الليالي" style={{textAlign:"center"}}>
+                        <td data-label={bt("nights")} style={{textAlign:"center"}}>
                           <div style={{background:SL,borderRadius:8,padding:"4px 10px",display:"inline-block",fontWeight:800,color:B,fontSize:13}}>{nights}</div>
                         </td>
-                        <td data-label="السعر">
+                        <td data-label={bt("price")}>
                           <div style={{fontWeight:900,color:T,fontSize:14}}>{Number(b.price).toLocaleString()}</div>
                           <div style={{fontSize:10,color:SI}}>ريال</div>
                         </td>
-                        <td data-label="الحالة">
-                          <span style={{background:sc.bg,color:sc.color,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{sc.label}</span>
+                        <td data-label={bt("status")}>
+                          <span style={{background:sc.bg,color:sc.color,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{scLabel}</span>
                         </td>
                         <td data-label="" style={{textAlign:"left"}}>
                           <RowActionsMenu actions={[
-                            {label:"✏️ تعديل", onClick:e=>{e.stopPropagation();setBMdl({...b})}},
-                            {label:"🗑️ حذف", color:"#8B3A3A", onClick:async e=>{e.stopPropagation();if(window.confirm("حذف الحجز؟")){await db("bookings","DELETE",null,b.id);await loadAll();}}},
-                            {label:"📋 قبل الوصول", onClick:e=>{e.stopPropagation();setPreArrMdl({booking:b});}},
-                            {label:"📲 واتساب (دخول)", onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=checkin`;const msg=`مرحباً ${b.guest} 👋%0aأهلاً بك في ${b.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
-                            {label:"⭐ إرسال رابط التقييم", onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=review`;const msg=`${b.guest} 😊%0aرابط التقييم:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
-                            ...(isCheckedOut(b)?[{label:"⭐ تقييم الضيف بعد الخروج", onClick:(e:React.MouseEvent)=>{e.stopPropagation();setGrMdl({booking:b,rating:0,note:""});}}]:[]),
-                            {label:isGuestBlocked(b.phone)?"✅ إلغاء الحظر":"🚫 حظر الضيف", color:"#8B3A3A", onClick:e=>{e.stopPropagation();if(isGuestBlocked(b.phone))unblockGuest(b.phone);else setBlockMdl({booking:b,reason:""});}},
+                            {label:bt("edit"), onClick:e=>{e.stopPropagation();setBMdl({...b})}},
+                            {label:bt("delete"), color:"#8B3A3A", onClick:async e=>{e.stopPropagation();if(window.confirm(bt("deleteConfirm"))){await db("bookings","DELETE",null,b.id);await loadAll();}}},
+                            {label:bt("preArrival"), onClick:e=>{e.stopPropagation();setPreArrMdl({booking:b});}},
+                            {label:bt("whatsappCheckin"), onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=checkin`;const msg=`مرحباً ${b.guest} 👋%0aأهلاً بك في ${b.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
+                            {label:bt("sendReview"), onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=review`;const msg=`${b.guest} 😊%0aرابط التقييم:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
+                            ...(isCheckedOut(b)?[{label:bt("rateGuest"), onClick:(e:React.MouseEvent)=>{e.stopPropagation();setGrMdl({booking:b,rating:0,note:""});}}]:[]),
+                            {label:isGuestBlocked(b.phone)?bt("unblock"):bt("block"), color:"#8B3A3A", onClick:e=>{e.stopPropagation();if(isGuestBlocked(b.phone))unblockGuest(b.phone);else setBlockMdl({booking:b,reason:""});}},
                           ]}/>
                         </td>
                       </tr>
@@ -4220,55 +4278,55 @@ ${poolLine}
       )}
 
       {bMdl&&(
-        <Mdl onClose={()=>setBMdl(null)} title={bMdl.id?"تعديل الحجز":"إضافة حجز جديد"}>
+        <Mdl onClose={()=>setBMdl(null)} title={bMdl.id?bt("editBookingTitle"):bt("addBookingTitle")}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            <div style={{gridColumn:"span 2"}}><label className="lbl">اسم الضيف</label><input className="inp" value={bMdl.guest||""} onChange={e=>setBMdl(p=>({...p,guest:e.target.value}))}/></div>
+            <div style={{gridColumn:"span 2"}}><label className="lbl">{bt("guestName")}</label><input className="inp" value={bMdl.guest||""} onChange={e=>setBMdl(p=>({...p,guest:e.target.value}))}/></div>
             <div>
-              <label className="lbl">رقم الهاتف</label>
+              <label className="lbl">{bt("phone")}</label>
               <input className="inp" value={bMdl.phone||""} onChange={e=>setBMdl(p=>({...p,phone:e.target.value}))}/>
-              {isGuestBlocked(bMdl.phone)&&<div style={{marginTop:4,fontSize:11,color:"#8B3A3A",fontWeight:700}}>🚫 هذا الرقم محظور — {findBlockRecord(bMdl.phone)?.reason||"تأكد قبل المتابعة"}</div>}
+              {isGuestBlocked(bMdl.phone)&&<div style={{marginTop:4,fontSize:11,color:"#8B3A3A",fontWeight:700}}>{bt("blockedWarning")}{findBlockRecord(bMdl.phone)?.reason?" — "+findBlockRecord(bMdl.phone)?.reason:""}</div>}
             </div>
-            <div><label className="lbl">الشاليه</label><select className="inp" value={bMdl.chalet||""} onChange={e=>setBMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-            <div><label className="lbl">تاريخ الوصول</label><input className="inp" type="date" value={bMdl.date_from||""} onChange={e=>setBMdl(p=>({...p,date_from:e.target.value}))}/></div>
-            <div><label className="lbl">تاريخ المغادرة</label><input className="inp" type="date" value={bMdl.date_to||""} onChange={e=>setBMdl(p=>({...p,date_to:e.target.value}))}/></div>
-            <div><label className="lbl">وقت الدخول</label><input className="inp" type="time" value={bMdl.checkin_time||""} onChange={e=>setBMdl(p=>({...p,checkin_time:e.target.value}))} placeholder="مثال: 15:00"/></div>
-            <div><label className="lbl">وقت الخروج</label><input className="inp" type="time" value={bMdl.checkout_time||""} onChange={e=>setBMdl(p=>({...p,checkout_time:e.target.value}))} placeholder="مثال: 12:00"/></div>
-            <div style={{gridColumn:"span 2"}}><label className="lbl">السعر (ريال)</label><input className="inp" type="number" value={bMdl.price||""} onChange={e=>setBMdl(p=>({...p,price:e.target.value}))}/></div>
-            <div><label className="lbl">الحالة</label><select className="inp" value={bMdl.status||"confirmed"} onChange={e=>setBMdl(p=>({...p,status:e.target.value}))}>{Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></div>
-            <div><label className="lbl">ملاحظات</label><input className="inp" value={bMdl.note||""} onChange={e=>setBMdl(p=>({...p,note:e.target.value}))}/></div>
+            <div><label className="lbl">{bt("chalet")}</label><select className="inp" value={bMdl.chalet||""} onChange={e=>setBMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+            <div><label className="lbl">{bt("arrival")}</label><input className="inp" type="date" value={bMdl.date_from||""} onChange={e=>setBMdl(p=>({...p,date_from:e.target.value}))}/></div>
+            <div><label className="lbl">{bt("departure")}</label><input className="inp" type="date" value={bMdl.date_to||""} onChange={e=>setBMdl(p=>({...p,date_to:e.target.value}))}/></div>
+            <div><label className="lbl">{bt("checkinTime")}</label><input className="inp" type="time" value={bMdl.checkin_time||""} onChange={e=>setBMdl(p=>({...p,checkin_time:e.target.value}))} placeholder="15:00"/></div>
+            <div><label className="lbl">{bt("checkoutTime")}</label><input className="inp" type="time" value={bMdl.checkout_time||""} onChange={e=>setBMdl(p=>({...p,checkout_time:e.target.value}))} placeholder="12:00"/></div>
+            <div style={{gridColumn:"span 2"}}><label className="lbl">{bt("price")} (ريال)</label><input className="inp" type="number" value={bMdl.price||""} onChange={e=>setBMdl(p=>({...p,price:e.target.value}))}/></div>
+            <div><label className="lbl">{bt("status")}</label><select className="inp" value={bMdl.status||"confirmed"} onChange={e=>setBMdl(p=>({...p,status:e.target.value}))}>{Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{bt(STATUS_LABEL_KEY[k]||"")||v.label}</option>)}</select></div>
+            <div><label className="lbl">{bkLang==="ar"?"ملاحظات":"टिप्पणियाँ"}</label><input className="inp" value={bMdl.note||""} onChange={e=>setBMdl(p=>({...p,note:e.target.value}))}/></div>
           </div>
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
-            <button className="btn bo" onClick={()=>setBMdl(null)}>إلغاء</button>
-            <SaveBtn onClick={()=>svB(bMdl)}/>
+            <button className="btn bo" onClick={()=>setBMdl(null)}>{bt("cancel")}</button>
+            <SaveBtn label={bt("save")} onClick={()=>svB(bMdl)}/>
           </div>
         </Mdl>
       )}
 
       {grMdl&&(
-        <Mdl onClose={()=>setGrMdl(null)} title={"⭐ تقييم الضيف — "+grMdl.booking.guest}>
+        <Mdl onClose={()=>setGrMdl(null)} title={"⭐ "+bt("rateTitle")+" — "+grMdl.booking.guest}>
           <div style={{textAlign:"center",marginBottom:14,fontSize:12,color:T}}>{grMdl.booking.chalet} · {fd(grMdl.booking.date_from)} ← {fd(grMdl.booking.date_to)}</div>
           <div style={{display:"flex",justifyContent:"center",gap:8,marginBottom:16}}>
             {[1,2,3,4,5].map(s=>(
               <span key={s} onClick={()=>setGrMdl(p=>p&&({...p,rating:s}))} style={{fontSize:36,cursor:"pointer",color:grMdl.rating>=s?"#B08D2B":"#E5E7EB"}}>★</span>
             ))}
           </div>
-          <label className="lbl">ملاحظة (اختياري)</label>
-          <textarea className="inp" rows={3} value={grMdl.note} onChange={e=>setGrMdl(p=>p&&({...p,note:e.target.value}))} placeholder="سلوك الضيف، أي ملاحظات تفيد الحجوزات القادمة..." style={{width:"100%",resize:"none"}}/>
+          <label className="lbl">{bkLang==="ar"?"ملاحظة (اختياري)":"टिप्पणी (वैकल्पिक)"}</label>
+          <textarea className="inp" rows={3} value={grMdl.note} onChange={e=>setGrMdl(p=>p&&({...p,note:e.target.value}))} placeholder={bt("ratePlaceholder")} style={{width:"100%",resize:"none"}}/>
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
-            <button className="btn bo" onClick={()=>setGrMdl(null)}>إلغاء</button>
-            <SaveBtn label="حفظ التقييم" disabled={!grMdl.rating} onClick={svGuestRating}/>
+            <button className="btn bo" onClick={()=>setGrMdl(null)}>{bt("cancel")}</button>
+            <SaveBtn label={bt("saveRating")} disabled={!grMdl.rating} onClick={svGuestRating}/>
           </div>
         </Mdl>
       )}
 
       {blockMdl&&(
-        <Mdl onClose={()=>setBlockMdl(null)} title={"🚫 حظر الضيف — "+blockMdl.booking.guest}>
-          <div style={{fontSize:12,color:T,marginBottom:12}}>سيتم وضع علامة على هذا الرقم وتنبيه الموظفين عند محاولة إنشاء حجز جديد له.</div>
-          <label className="lbl">سبب الحظر (اختياري)</label>
-          <textarea className="inp" rows={3} value={blockMdl.reason} onChange={e=>setBlockMdl(p=>p&&({...p,reason:e.target.value}))} placeholder="مثال: إتلاف ممتلكات، سلوك غير لائق..." style={{width:"100%",resize:"none"}}/>
+        <Mdl onClose={()=>setBlockMdl(null)} title={"🚫 "+bt("blockTitle")+" — "+blockMdl.booking.guest}>
+          <div style={{fontSize:12,color:T,marginBottom:12}}>{bt("blockDesc")}</div>
+          <label className="lbl">{bkLang==="ar"?"سبب الحظر (اختياري)":"ब्लॉक करने का कारण (वैकल्पिक)"}</label>
+          <textarea className="inp" rows={3} value={blockMdl.reason} onChange={e=>setBlockMdl(p=>p&&({...p,reason:e.target.value}))} placeholder={bt("blockReasonPlaceholder")} style={{width:"100%",resize:"none"}}/>
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
-            <button className="btn bo" onClick={()=>setBlockMdl(null)}>إلغاء</button>
-            <SaveBtn label="تأكيد الحظر" style={{background:"#8B3A3A"}} onClick={confirmBlockGuest}/>
+            <button className="btn bo" onClick={()=>setBlockMdl(null)}>{bt("cancel")}</button>
+            <SaveBtn label={bt("confirmBlock")} style={{background:"#8B3A3A"}} onClick={confirmBlockGuest}/>
           </div>
         </Mdl>
       )}
@@ -4571,21 +4629,21 @@ ${poolLine}
             {/* Header */}
             <div style={{background:"linear-gradient(135deg,"+B+","+BD+")",padding:"20px 24px",position:"relative"}}>
               <button onClick={()=>setBkDetail(null)} style={{position:"absolute",top:14,left:16,background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,color:"#fff",width:30,height:30,cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-              <div style={{fontSize:12,color:"rgba(255,255,255,.7)",marginBottom:4}}>تفاصيل الحجز</div>
+              <div style={{fontSize:12,color:"rgba(255,255,255,.7)",marginBottom:4}}>{bt("detailsTitle")}</div>
               <div style={{fontSize:22,fontWeight:900,color:"#fff"}}>{bkDetail.guest}</div>
               <div style={{fontSize:12,color:"rgba(255,255,255,.7)",marginTop:4,direction:"ltr",textAlign:"right"}}>{bkDetail.phone}</div>
-              <span style={{position:"absolute",top:20,right:20,background:STATUS[bkDetail.status]?.bg||"#eee",color:STATUS[bkDetail.status]?.color||"#333",borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:800}}>{STATUS[bkDetail.status]?.label||bkDetail.status}</span>
+              <span style={{position:"absolute",top:20,right:20,background:STATUS[bkDetail.status]?.bg||"#eee",color:STATUS[bkDetail.status]?.color||"#333",borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:800}}>{bt(STATUS_LABEL_KEY[bkDetail.status]||"")||STATUS[bkDetail.status]?.label||bkDetail.status}</span>
             </div>
             {/* Body */}
             <div style={{padding:"20px 24px"}}>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
                 {[
-                  {l:"الشاليه",v:bkDetail.chalet,i:"🏠"},
-                  {l:"عدد الليالي",v:fn(bkDetail.date_from,bkDetail.date_to)+" ليلة",i:"🌙"},
-                  {l:"تاريخ الوصول",v:fd(bkDetail.date_from),i:"📅"},
-                  {l:"تاريخ المغادرة",v:fd(bkDetail.date_to),i:"🚪"},
-                  {l:"السعر الكلي",v:Number(bkDetail.price).toLocaleString()+" ر",i:"💰"},
-                  {l:"طريقة الدفع",v:bkDetail.payment_method||"-",i:"💳"},
+                  {l:bt("chalet"),v:bkDetail.chalet,i:"🏠"},
+                  {l:bt("nightsLabel"),v:fn(bkDetail.date_from,bkDetail.date_to)+" "+bt("nights"),i:"🌙"},
+                  {l:bt("arrival"),v:fd(bkDetail.date_from),i:"📅"},
+                  {l:bt("departure"),v:fd(bkDetail.date_to),i:"🚪"},
+                  {l:bt("totalPrice"),v:Number(bkDetail.price).toLocaleString()+" ر",i:"💰"},
+                  {l:bt("paymentMethod"),v:bkDetail.payment_method||"-",i:"💳"},
                 ].map((item,i)=>(
                   <div key={i} style={{background:SL,borderRadius:10,padding:"12px 14px"}}>
                     <div style={{fontSize:10,color:T,marginBottom:4}}>{item.i} {item.l}</div>
@@ -4594,15 +4652,15 @@ ${poolLine}
                 ))}
               </div>
               {bkDetail.notes&&<div style={{background:SL,borderRadius:10,padding:"12px 14px",marginBottom:16}}>
-                <div style={{fontSize:10,color:T,marginBottom:4}}>📝 ملاحظات</div>
+                <div style={{fontSize:10,color:T,marginBottom:4}}>{bt("notes")}</div>
                 <div style={{fontSize:13,color:B}}>{bkDetail.notes}</div>
               </div>}
               {isGuestBlocked(bkDetail.phone)&&<div style={{background:"#F5E6E6",border:"1px solid rgba(139,58,58,.3)",borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:12,color:"#8B3A3A",fontWeight:700}}>
-                🚫 هذا الضيف محظور{findBlockRecord(bkDetail.phone)?.reason?" — "+findBlockRecord(bkDetail.phone)?.reason:""}
+                {bt("thisGuestBlocked")}{findBlockRecord(bkDetail.phone)?.reason?" — "+findBlockRecord(bkDetail.phone)?.reason:""}
               </div>}
               {(()=>{const rs=guestRatings.filter(r=>normPhone(r.phone)===normPhone(bkDetail.phone));return rs.length>0&&(
                 <div style={{background:SL,borderRadius:10,padding:"12px 14px",marginBottom:16}}>
-                  <div style={{fontSize:10,color:T,marginBottom:6}}>⭐ تقييمات سابقة لهذا الضيف</div>
+                  <div style={{fontSize:10,color:T,marginBottom:6}}>{bt("previousRatings")}</div>
                   {rs.map((r,i)=>(
                     <div key={r.id} style={{display:"flex",alignItems:"center",gap:6,marginTop:i>0?6:0}}>
                       <span style={{color:"#B08D2B",fontSize:13}}>{"★".repeat(r.rating)+"☆".repeat(5-r.rating)}</span>
@@ -4612,15 +4670,15 @@ ${poolLine}
                 </div>
               );})()}
               <div style={{display:"flex",gap:8}}>
-                <button className="btn be" style={{flex:1}} onClick={()=>{setBMdl({...bkDetail});setBkDetail(null);}}>✏️ تعديل</button>
-                <button onClick={()=>{const url=`https://reetam-chalets.vercel.app?guest=1&b=${bkDetail.id}&m=checkin`;const msg=`مرحباً ${bkDetail.guest} 👋%0aأهلاً بك في ${bkDetail.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=bkDetail.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}} style={{flex:1,background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"10px",fontSize:13,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>واتساب 📲</button>
-                {(bkDetail.status==="confirmed"||bkDetail.status==="pending")&&<button className="btn" style={{flex:1,background:"linear-gradient(135deg,#8B3A3A,#6B2A2A)",color:"#fff"}} onClick={()=>{setCoMdl(bkDetail);setBkDetail(null);}}>🚪 خروج</button>}
+                <button className="btn be" style={{flex:1}} onClick={()=>{setBMdl({...bkDetail});setBkDetail(null);}}>{bt("edit")}</button>
+                <button onClick={()=>{const url=`https://reetam-chalets.vercel.app?guest=1&b=${bkDetail.id}&m=checkin`;const msg=`مرحباً ${bkDetail.guest} 👋%0aأهلاً بك في ${bkDetail.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=bkDetail.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}} style={{flex:1,background:"#25D366",color:"#fff",border:"none",borderRadius:8,padding:"10px",fontSize:13,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",fontWeight:700}}>{bt("whatsappBtn")}</button>
+                {(bkDetail.status==="confirmed"||bkDetail.status==="pending")&&<button className="btn" style={{flex:1,background:"linear-gradient(135deg,#8B3A3A,#6B2A2A)",color:"#fff"}} onClick={()=>{setCoMdl(bkDetail);setBkDetail(null);}}>{bt("checkout")}</button>}
               </div>
               <div style={{display:"flex",gap:8,marginTop:8}}>
-                {isCheckedOut(bkDetail)&&<button className="btn" style={{flex:1,background:"#B08D2B",color:"#fff"}} onClick={()=>{setGrMdl({booking:bkDetail,rating:0,note:""});setBkDetail(null);}}>⭐ تقييم الضيف بعد الخروج</button>}
+                {isCheckedOut(bkDetail)&&<button className="btn" style={{flex:1,background:"#B08D2B",color:"#fff"}} onClick={()=>{setGrMdl({booking:bkDetail,rating:0,note:""});setBkDetail(null);}}>{bt("rateGuest")}</button>}
                 <button className="btn" style={{flex:1,background:isGuestBlocked(bkDetail.phone)?"rgba(139,58,58,.1)":"#8B3A3A",color:isGuestBlocked(bkDetail.phone)?"#8B3A3A":"#fff"}}
                   onClick={()=>{if(isGuestBlocked(bkDetail.phone)){unblockGuest(bkDetail.phone);}else{setBlockMdl({booking:bkDetail,reason:""});}setBkDetail(null);}}>
-                  {isGuestBlocked(bkDetail.phone)?"✅ إلغاء الحظر":"🚫 حظر هذا الضيف"}
+                  {isGuestBlocked(bkDetail.phone)?bt("unblock"):bt("block")}
                 </button>
               </div>
             </div>
