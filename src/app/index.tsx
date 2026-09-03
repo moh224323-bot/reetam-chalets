@@ -2999,6 +2999,7 @@ ${poolLine}
                   const existing=clLogs.find(l=>l.task_id===task.id&&l.log_date?.startsWith(thisMonth));
                   if(existing){await db("cleaning_logs","PATCH",{supervisor_ok:true,status:"done",done_at:new Date().toISOString()},existing.id);}
                   else{await db("cleaning_logs","POST",{task_id:task.id,chalet:task.chalet,log_date:todayStr,worker_done:true,supervisor_ok:true,status:"done",done_at:new Date().toISOString()});}
+                  if(task.frequency==="مرة واحدة")await db("cleaning_tasks","PATCH",{active:false},task.id);
                   await loadAll();
                 }}/>;
               })()}
