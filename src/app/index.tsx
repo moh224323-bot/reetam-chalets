@@ -8,7 +8,7 @@ import type {
   Chalet, Booking, MaintenanceRequest, WalletTransaction,
   CleaningTransaction, CleaningExpense, CleaningTask, CleaningLog,
   Room, Review, AppUser, Expense, FixedExpense, CleaningWorker, LoyaltyCard,
-  GuestRating, BlockedGuest,
+  GuestRating, BlockedGuest, Investor,
 } from "../lib/types";
 import FinancialTab   from "../components/FinancialTab";
 import ChaletsTab     from "../components/ChaletsTab";
@@ -2273,6 +2273,9 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [reviews,setReviews]   = useState<Review[]>([]);
   const [guestRatings,setGuestRatings]   = useState<GuestRating[]>([]);
   const [blockedGuests,setBlockedGuests] = useState<BlockedGuest[]>([]);
+  const [investors,setInvestors] = useState<Investor[]>([]);
+  const [invMdl,setInvMdl]       = useState<Partial<Investor> | null>(null);
+  const [invPeriod,setInvPeriod] = useState<"this_month"|"last_month"|"this_year">("this_month");
   const [loading,setLoading]   = useState(true);
   const [refreshing,setRefreshing] = useState(false);
   const [fch,setFch]           = useState("الكل");
@@ -2342,12 +2345,13 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
         db("smart_devices"), db("rooms"), db("reviews"), db("expenses"), db("profiles"),
         db("room_requests","GET",null,"resolved=eq.false&order=created_at.desc"),
       ]);
-      const [fx,cw,lc,gr,bg] = await Promise.all([
+      const [fx,cw,lc,gr,bg,inv] = await Promise.all([
         db("fixed_expenses").catch(()=>[]),
         db("cleaning_workers").catch(()=>[]),
         db("loyalty_cards","GET",null,"order=total_reviews.desc").catch(()=>[]),
         db("guest_ratings").catch(()=>[]),
         db("blocked_guests").catch(()=>[]),
+        db("investors").catch(()=>[]),
       ]);
       const sdMap = {};
       (sd||[]).forEach(d=>{if(d.room_id)sdMap["room_"+d.room_id]=d;else sdMap[d.chalet]=d;});
@@ -2357,7 +2361,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
       if(!clogs)  console.error("⚠️ cleaning_logs فشل التحميل");
       setBookings(b||[]); setMaint(m||[]); setWallet(w||[]); setCleaning(cl||[]); setClExp(cle||[]); setClTasks(ctasks||[]); setClLogs(clogs||[]);
       setReviews(rv||[]); setExpenses(ex||[]); setUsers(us||[]); setRoomReqs(rr||[]); setFixedExpenses(fx||[]); setCleanWorkers(cw||[]); setLoyaltyCards(lc||[]);
-      setGuestRatings(gr||[]); setBlockedGuests(bg||[]);
+      setGuestRatings(gr||[]); setBlockedGuests(bg||[]); setInvestors((inv||[]) as unknown as Investor[]);
       // حفظ البيانات الأساسية في cache للتحميل الفوري القادم
       try {
         localStorage.setItem("reetam_cache", JSON.stringify({
@@ -2407,6 +2411,29 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
       };
     });
   },[chalets,bookings,maint,cBal]);
+
+  const invPeriodRange = ()=>{
+    const now=new Date();
+    if(invPeriod==="last_month"){
+      const d=new Date(now.getFullYear(),now.getMonth()-1,1);
+      const y=d.getFullYear(), m=d.getMonth();
+      const last=new Date(y,m+1,0).getDate();
+      return { from:`${y}-${String(m+1).padStart(2,"0")}-01`, to:`${y}-${String(m+1).padStart(2,"0")}-${String(last).padStart(2,"0")}` };
+    }
+    if(invPeriod==="this_year") return { from:`${now.getFullYear()}-01-01`, to:`${now.getFullYear()}-12-31` };
+    return { from:monthStart(), to:monthEnd() };
+  };
+  const invPeriodLabel = invPeriod==="last_month"?"الشهر الماضي":invPeriod==="this_year"?"هذا العام":"هذا الشهر";
+  const chaletNetForPeriod = useMemo(()=>{
+    const { from, to } = invPeriodRange();
+    const map: Record<string,{rev:number;mex:number;net:number}> = {};
+    names.forEach(n=>{
+      const rev = bookings.filter(b=>b.chalet===n&&(b.status==="completed"||b.status==="confirmed")&&b.date_from>=from&&b.date_from<=to).reduce((s,b)=>s+Number(b.price),0);
+      const mex = maint.filter(m=>m.chalet===n&&Number(m.cost)>0&&m.maint_date&&m.maint_date>=from&&m.maint_date<=to).reduce((s,m)=>s+Number(m.cost),0);
+      map[n] = { rev, mex, net: rev-mex };
+    });
+    return map;
+  },[names,bookings,maint,invPeriod]);
 
   const eC = {name:"",loc:"",cap:"",price:"",wprice:"",ins:"",description:"",st:"active",img:null,allow_overnight:true,allow_hourly:true};
   const eB = {chalet:names[0]||"",guest:"",phone:"",date_from:"",date_to:"",price:"",status:"confirmed",note:""};
@@ -2548,6 +2575,7 @@ ${poolLine}
     {id:"chalets",    l:"الشاليهات",   i:"🏠"},
     {id:"bookings",   l:"الحجوزات",    i:"📅"},
     {id:"finance",    l:"المالية",     i:"💰"},
+    {id:"investors",  l:"إدارة المستثمرين", i:"🤝"},
     {id:"maintenance",l:"الصيانة",     i:"🔧"},
     {id:"insurance",  l:"التأمين",     i:"🛡️"},
     {id:"cleaning",   l:"النظافة",     i:"🧹"},
@@ -3390,6 +3418,88 @@ ${poolLine}
             />
           )}
 
+          {/* ── Investors ── */}
+          {tab==="investors"&&(
+            <div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
+                <TH title="🤝 إدارة المستثمرين"/>
+                <div className="row">
+                  {([["this_month","هذا الشهر"],["last_month","الشهر الماضي"],["this_year","هذا العام"]] as [typeof invPeriod,string][]).map(([v,l])=>(
+                    <button key={v} className="btn" onClick={()=>setInvPeriod(v)}
+                      style={{background:invPeriod===v?B:W,color:invPeriod===v?S:B,border:"1.5px solid "+(invPeriod===v?B:"rgba(197,172,136,.4)"),padding:"8px 12px",fontSize:12}}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {names.length===0 && <div className="card" style={{padding:24,textAlign:"center",color:T}}>أضف شاليهات أولاً</div>}
+
+              {names.map(n=>{
+                const chInvestors = investors.filter(iv=>iv.chalet===n);
+                const totalPct = chInvestors.reduce((s,iv)=>s+Number(iv.percentage||0),0);
+                const stats = chaletNetForPeriod[n] || {rev:0,mex:0,net:0};
+                return (
+                  <div key={n} className="card" style={{overflow:"hidden",marginBottom:16}}>
+                    <div style={{padding:"12px 16px",borderBottom:"2px solid rgba(197,172,136,.2)",background:SL,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                      <div>
+                        <span style={{fontWeight:800,color:B,fontSize:15}}>{"🏠 "+n}</span>
+                        <span style={{marginRight:10,fontSize:12,color:T}}>{"صافي "+invPeriodLabel+": "}<b style={{color:stats.net>=0?SD:"#8B3A3A"}}>{stats.net.toLocaleString()+" ر"}</b></span>
+                      </div>
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <Bdg bg={totalPct===100?"#DCFCE7":totalPct>100?"#F5E6E6":"#FEF3C7"} color={totalPct===100?"#166534":totalPct>100?"#8B3A3A":"#92400E"}>{"إجمالي النسب: "+totalPct+"%"}</Bdg>
+                        <button className="btn bp bsm" onClick={()=>setInvMdl({chalet:n,name:"",phone:"",percentage:0,note:""})}>+ إضافة مستثمر</button>
+                      </div>
+                    </div>
+                    {chInvestors.length===0
+                      ? <div style={{padding:20,textAlign:"center",color:T,fontSize:13}}>لا يوجد مستثمرون لهذا الشاليه</div>
+                      : <div className="tbl-wrap"><table className="tbl">
+                          <thead><tr>{["الاسم","الهاتف","النسبة","نصيبه من الصافي","إجراءات"].map((h,i)=><th key={i}>{h}</th>)}</tr></thead>
+                          <tbody>
+                            {chInvestors.map(iv=>{
+                              const share = Math.round(stats.net * (Number(iv.percentage)||0) / 100);
+                              return (
+                                <tr key={iv.id}>
+                                  <td data-label="الاسم" style={{fontWeight:700}}>{iv.name}</td>
+                                  <td data-label="الهاتف" style={{direction:"ltr",textAlign:"right"}}>{iv.phone||"-"}</td>
+                                  <td data-label="النسبة" style={{fontWeight:700}}>{Number(iv.percentage)+"%"}</td>
+                                  <td data-label="نصيبه من الصافي" style={{fontWeight:800,color:share>=0?SD:"#8B3A3A"}}>{share.toLocaleString()+" ر"}</td>
+                                  <td data-label="">
+                                    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                                      <button className="btn bsm" style={{background:"#25D366",color:"#fff"}} onClick={()=>{
+                                        const lines=[
+                                          `📊 *تقرير حصتك — ${n}*`,
+                                          `🗓️ الفترة: ${invPeriodLabel}`,
+                                          ``,
+                                          `💵 إيرادات الشاليه: ${stats.rev.toLocaleString()} ر`,
+                                          `🔧 تكاليف الصيانة: ${stats.mex.toLocaleString()} ر`,
+                                          `📈 صافي ربح الشاليه: ${stats.net.toLocaleString()} ر`,
+                                          `🤝 نسبتك: ${Number(iv.percentage)}%`,
+                                          ``,
+                                          `*نصيبك: ${share.toLocaleString()} ر*`,
+                                          ``,
+                                          `_تقرير آلي من نظام إدارة ريتام_`,
+                                        ];
+                                        const phone = iv.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");
+                                        const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(lines.join("\n"))}`;
+                                        window.open(url,"_blank");
+                                      }}>📤 إرسال</button>
+                                      <button className="btn be bsm" onClick={()=>setInvMdl({...iv})}>تعديل</button>
+                                      <button className="btn bd bsm" onClick={async()=>{if(window.confirm("حذف "+iv.name+"؟")){await db("investors","DELETE",null,iv.id);await loadAll();}}}>🗑️</button>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table></div>
+                    }
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* ── Maintenance ── */}
           {tab==="maintenance"&&(
             <div>
@@ -3968,6 +4078,30 @@ ${poolLine}
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setBlockMdl(null)}>{bt("cancel")}</button>
             <SaveBtn label={bt("confirmBlock")} style={{background:"#8B3A3A"}} onClick={confirmBlockGuest}/>
+          </div>
+        </Mdl>
+      )}
+
+      {invMdl&&(
+        <Mdl onClose={()=>setInvMdl(null)} title={invMdl.id?"تعديل مستثمر":"+ إضافة مستثمر"}>
+          <div style={{marginBottom:12}}><label className="lbl">الشاليه</label>
+            <select className="inp" value={invMdl.chalet||""} onChange={e=>setInvMdl(p=>p&&({...p,chalet:e.target.value}))}>
+              {names.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div style={{marginBottom:12}}><label className="lbl">الاسم</label><input className="inp" value={invMdl.name||""} onChange={e=>setInvMdl(p=>p&&({...p,name:e.target.value}))} placeholder="اسم المستثمر"/></div>
+          <div style={{marginBottom:12}}><label className="lbl">رقم الجوال (اختياري)</label><input className="inp" dir="ltr" value={invMdl.phone||""} onChange={e=>setInvMdl(p=>p&&({...p,phone:e.target.value}))} placeholder="05xxxxxxxx"/></div>
+          <div style={{marginBottom:12}}><label className="lbl">نسبته من صافي ربح هذا الشاليه (%)</label><input className="inp" type="number" min={0} max={100} value={invMdl.percentage??0} onChange={e=>setInvMdl(p=>p&&({...p,percentage:Number(e.target.value)}))}/></div>
+          <div style={{marginBottom:20}}><label className="lbl">ملاحظة (اختياري)</label><input className="inp" value={invMdl.note||""} onChange={e=>setInvMdl(p=>p&&({...p,note:e.target.value}))}/></div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <button className="btn bo" onClick={()=>setInvMdl(null)}>إلغاء</button>
+            <SaveBtn label="حفظ" disabled={!invMdl.name||!invMdl.chalet} onClick={async()=>{
+              const body={chalet:invMdl.chalet,name:invMdl.name,phone:invMdl.phone||null,percentage:Number(invMdl.percentage)||0,note:invMdl.note||null};
+              if(invMdl.id)await db("investors","PATCH",body,invMdl.id);
+              else await db("investors","POST",body);
+              await loadAll();
+              setInvMdl(null);
+            }}/>
           </div>
         </Mdl>
       )}

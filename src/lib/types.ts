@@ -96,6 +96,15 @@ export interface FixedExpense {
   active: boolean;
 }
 
+export interface Investor {
+  id: number;
+  chalet: string;
+  name: string;
+  phone?: string;
+  percentage: number;
+  note?: string;
+}
+
 export interface CleaningExpense {
   id: number;
   chalet: string;
