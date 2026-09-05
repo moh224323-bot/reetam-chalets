@@ -5,7 +5,12 @@ on:
     branches: [main]
     paths:
       - "supabase/migrations/**"
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      repair_versions:
+        description: "إصلاح لمرة واحدة: أرقام migrations نعتبرها مُطبَّقة مسبقاً بدون إعادة تنفيذها (مفصولة بمسافة)، مثال: 0003"
+        required: false
+        default: ""
 
 jobs:
   migrate:
@@ -22,6 +27,13 @@ jobs:
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: kduoasfaqtrotesohqpf
+
+      - name: إصلاح سجل migrations (يدوي فقط، لتاريخ قديم لا يصح إعادة تنفيذه)
+        if: ${{ github.event.inputs.repair_versions != '' }}
+        run: supabase migration repair --status applied ${{ github.event.inputs.repair_versions }}
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
 
       - name: تطبيق ملفات supabase/migrations على قاعدة البيانات الفعلية
         run: supabase db push
