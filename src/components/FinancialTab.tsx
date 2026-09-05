@@ -125,6 +125,27 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
     URL.revokeObjectURL(url);
   }
 
+  function sendInvestorReport() {
+    const lines = [
+      `📊 *تقرير صافي الأرباح — مجموعة ريتام*`,
+      `🗓️ الفترة: ${plab}`,
+      ``,
+      `🏠 *تفصيل حسب الشاليه:*`,
+      ...csum.map(c =>
+        `• ${c.n}: إيرادات ${c.r.toLocaleString()} ر — صيانة ${c.e.toLocaleString()} ر — *صافي ${c.net.toLocaleString()} ر*`
+      ),
+      ``,
+      `────────────`,
+      `💵 إجمالي الإيرادات: ${rev.toLocaleString()} ر`,
+      `🔧 تكاليف الصيانة: ${mex.toLocaleString()} ر`,
+      `💸 مصاريف أخرى: ${exTotal.toLocaleString()} ر`,
+      `📈 *صافي الربح الإجمالي: ${trueNet.toLocaleString()} ر*`,
+      ``,
+      `_تقرير آلي من نظام إدارة ريتام_`,
+    ];
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
+  }
+
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
@@ -132,6 +153,9 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           <button className="btn" onClick={exportCSV} style={{ background:"#059669", color:"#fff", padding:"8px 16px", fontSize:13 }}>
             ⬇ تصدير Excel
+          </button>
+          <button className="btn" onClick={sendInvestorReport} style={{ background:"#25D366", color:"#fff", padding:"8px 16px", fontSize:13 }}>
+            📤 إرسال تقرير للمستثمرين
           </button>
           {onAddExpense && <button className="btn bp" onClick={onAddExpense}>+ مصروف</button>}
           {onAddFixedExpense && <button className="btn" onClick={onAddFixedExpense} style={{ background:"#7C3AED", color:"#fff", padding:"8px 14px", fontSize:13 }}>📌 مصروف ثابت</button>}
