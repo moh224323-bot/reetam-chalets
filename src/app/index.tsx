@@ -2527,8 +2527,8 @@ ${poolLine}
   async function svAC(chalet: string, field: string, value: unknown, roomId: number | null = null): Promise<void> {if(roomId){const room=rooms.find(r=>r.id===roomId);const body={chalet,room_id:roomId,room_name:room?.name||"",ac_on:field==="ac_on"?value:(room?._acOn||false),ac_temp:field==="ac_temp"?value:(room?._acTemp||22),ac_mode:field==="ac_mode"?value:(room?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(room?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(room?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,room._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setRooms(p=>p.map(x=>x.id===roomId?{...x,_sdId:(res[0] as Room).id}:x));}await sendACCommand(roomId,field,value);}else{const ch=chalets.find(x=>x.name===chalet);const body={chalet,ac_on:field==="ac_on"?value:(ch?._acOn||false),ac_temp:field==="ac_temp"?value:(ch?._acTemp||22),ac_mode:field==="ac_mode"?value:(ch?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(ch?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(ch?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,ch._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setChalets(p=>p.map(x=>x.name===chalet?{...x,_sdId:(res[0] as Chalet).id}:x));}}}
   async function svCln(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("cleaning","POST",{trans_date:td(),type:"إيداع",chalet,amount:amt,note:note||"إيداع نظافة"});await loadAll();setClnMdl(false);}
   async function svI(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"تأمين",amount:amt,note:note||"إيداع تأمين"});await loadAll();setIMdl(false);}
-  async function handleCheckout(booking: Booking, amt: number, pay: string): Promise<void> {
-    await db("bookings","PATCH",{status:"completed",price:amt},booking.id);
+  async function handleCheckout(booking: Booking, amt: number, pay: string, receivedBy: string): Promise<void> {
+    await db("bookings","PATCH",{status:"completed",price:amt,received_by:receivedBy||null},booking.id);
     // مهمة تنظيف تلقائية بعد الخروج
     await db("cleaning_tasks","POST",{
       chalet: booking.chalet,
@@ -2603,6 +2603,7 @@ ${poolLine}
   function CheckoutMdl({booking}) {
     const [amt,setAmt]=useState(String(booking.price||""));
     const [pay,setPay]=useState("نقد");
+    const [recv,setRecv]=useState(currentUser.name||currentUser.username||"");
     const [loading,setLoading]=useState(false);
     return (
       <Mdl onClose={()=>setCoMdl(null)} title="🚪 تسجيل الخروج">
@@ -2612,7 +2613,7 @@ ${poolLine}
           <div style={{fontSize:12,color:T,marginTop:4}}>{fn(booking.date_from,booking.date_to)+" ليلة · "+Number(booking.price).toLocaleString()+" ر"}</div>
         </div>
         <div style={{marginBottom:12}}><label className="lbl">💰 المبلغ المدفوع (ريال)</label><input className="inp" type="number" value={amt} onChange={e=>setAmt(e.target.value)}/></div>
-        <div style={{marginBottom:20}}>
+        <div style={{marginBottom:12}}>
           <label className="lbl">طريقة الدفع</label>
           <div style={{display:"flex",gap:8}}>
             {[{v:"نقد",i:"💵"},{v:"تحويل",i:"📱"},{v:"مدى",i:"💳"}].map(m=>(
@@ -2622,12 +2623,22 @@ ${poolLine}
             ))}
           </div>
         </div>
+        <div style={{marginBottom:20}}>
+          <label className="lbl">👤 استلم المبلغ</label>
+          {users.length>0
+            ? <select className="inp" value={recv} onChange={e=>setRecv(e.target.value)}>
+                {!users.some(u=>(u.name||u.username)===recv)&&recv&&<option value={recv}>{recv}</option>}
+                {users.map(u=><option key={u.id} value={u.name||u.username}>{u.name||u.username}</option>)}
+              </select>
+            : <input className="inp" value={recv} onChange={e=>setRecv(e.target.value)} placeholder="اسم الشخص"/>
+          }
+        </div>
         <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#92400E",fontWeight:600}}>
           سيتم تسجيل {Number(amt||0).toLocaleString()} ريال في الإيرادات
         </div>
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
           <button className="btn bo" onClick={()=>setCoMdl(null)}>إلغاء</button>
-          <button className="btn bp" disabled={loading} onClick={async()=>{setLoading(true);await handleCheckout(booking,Number(amt||0),pay);setLoading(false);}}>
+          <button className="btn bp" disabled={loading} onClick={async()=>{setLoading(true);await handleCheckout(booking,Number(amt||0),pay,recv);setLoading(false);}}>
             {loading?"جاري...":"✅ تأكيد الخروج"}
           </button>
         </div>
@@ -4204,6 +4215,7 @@ ${poolLine}
                   {l:bt("departure"),v:fd(bkDetail.date_to),i:"🚪"},
                   {l:bt("totalPrice"),v:Number(bkDetail.price).toLocaleString()+" ر",i:"💰"},
                   {l:bt("paymentMethod"),v:bkDetail.payment_method||"-",i:"💳"},
+                  ...(bkDetail.status==="completed"?[{l:"استلم المبلغ",v:bkDetail.received_by||"-",i:"👤"}]:[]),
                 ].map((item,i)=>(
                   <div key={i} style={{background:SL,borderRadius:10,padding:"12px 14px"}}>
                     <div style={{fontSize:10,color:T,marginBottom:4}}>{item.i} {item.l}</div>

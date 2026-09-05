@@ -42,6 +42,7 @@ export interface Booking {
   pre_arrival_sent?: boolean;
   pool_preference?: string | null;
   pool_approved?: boolean;
+  received_by?: string;
 }
 
 export interface MaintenanceRequest {
