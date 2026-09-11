@@ -2390,13 +2390,18 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
     for(const b of bookings){if(!bMap[b.chalet])bMap[b.chalet]=[];bMap[b.chalet].push(b);}
     const mMap: Record<string,typeof maint[0][]>={};
     for(const m of maint){if(!mMap[m.chalet])mMap[m.chalet]=[];mMap[m.chalet].push(m);}
+    const exMap: Record<string,typeof expenses[0][]>={};
+    for(const e of expenses){if(!e.chalet)continue;if(!exMap[e.chalet])exMap[e.chalet]=[];exMap[e.chalet].push(e);}
     return chalets.map(c=>{
       const cb=bMap[c.name]||[];
       const cm=mMap[c.name]||[];
+      const ce=exMap[c.name]||[];
       const earned=cb.filter(b=>b.status==="completed"||b.status==="confirmed");
       const rev=earned.reduce((s,b)=>s+Number(b.price),0);
       const monthRev=earned.filter(b=>b.date_from&&new Date(b.date_from).getFullYear()===y&&new Date(b.date_from).getMonth()===mo).reduce((s,b)=>s+Number(b.price),0);
-      const monthExp=cm.filter(m=>Number(m.cost)>0&&m.maint_date&&new Date(m.maint_date).getFullYear()===y&&new Date(m.maint_date).getMonth()===mo).reduce((s,m)=>s+Number(m.cost),0);
+      const monthMaint=cm.filter(m=>Number(m.cost)>0&&m.maint_date&&new Date(m.maint_date).getFullYear()===y&&new Date(m.maint_date).getMonth()===mo).reduce((s,m)=>s+Number(m.cost),0);
+      const monthMisc=ce.filter(e=>e.expense_date&&new Date(e.expense_date).getFullYear()===y&&new Date(e.expense_date).getMonth()===mo).reduce((s,e)=>s+Number(e.amount),0);
+      const monthExp=monthMaint+monthMisc;
       return {
         ...c,
         rev,
@@ -2410,7 +2415,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
         goal:Number(c.monthly_goal||0),
       };
     });
-  },[chalets,bookings,maint,cBal]);
+  },[chalets,bookings,maint,expenses,cBal]);
 
   const invPeriodRange = ()=>{
     const now=new Date();
@@ -4393,7 +4398,7 @@ ${poolLine}
       )}
       {goalMdl&&(
         <Mdl onClose={()=>setGoalMdl(null)} title={"🎯 هدف الشهر - "+goalMdl.name}>
-          <p style={{color:T,fontSize:13,marginBottom:16}}>حدد الهدف الشهري لصافي الأرباح (الإيرادات - مصاريف الصيانة)</p>
+          <p style={{color:T,fontSize:13,marginBottom:16}}>حدد الهدف الشهري لصافي الأرباح (الإيرادات - المصاريف)</p>
           <div style={{marginBottom:20}}>
             <label className="lbl">الهدف الشهري (ريال)</label>
             <input className="inp" type="number" placeholder="مثال: 10000" value={goalMdl.goal} onChange={e=>setGoalMdl(p=>({...p,goal:e.target.value}))}/>
