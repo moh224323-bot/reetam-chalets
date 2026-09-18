@@ -2460,7 +2460,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
 
   async function svC(f: Partial<Chalet>): Promise<void> {
     const openDate=f.open_date?f.open_date+"-01":null;
-    const body={name:f.name,loc:f.loc,cap:Number(f.cap),price:Number(f.price),wprice:Number(f.wprice),ins:Number(f.ins),description:f.description,st:f.st,img:f.img||null,gallery:f.gallery||null,amenities:f.amenities||null,allow_overnight:f.allow_overnight!==false,allow_hourly:!!f.allow_hourly,hourly_slots:f.hourly_slots||null,open_date:openDate,prev_revenue:Number(f.prev_revenue)||0};
+    const body={name:f.name,loc:f.loc,cap:Number(f.cap),price:Number(f.price),wprice:Number(f.wprice),ins:Number(f.ins),description:f.description,st:f.st,img:f.img||null,gallery:f.gallery||null,amenities:f.amenities||null,allow_overnight:f.allow_overnight!==false,allow_hourly:!!f.allow_hourly,hourly_slots:f.hourly_slots||null,open_date:openDate,prev_revenue:Number(f.prev_revenue)||0,terms:f.terms||null,entry_method:f.entry_method||null,map_url:f.map_url||null};
     if(f.id){
       const oldChalet = chalets.find(c=>c.id===f.id);
       const res = await db("chalets","PATCH",body as Record<string,unknown>,f.id);
@@ -2519,24 +2519,22 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
     const checkinTime  = b.checkin_time  || "الوقت المتفق عليه";
     const checkoutTime = b.checkout_time || "الوقت المتفق عليه";
     const poolUrl = `https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=pool`;
-    return `مرحباً ${b.guest} 👋
-
-نذكّركم بحجزكم في *${b.chalet}* غداً إن شاء الله 🏡
-
-*التفاصيل:*
-⏰ وقت الدخول: ${checkinTime}
-⏰ وقت الخروج: ${checkoutTime}
-
-🏊 *بخصوص المسبح:*
-تعبئة المسبح تتم مرة واحدة فقط — يرجى اختيار ما يناسبكم:
-${poolUrl}
-
-*تذكير مهم:*
-• يرجى الالتزام بوقت الدخول والخروج المحدد
-• في حال التأخر عن وقت الخروج يُطبّق رسوم إضافية
-
-نتطلع لاستقبالكم وتمنياتنا لكم بإقامة ممتعة 🌟
-*ريتام للشاليهات*`;
+    const ch = chalets.find(c=>c.name===b.chalet);
+    const dayLabel = b.date_from===td() ? "اليوم" : "غداً";
+    const sections = [
+      `مرحباً ${b.guest} 👋`,
+      `نذكّركم بحجزكم في *${b.chalet}* ${dayLabel} إن شاء الله 🏡`,
+      `*التفاصيل:*\n⏰ وقت الدخول: ${checkinTime}\n⏰ وقت الخروج: ${checkoutTime}`,
+    ];
+    if(ch?.map_url) sections.push(`📍 *الموقع:*\n${ch.map_url}`);
+    if(ch?.entry_method) sections.push(`🔑 *طريقة الدخول:*\n${ch.entry_method}`);
+    sections.push(`🏊 *بخصوص المسبح:*\nتعبئة المسبح تتم مرة واحدة فقط — يرجى اختيار ما يناسبكم:\n${poolUrl}`);
+    if(ch?.terms) sections.push(`📄 *الشروط والأحكام:*\n${ch.terms}`);
+    sections.push(
+      `*تذكير مهم:*\n• يرجى الالتزام بوقت الدخول والخروج المحدد\n• في حال التأخر عن وقت الخروج يُطبّق رسوم إضافية`,
+      `نتطلع لاستقبالكم وتمنياتنا لكم بإقامة ممتعة 🌟\n*ريتام للشاليهات*`,
+    );
+    return sections.join("\n\n");
   }
   function buildPoolApprovalMsg(b: Booking): string {
     const pref = b.pool_preference || "";
@@ -2555,6 +2553,41 @@ ${poolLine}
 *ريتام للشاليهات*`;
   }
   const [preArrMdl, setPreArrMdl] = useState<{booking: Booking} | null>(null);
+
+  // ── تنبيه الوصول خلال ساعة ──
+  const [nowTick,setNowTick] = useState(Date.now());
+  useEffect(()=>{ const t=setInterval(()=>setNowTick(Date.now()),30000); return ()=>clearInterval(t); },[]);
+  useEffect(()=>{
+    if(typeof Notification!=="undefined"&&Notification.permission==="default") Notification.requestPermission().catch(()=>{});
+  },[]);
+  function checkinDateTime(b: Booking): Date | null {
+    if(!b.date_from||!b.checkin_time) return null;
+    const parts=b.checkin_time.split(":");
+    const h=Number(parts[0]), m=Number(parts[1]||0);
+    if(isNaN(h)) return null;
+    const d=new Date(b.date_from+"T00:00:00");
+    d.setHours(h,m,0,0);
+    return d;
+  }
+  const soonArrivals = useMemo(()=>{
+    return bookings.filter(b=>{
+      if(b.status!=="confirmed") return false;
+      const dt=checkinDateTime(b);
+      if(!dt) return false;
+      const diffMin=(dt.getTime()-nowTick)/60000;
+      return diffMin>0&&diffMin<=60;
+    }).sort((a,b)=>(checkinDateTime(a)!.getTime())-(checkinDateTime(b)!.getTime()));
+  },[bookings,nowTick]);
+  const [notifiedArrivals,setNotifiedArrivals] = useState<Set<number>>(new Set());
+  useEffect(()=>{
+    soonArrivals.forEach(b=>{
+      if(notifiedArrivals.has(b.id)) return;
+      setNotifiedArrivals(p=>new Set(p).add(b.id));
+      if(typeof Notification!=="undefined"&&Notification.permission==="granted"){
+        new Notification("⏰ وصول خلال ساعة",{body:`${b.guest} — ${b.chalet} الساعة ${b.checkin_time}`});
+      }
+    });
+  },[soonArrivals]);
   async function svM(f: Partial<MaintenanceRequest>, old?: MaintenanceRequest | null): Promise<void> {const cost=Number(f.cost)||0;const wasDone=old?.status==="done";const isDone=f.status==="done";const isNew=!f.id;const body={chalet:f.chalet,issue:f.issue,maint_date:f.maint_date,priority:f.priority,status:f.status,cost,note:f.note,req:f.req,image:f.image||null};if(f.id)await db("maintenance","PATCH",body as Record<string,unknown>,f.id);else await db("maintenance","POST",body as Record<string,unknown>);if(cost>0&&isDone&&(isNew||!wasDone))await db("wallet","POST",{trans_date:f.maint_date||td(),type:"سحب صيانة",chalet:f.chalet,cat:"صيانة",amount:cost,note:f.issue||"صيانة"});await loadAll();setMMdl(null);}
   async function svAC(chalet: string, field: string, value: unknown, roomId: number | null = null): Promise<void> {if(roomId){const room=rooms.find(r=>r.id===roomId);const body={chalet,room_id:roomId,room_name:room?.name||"",ac_on:field==="ac_on"?value:(room?._acOn||false),ac_temp:field==="ac_temp"?value:(room?._acTemp||22),ac_mode:field==="ac_mode"?value:(room?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(room?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(room?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,room._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setRooms(p=>p.map(x=>x.id===roomId?{...x,_sdId:(res[0] as Room).id}:x));}await sendACCommand(roomId,field,value);}else{const ch=chalets.find(x=>x.name===chalet);const body={chalet,ac_on:field==="ac_on"?value:(ch?._acOn||false),ac_temp:field==="ac_temp"?value:(ch?._acTemp||22),ac_mode:field==="ac_mode"?value:(ch?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(ch?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(ch?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,ch._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setChalets(p=>p.map(x=>x.name===chalet?{...x,_sdId:(res[0] as Chalet).id}:x));}}}
   async function svCln(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("cleaning","POST",{trans_date:td(),type:"إيداع",chalet,amount:amt,note:note||"إيداع نظافة"});await loadAll();setClnMdl(false);}
@@ -2881,6 +2914,43 @@ ${poolLine}
                   </div>
                 );
               })()}
+
+              {/* ── تنبيه: وصول خلال ساعة ── */}
+              {soonArrivals.length>0&&(
+                <div style={{background:"linear-gradient(135deg,#B45309,#92400E)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 4px 20px rgba(180,83,9,.4)",animation:"pulse 2s infinite"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+                    <span style={{fontSize:18}}>🔔</span>
+                    <span style={{fontWeight:800,color:"#fff",fontSize:15}}>وصول خلال ساعة!</span>
+                    <span style={{background:"rgba(255,255,255,.25)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{soonArrivals.length}</span>
+                  </div>
+                  {soonArrivals.map((b,i)=>{
+                    const dt=checkinDateTime(b);
+                    const mins=dt?Math.max(0,Math.round((dt.getTime()-nowTick)/60000)):0;
+                    return (
+                      <div key={b.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:b.pre_arrival_sent?"rgba(34,197,94,.15)":"rgba(255,255,255,.1)",borderRadius:10,marginBottom:i<soonArrivals.length-1?8:0,flexWrap:"wrap",border:b.pre_arrival_sent?"1px solid rgba(34,197,94,.35)":"1px solid transparent"}}>
+                        <div style={{flex:1,minWidth:140}}>
+                          <div style={{display:"flex",alignItems:"center",gap:6}}>
+                            <span style={{fontWeight:800,color:"#fff",fontSize:14}}>{b.guest}</span>
+                            <span style={{fontSize:10,background:"rgba(255,255,255,.25)",color:"#fff",borderRadius:99,padding:"1px 8px",fontWeight:700}}>{"خلال "+mins+" دقيقة"}</span>
+                            {b.pre_arrival_sent&&<span style={{fontSize:10,background:"rgba(34,197,94,.3)",color:"#86EFAC",borderRadius:99,padding:"1px 8px",fontWeight:700}}>✓ أُرسلت</span>}
+                          </div>
+                          <div style={{fontSize:11,color:"rgba(255,255,255,.75)",marginTop:2}}>
+                            {b.chalet}{" · دخول "+b.checkin_time}
+                            {!b.phone&&<span style={{color:"#FCA5A5",marginRight:6}}>· ⚠ لا يوجد هاتف</span>}
+                          </div>
+                        </div>
+                        <button onClick={()=>setPreArrMdl({booking:b})} style={{
+                          background:b.pre_arrival_sent?"rgba(255,255,255,.15)":"#fff",
+                          color:b.pre_arrival_sent?"#fff":"#92400E",
+                          border:b.pre_arrival_sent?"1px solid rgba(255,255,255,.3)":"none",
+                          borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:800,cursor:"pointer",
+                          fontFamily:"'Tajawal',sans-serif",flexShrink:0,
+                        }}>{b.pre_arrival_sent?"📋 إعادة إرسال":"📋 إرسال رسالة"}</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* ── وصول غداً (رسائل قبل الوصول) ── */}
               {(()=>{
@@ -3942,6 +4012,18 @@ ${poolLine}
             <div><label className="lbl">تاريخ الافتتاح</label><input className="inp" type="month" value={cMdl.open_date||""} onChange={e=>setCMdl(p=>({...p,open_date:e.target.value}))}/></div>
             <div><label className="lbl">الإيراد السابق (ريال)</label><input className="inp" type="number" value={cMdl.prev_revenue||""} onChange={e=>setCMdl(p=>({...p,prev_revenue:e.target.value}))} placeholder="0"/></div>
             <div style={{gridColumn:"span 2"}}><label className="lbl">الوصف</label><textarea className="inp" rows={2} value={cMdl.description||""} onChange={e=>setCMdl(p=>({...p,description:e.target.value}))} placeholder="وصف مختصر..."/></div>
+            <div style={{gridColumn:"span 2"}}>
+              <label className="lbl">📍 رابط الموقع (خرائط جوجل)</label>
+              <input className="inp" dir="ltr" value={cMdl.map_url||""} onChange={e=>setCMdl(p=>({...p,map_url:e.target.value}))} placeholder="https://maps.app.goo.gl/..."/>
+            </div>
+            <div style={{gridColumn:"span 2"}}>
+              <label className="lbl">🔑 طريقة الدخول (رمز القفل، تسليم المفتاح...)</label>
+              <textarea className="inp" rows={2} value={cMdl.entry_method||""} onChange={e=>setCMdl(p=>({...p,entry_method:e.target.value}))} placeholder="مثال: قفل رقمي — الرمز 1234#، يُرسل قبل الوصول بساعة"/>
+            </div>
+            <div style={{gridColumn:"span 2"}}>
+              <label className="lbl">📄 الشروط والأحكام الخاصة بهذا الشاليه</label>
+              <textarea className="inp" rows={3} value={cMdl.terms||""} onChange={e=>setCMdl(p=>({...p,terms:e.target.value}))} placeholder="تُضاف لرسالة ما قبل الوصول تلقائياً..."/>
+            </div>
             <div style={{gridColumn:"span 2"}}>
               <label className="lbl">المميزات (افصل بفاصلة)</label>
               <input className="inp" value={cMdl.amenities||""} onChange={e=>setCMdl(p=>({...p,amenities:e.target.value}))} placeholder="مسبح خاص، واي فاي، مطبخ مجهز، موقف سيارات"/>

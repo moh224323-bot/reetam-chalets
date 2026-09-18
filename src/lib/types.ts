@@ -17,6 +17,9 @@ export interface Chalet {
   open_date?: string | null;
   prev_revenue?: number;
   monthly_goal?: number;
+  terms?: string | null;
+  entry_method?: string | null;
+  map_url?: string | null;
   // computed from smart_devices
   _acOn?: boolean;
   _acTemp?: number;
