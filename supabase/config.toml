@@ -4,6 +4,11 @@ enabled = true
 verify_jwt = true
 entrypoint = "./functions/create-team-member/index.ts"
 
+[functions.send-prearrival-whatsapp]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send-prearrival-whatsapp/index.ts"
+
 [functions.tuya-control]
 enabled = true
 verify_jwt = false

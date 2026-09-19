@@ -1,0 +1,20 @@
+name: إرسال رسائل واتساب قبل الوصول
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: استدعاء دالة الإرسال التلقائي
+        run: |
+          curl -sS --fail-with-body -X POST \
+            "https://kduoasfaqtrotesohqpf.supabase.co/functions/v1/send-prearrival-whatsapp" \
+            -H "X-Cron-Secret: $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            -w "\nHTTP %{http_code}\n"
+        env:
+          CRON_SECRET: ${{ secrets.WHATSAPP_CRON_SECRET }}
