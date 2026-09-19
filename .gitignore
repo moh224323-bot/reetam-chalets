@@ -3,6 +3,11 @@
 # dependencies
 node_modules/
 
+# agent skills (local tooling, installed via `npx skills add`)
+.agents/
+.claude/skills/
+skills-lock.json
+
 # Expo
 .expo/
 dist/

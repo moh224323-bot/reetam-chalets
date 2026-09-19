@@ -1449,8 +1449,9 @@ function GuestPageEmbed({bookingId, mode}) {
   const [comment,setComment] = useState("");
   const [submitted,setSubmitted] = useState(false);
   const [pdplConsent,setPdplConsent] = useState(false);
-  const TERMS = `شروط وأحكام الإقامة — مجموعة ريتام\n\n١. يُمنع إدخال المسكرات أو المخدرات.\n٢. يُمنع إقامة الحفلات الصاخبة.\n٣. المحافظة على نظافة الشاليه.\n٤. أي تلف يتحمله الضيف.\n٥. وقت تسجيل الخروج ١٢:٠٠ ظهراً.\n٦. يُمنع إدخال حيوانات أليفة.\n٧. في حالة الإلغاء قبل ٤٨ ساعة يُسترد المبلغ.`;
-  
+  const [chaletTerms,setChaletTerms] = useState<string | null>(null);
+  const TERMS = chaletTerms || `شروط وأحكام الإقامة — مجموعة ريتام\n\n١. يُمنع إدخال المسكرات أو المخدرات.\n٢. يُمنع إقامة الحفلات الصاخبة.\n٣. المحافظة على نظافة الشاليه.\n٤. أي تلف يتحمله الضيف.\n٥. وقت تسجيل الخروج ١٢:٠٠ ظهراً.\n٦. يُمنع إدخال حيوانات أليفة.\n٧. في حالة الإلغاء قبل ٤٨ ساعة يُسترد المبلغ.`;
+
   useEffect(()=>{
     if(!bookingId){setStep("error");return;}
     async function load(){
@@ -1464,6 +1465,8 @@ function GuestPageEmbed({bookingId, mode}) {
       } else if(mode==="pool"){
         setStep("pool");
       } else {
+        const cdata=await db("chalets","GET",null,`name=eq.${encodeURIComponent(data[0].chalet)}`);
+        if(cdata&&cdata[0]&&cdata[0].terms) setChaletTerms(cdata[0].terms);
         const ci=await db("guest_checkins","GET",null,`booking_id=eq.${bookingId}`);
         if(ci&&ci[0]){setStep("confirmed");}
         else setStep("terms");
@@ -1673,6 +1676,69 @@ function PoolGuestForm({booking, onDone}) {
         background:choice?"linear-gradient(135deg,#413523,#2A2218)":"#D1D5DB",color:choice?"#C5AC88":"#fff",
         opacity:loading?.7:1,
       }}>{loading?"جاري الإرسال...":"إرسال الطلب 📨"}</button>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════
+   صفحة معلومات الشاليه للضيف — موقع، طريقة دخول، شروط
+══════════════════════════════════════════════════════ */
+function GuestInfoPage({bookingId}:{bookingId: string | null}) {
+  const [step,setStep] = useState("loading");
+  const [booking,setBooking] = useState<any>(null);
+  const [chalet,setChalet] = useState<any>(null);
+
+  useEffect(()=>{
+    if(!bookingId){setStep("error");return;}
+    (async()=>{
+      const bdata=await db("bookings","GET",null,`id=eq.${bookingId}`);
+      if(!bdata||!bdata[0]){setStep("error");return;}
+      const b=bdata[0] as any;
+      setBooking(b);
+      const cdata=await db("chalets","GET",null,`name=eq.${encodeURIComponent(b.chalet)}`);
+      setChalet((cdata&&cdata[0])||null);
+      setStep("ready");
+    })();
+  },[]);
+
+  const GS = `@import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@400;600;700;800&display=swap');*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Tajawal',sans-serif;background:#FAF8F5;min-height:100vh}`;
+  const wrap = {fontFamily:"'Tajawal',sans-serif",minHeight:"100vh",background:"#FAF8F5",display:"flex",alignItems:"center",justifyContent:"center",padding:16};
+  const card = {background:"#fff",borderRadius:20,padding:24,maxWidth:480,width:"100%",boxShadow:"0 4px 24px rgba(65,53,35,.1)"};
+
+  if(step==="loading") return <div dir="rtl" style={wrap}><style>{GS}</style><div style={{textAlign:"center",color:"#576D6F"}}><div style={{fontSize:40}}>⌛</div><div style={{marginTop:12,fontWeight:600}}>جاري التحميل...</div></div></div>;
+  if(step==="error") return <div dir="rtl" style={wrap}><style>{GS}</style><div style={{...card,textAlign:"center"}}><div style={{fontSize:48}}>❌</div><div style={{fontSize:18,fontWeight:800,color:"#413523",marginTop:12}}>رابط غير صحيح</div></div></div>;
+
+  const section = (icon: string, title: string, content: string | null | undefined) => !content ? null : (
+    <div style={{background:"#F5EFE6",borderRadius:12,padding:16,marginBottom:14}}>
+      <div style={{fontWeight:800,color:"#413523",marginBottom:6,fontSize:14}}>{icon+" "+title}</div>
+      <div style={{fontSize:13,color:"#576D6F",whiteSpace:"pre-wrap",lineHeight:1.7}}>{content}</div>
+    </div>
+  );
+
+  return (
+    <div dir="rtl" style={wrap}>
+      <style>{GS}</style>
+      <div style={card}>
+        <div style={{textAlign:"center",marginBottom:20}}>
+          <div style={{fontSize:40,marginBottom:8}}>🏡</div>
+          <div style={{fontSize:20,fontWeight:800,color:"#413523"}}>{"أهلاً "+booking.guest+"!"}</div>
+          <div style={{fontSize:13,color:"#576D6F",marginTop:4}}>{booking.chalet}</div>
+          <div style={{fontSize:12,color:"#576D6F",marginTop:6}}>
+            {"⏰ دخول "+(booking.checkin_time||"-")+" · خروج "+(booking.checkout_time||"-")}
+          </div>
+        </div>
+        {chalet?.map_url&&(
+          <a href={chalet.map_url} target="_blank" rel="noopener noreferrer" style={{display:"block",textAlign:"center",background:"linear-gradient(135deg,#413523,#2A2218)",color:"#C5AC88",borderRadius:12,padding:14,fontWeight:800,fontSize:14,textDecoration:"none",marginBottom:14}}>
+            📍 افتح الموقع في خرائط جوجل
+          </a>
+        )}
+        {section("🔑","طريقة الدخول",chalet?.entry_method)}
+        {section("📄","الشروط والأحكام",chalet?.terms)}
+        {!chalet?.map_url&&!chalet?.entry_method&&!chalet?.terms&&(
+          <div style={{textAlign:"center",color:"#576D6F",fontSize:13,padding:"20px 0"}}>لا توجد تفاصيل إضافية بعد — تواصل معنا لأي استفسار</div>
+        )}
+        <div style={{marginTop:8,textAlign:"center",fontSize:13,color:"#576D6F"}}>نتطلع لاستقبالكم 🌟 مجموعة ريتام للشاليهات</div>
+      </div>
     </div>
   );
 }
@@ -2227,6 +2293,8 @@ function AppWrapper() {
       const p=new URLSearchParams(window.location.search);
       return <LoyaltyPage phone={p.get("phone")||""}/>;
     }
+    if(guestParams.mode==="info")
+      return <GuestInfoPage bookingId={guestParams.bookingId}/>;
     return <GuestPageEmbed bookingId={guestParams.bookingId} mode={guestParams.mode}/>;
   }
   if(!currentUser){
