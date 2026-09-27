@@ -2812,6 +2812,152 @@ ${poolLine}
                 );
               })()}
 
+              {/* ── الأرقام الكبيرة ── */}
+              {(()=>{
+                const now=new Date();
+                const y=now.getFullYear(), mo=now.getMonth();
+
+                // حجوزات مكتملة أو مؤكدة (confirmed تُحسب إيراداً فعلياً)
+                const activeStatuses=["completed","confirmed"];
+
+                // هذا الشهر: date_from يقع في الشهر الحالي (نفس منطق صفحة المالية)
+                const monthBks=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&
+                  new Date(b.date_from).getFullYear()===y&&new Date(b.date_from).getMonth()===mo
+                );
+                const monthRev=monthBks.reduce((s,b)=>s+Number(b.price),0);
+                const monthCount=monthBks.length;
+
+                // الشهر الماضي
+                const lastMo=mo===0?11:mo-1; const lastY=mo===0?y-1:y;
+                const lastMonthRev=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&
+                  new Date(b.date_from).getFullYear()===lastY&&new Date(b.date_from).getMonth()===lastMo
+                ).reduce((s,b)=>s+Number(b.price),0);
+
+                const diff=lastMonthRev>0?Math.round((monthRev-lastMonthRev)/lastMonthRev*100):0;
+
+                // هذا العام
+                const yearRev=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===y).reduce((s,b)=>s+Number(b.price),0);
+                const yearCount=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===y).length;
+
+                // المصاريف الشهرية
+                const monthExp=scExpenses.filter(e=>e.expense_date&&new Date(e.expense_date).getFullYear()===y&&new Date(e.expense_date).getMonth()===mo).reduce((s,e)=>s+Number(e.amount),0)
+                  + scMaint.filter(m=>m.cost&&m.maint_date&&new Date(m.maint_date).getFullYear()===y&&new Date(m.maint_date).getMonth()===mo).reduce((s,m)=>s+Number(m.cost),0);
+                const netProfit=monthRev-monthExp;
+                const margin=monthRev>0?Math.round(netProfit/monthRev*100):0;
+
+                // نسبة الإشغال: ليالٍ محجوزة هذا الشهر (مقصوصة على حدود الشهر) ÷ (عدد الشاليهات النشطة × أيام الشهر)
+                const daysInMonth=new Date(y,mo+1,0).getDate();
+                const activeChaletsCount=scChalets.filter(c=>c.st!=="inactive").length||scChalets.length;
+                const monthStart=new Date(y,mo,1), monthEnd=new Date(y,mo+1,1);
+                const bookedNights=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&b.date_to).reduce((s,b)=>{
+                  const from=new Date(b.date_from), to=new Date(b.date_to);
+                  const start=from>monthStart?from:monthStart, end=to<monthEnd?to:monthEnd;
+                  return s+Math.max(0,Math.round((end.getTime()-start.getTime())/86400000));
+                },0);
+                const availableNights=activeChaletsCount*daysInMonth;
+                const occupancyPct=availableNights>0?Math.round(bookedNights/availableNights*100):0;
+                const occColor=occupancyPct>=70?"#4CAF50":occupancyPct>=40?"#EAB308":"#EF4444";
+
+                return (
+                  <div style={{marginBottom:20}}>
+                    {/* الصف الأول: 3 بطاقات كبيرة */}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:12}}>
+                      {/* إيرادات الشهر */}
+                      <div className="stat-card" style={{background:"linear-gradient(135deg,#1C3A3A,#0F2525)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
+                        <div style={{position:"absolute",top:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(197,172,136,.06)"}}/>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4,fontWeight:700,letterSpacing:".5px"}}>💰 إيرادات {now.toLocaleDateString("ar-SA-u-ca-gregory",{month:"long"})}</div>
+                        <div style={{fontSize:32,fontWeight:900,color:"#fff",letterSpacing:"-1px",lineHeight:1}}>{monthRev.toLocaleString()}<span style={{fontSize:15,marginRight:5,opacity:.7}}>ر</span></div>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,flexWrap:"wrap"}}>
+                          {diff!==0&&(
+                            <span style={{fontSize:11,color:diff>0?"#4CAF50":"#FF6B6B",fontWeight:800,background:diff>0?"rgba(76,175,80,.15)":"rgba(255,107,107,.15)",borderRadius:6,padding:"2px 8px"}}>
+                              {diff>0?"↑":"↓"} {Math.abs(diff)}% الشهر الماضي
+                            </span>
+                          )}
+                          <span style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>{monthCount} حجز</span>
+                        </div>
+                      </div>
+
+                      {/* نسبة الإشغال */}
+                      <div className="stat-card" style={{background:"linear-gradient(135deg,#1E2A4A,#141D33)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
+                        <div style={{position:"absolute",top:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(197,172,136,.06)"}}/>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4,fontWeight:700,letterSpacing:".5px"}}>🛏️ نسبة الإشغال هذا الشهر</div>
+                        <div style={{fontSize:32,fontWeight:900,color:occColor,letterSpacing:"-1px",lineHeight:1}}>{occupancyPct}<span style={{fontSize:15,marginRight:3,opacity:.7}}>%</span></div>
+                        <div style={{background:"rgba(255,255,255,.12)",borderRadius:99,height:6,overflow:"hidden",marginTop:10}}>
+                          <div style={{width:Math.min(occupancyPct,100)+"%",height:"100%",background:occColor,borderRadius:99,transition:"width .4s"}}/>
+                        </div>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginTop:8}}>{bookedNights.toLocaleString()+" من "+availableNights.toLocaleString()+" ليلة متاحة"}</div>
+                      </div>
+
+                      {/* صافي الربح */}
+                      <div className="stat-card" style={{background:netProfit>=0?"linear-gradient(135deg,#0F3320,#0A2018)":"linear-gradient(135deg,#3A1515,#250F0F)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
+                        <div style={{position:"absolute",top:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(197,172,136,.06)"}}/>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4,fontWeight:700,letterSpacing:".5px"}}>📊 صافي الربح الشهري</div>
+                        <div style={{fontSize:32,fontWeight:900,color:netProfit>=0?"#4CAF50":"#FF6B6B",letterSpacing:"-1px",lineHeight:1}}>{netProfit.toLocaleString()}<span style={{fontSize:15,marginRight:5,opacity:.7}}>ر</span></div>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}>
+                          <span style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>هامش {margin}%</span>
+                          <span style={{fontSize:11,color:"rgba(255,255,255,.35)"}}>· مصاريف {monthExp.toLocaleString()} ر</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* الصف الثاني: 4 بطاقات صغيرة */}
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+                      {[
+                        {l:"إيرادات العام", v:yearRev.toLocaleString()+" ر", i:"📈", c:"#4A9BAF", bg:"rgba(74,155,175,.08)", sub:yearCount+" حجز"},
+                        {l:"محفظة التأمين", v:walletBal.toLocaleString()+" ر", i:"🛡️", c:"#7B8FA6", bg:"rgba(123,143,166,.08)", sub:"الرصيد الكلي"},
+                        {l:"تكاليف الصيانة",v:mCost.toLocaleString()+" ر", i:"🔧", c:"#C97B63", bg:"rgba(201,123,99,.08)", sub:"منذ البداية"},
+                        {l:"حجوزات نشطة",  v:String(actB), i:"📅", c:B, bg:SL, sub:"مؤكد + معلق"},
+                      ].map((s,i)=>(
+                        <div key={i} style={{background:s.bg,borderRadius:12,padding:"12px 10px",border:"1px solid rgba(197,172,136,.18)"}}>
+                          <div style={{fontSize:16,marginBottom:4}}>{s.i}</div>
+                          <div style={{fontSize:15,fontWeight:900,color:s.c,lineHeight:1.2}}>{s.v}</div>
+                          <div style={{fontSize:9,color:T,marginTop:4,fontWeight:600}}>{s.l}</div>
+                          <div style={{fontSize:9,color:SI,marginTop:1}}>{s.sub}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* ── يحتاج انتباهك: مركز التنبيهات الموحّد ── */}
+              {(()=>{
+                const now=new Date();
+                const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+                const yesterday=new Date(today); yesterday.setDate(today.getDate()-1);
+                const hasCheckoutToday=scBookings.some(b=>{
+                  if(b.status!=="confirmed"&&b.status!=="pending") return false;
+                  if(!b.date_to) return false;
+                  const to=new Date(b.date_to);
+                  const toD=new Date(to.getFullYear(),to.getMonth(),to.getDate());
+                  return toD<=today&&toD>=yesterday;
+                });
+                const hasArrivingSoon=soonArrivals.length>0;
+                const tom=new Date(); tom.setDate(tom.getDate()+1);
+                const tomStr=tom.toISOString().slice(0,10);
+                const hasArrivingTomorrow=scBookings.some(b=>b.status==="confirmed"&&b.date_from===tomStr);
+                const hasPoolPending=scBookings.some(b=>b.pool_preference&&!b.pool_approved&&b.status==="confirmed");
+                const hasRoomReqs=roomReqs.length>0;
+                const thisYM2=td().slice(0,7);
+                const doneLogsSet=new Set(clLogs.filter(l=>l.log_date?.startsWith(thisYM2)&&(l.status==="done"||l.supervisor_ok)).map(l=>l.task_id));
+                const hasCleaningDue=clTasks.some(t=>t.active!==false&&!doneLogsSet.has(t.id));
+                const hasCleaningNeedsApproval=clLogs.some(l=>l.status==="done"&&l.done_at&&!l.supervisor_ok&&l.log_date?.startsWith(thisYM2));
+                const activeFixed2=scFixedExpenses.filter(fx=>fx.active);
+                const paidNames2=new Set(scExpenses.filter(e=>e.expense_date?.startsWith(thisYM2)).map(e=>e.note));
+                const hasUnpaidFixed=activeFixed2.some(fx=>!paidNames2.has(fx.name));
+                const hasAnyAlerts=hasCheckoutToday||hasArrivingSoon||hasArrivingTomorrow||hasPoolPending||hasRoomReqs||hasCleaningDue||hasCleaningNeedsApproval||hasUnpaidFixed;
+
+                return (
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontWeight:800,color:B,fontSize:15,marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
+                      <span>🔔 يحتاج انتباهك</span>
+                    </div>
+                    {!hasAnyAlerts && (
+                      <div className="card" style={{padding:"20px 16px",textAlign:"center",color:T,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                        <span style={{fontSize:18}}>✅</span> كل شيء تحت السيطرة، لا توجد مهام عاجلة الآن
+                      </div>
+                    )}
+
               {/* ── تسجيل الخروج اليوم (أولوية قصوى) ── */}
               {(()=>{
                 const now=new Date();
@@ -3106,87 +3252,6 @@ ${poolLine}
                 const unpaidTotal=unpaid.reduce((s,fx)=>s+Number(fx.amount),0);
                 return <UnpaidFixedBanner unpaid={unpaid} total={unpaidTotal} onPay={async(fx)=>{await db("expenses","POST",{chalet:fx.chalet,category:fx.category||"مصروف ثابت",amount:Number(fx.amount),note:fx.name,expense_date:td()});await loadAll();}}/>;
               })()}
-
-              {/* ── الأرقام الكبيرة ── */}
-              {(()=>{
-                const now=new Date();
-                const y=now.getFullYear(), mo=now.getMonth();
-
-                // حجوزات مكتملة أو مؤكدة (confirmed تُحسب إيراداً فعلياً)
-                const activeStatuses=["completed","confirmed"];
-
-                // هذا الشهر: date_from يقع في الشهر الحالي (نفس منطق صفحة المالية)
-                const monthBks=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&
-                  new Date(b.date_from).getFullYear()===y&&new Date(b.date_from).getMonth()===mo
-                );
-                const monthRev=monthBks.reduce((s,b)=>s+Number(b.price),0);
-                const monthCount=monthBks.length;
-
-                // الشهر الماضي
-                const lastMo=mo===0?11:mo-1; const lastY=mo===0?y-1:y;
-                const lastMonthRev=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&
-                  new Date(b.date_from).getFullYear()===lastY&&new Date(b.date_from).getMonth()===lastMo
-                ).reduce((s,b)=>s+Number(b.price),0);
-
-                const diff=lastMonthRev>0?Math.round((monthRev-lastMonthRev)/lastMonthRev*100):0;
-
-                // هذا العام
-                const yearRev=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===y).reduce((s,b)=>s+Number(b.price),0);
-                const yearCount=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===y).length;
-
-                // المصاريف الشهرية
-                const monthExp=scExpenses.filter(e=>e.expense_date&&new Date(e.expense_date).getFullYear()===y&&new Date(e.expense_date).getMonth()===mo).reduce((s,e)=>s+Number(e.amount),0)
-                  + scMaint.filter(m=>m.cost&&m.maint_date&&new Date(m.maint_date).getFullYear()===y&&new Date(m.maint_date).getMonth()===mo).reduce((s,m)=>s+Number(m.cost),0);
-                const netProfit=monthRev-monthExp;
-                const margin=monthRev>0?Math.round(netProfit/monthRev*100):0;
-
-                return (
-                  <div style={{marginBottom:20}}>
-                    {/* الصف الأول: بطاقتان كبيرتان */}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12,marginBottom:12}}>
-                      {/* إيرادات الشهر */}
-                      <div className="stat-card" style={{background:"linear-gradient(135deg,#1C3A3A,#0F2525)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
-                        <div style={{position:"absolute",top:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(197,172,136,.06)"}}/>
-                        <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4,fontWeight:700,letterSpacing:".5px"}}>💰 إيرادات {now.toLocaleDateString("ar-SA-u-ca-gregory",{month:"long"})}</div>
-                        <div style={{fontSize:32,fontWeight:900,color:"#fff",letterSpacing:"-1px",lineHeight:1}}>{monthRev.toLocaleString()}<span style={{fontSize:15,marginRight:5,opacity:.7}}>ر</span></div>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,flexWrap:"wrap"}}>
-                          {diff!==0&&(
-                            <span style={{fontSize:11,color:diff>0?"#4CAF50":"#FF6B6B",fontWeight:800,background:diff>0?"rgba(76,175,80,.15)":"rgba(255,107,107,.15)",borderRadius:6,padding:"2px 8px"}}>
-                              {diff>0?"↑":"↓"} {Math.abs(diff)}% الشهر الماضي
-                            </span>
-                          )}
-                          <span style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>{monthCount} حجز</span>
-                        </div>
-                      </div>
-
-                      {/* صافي الربح */}
-                      <div className="stat-card" style={{background:netProfit>=0?"linear-gradient(135deg,#0F3320,#0A2018)":"linear-gradient(135deg,#3A1515,#250F0F)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
-                        <div style={{position:"absolute",top:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(197,172,136,.06)"}}/>
-                        <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4,fontWeight:700,letterSpacing:".5px"}}>📊 صافي الربح الشهري</div>
-                        <div style={{fontSize:32,fontWeight:900,color:netProfit>=0?"#4CAF50":"#FF6B6B",letterSpacing:"-1px",lineHeight:1}}>{netProfit.toLocaleString()}<span style={{fontSize:15,marginRight:5,opacity:.7}}>ر</span></div>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}>
-                          <span style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>هامش {margin}%</span>
-                          <span style={{fontSize:11,color:"rgba(255,255,255,.35)"}}>· مصاريف {monthExp.toLocaleString()} ر</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* الصف الثاني: 4 بطاقات صغيرة */}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
-                      {[
-                        {l:"إيرادات العام", v:yearRev.toLocaleString()+" ر", i:"📈", c:"#4A9BAF", bg:"rgba(74,155,175,.08)", sub:yearCount+" حجز"},
-                        {l:"محفظة التأمين", v:walletBal.toLocaleString()+" ر", i:"🛡️", c:"#7B8FA6", bg:"rgba(123,143,166,.08)", sub:"الرصيد الكلي"},
-                        {l:"تكاليف الصيانة",v:mCost.toLocaleString()+" ر", i:"🔧", c:"#C97B63", bg:"rgba(201,123,99,.08)", sub:"منذ البداية"},
-                        {l:"حجوزات نشطة",  v:String(actB), i:"📅", c:B, bg:SL, sub:"مؤكد + معلق"},
-                      ].map((s,i)=>(
-                        <div key={i} style={{background:s.bg,borderRadius:12,padding:"12px 10px",border:"1px solid rgba(197,172,136,.18)"}}>
-                          <div style={{fontSize:16,marginBottom:4}}>{s.i}</div>
-                          <div style={{fontSize:15,fontWeight:900,color:s.c,lineHeight:1.2}}>{s.v}</div>
-                          <div style={{fontSize:9,color:T,marginTop:4,fontWeight:600}}>{s.l}</div>
-                          <div style={{fontSize:9,color:SI,marginTop:1}}>{s.sub}</div>
-                        </div>
-                      ))}
-                    </div>
                   </div>
                 );
               })()}
