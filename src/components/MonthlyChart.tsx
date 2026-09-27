@@ -48,7 +48,8 @@ export default function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookin
             {label:"صافي الربح",v:total-totalExp,c:total>=totalExp?"#4CAF50":"#FF6B6B"},
           ].map(({label,v,c})=>(
             <div key={label} style={{textAlign:"center"}}>
-              <div style={{fontSize:18,fontWeight:900,color:c,lineHeight:1}}>{v.toLocaleString()}</div>
+              {/* أرقام سالبة داخل صفحة RTL تحتاج اتجاه LTR صريح، وإلا تنعكس إشارة السالب بصرياً */}
+              <div dir="ltr" style={{fontSize:18,fontWeight:900,color:c,lineHeight:1}}>{v<0?"−":""}{Math.abs(v).toLocaleString()}</div>
               <div style={{fontSize:9,color:SI,fontWeight:600}}>{label} ر</div>
             </div>
           ))}
@@ -75,7 +76,7 @@ export default function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookin
           </div>
           <div>
             <div style={{fontSize:11,color:SI,marginBottom:2}}>📈 صافي الربح</div>
-            <div style={{fontWeight:900,color:activeData.net>=0?"#4CAF50":"#FF6B6B",fontSize:15}}>{activeData.net.toLocaleString()} <span style={{fontSize:11}}>ر</span></div>
+            <div dir="ltr" style={{fontWeight:900,color:activeData.net>=0?"#4CAF50":"#FF6B6B",fontSize:15}}>{activeData.net<0?"−":""}{Math.abs(activeData.net).toLocaleString()} <span style={{fontSize:11}}>ر</span></div>
             <div style={{fontSize:10,color:SI}}>هامش {activeData.rev>0?Math.round(activeData.net/activeData.rev*100):0}%</div>
           </div>
         </div>
@@ -182,7 +183,7 @@ export default function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookin
             <div key={q} style={{padding:"10px 12px",borderLeft:qi>0?"1px solid rgba(197,172,136,.12)":"none",background:isSelQ?"rgba(197,172,136,.12)":isCurQ?SL:"transparent",cursor:"pointer",transition:"background .2s"}} onClick={()=>{}}>
               <div style={{fontSize:10,color:isCurQ||isSelQ?B:SI,fontWeight:isCurQ||isSelQ?800:600,marginBottom:3}}>{q}{isCurQ?" ← الآن":""}</div>
               <div style={{fontSize:13,fontWeight:900,color:isCurQ||isSelQ?B:T}}>{qRev>=1000?(qRev/1000).toFixed(1)+"k":qRev} <span style={{fontSize:9,opacity:.6}}>ر</span></div>
-              <div style={{fontSize:9,color:"#C97B63"}}>{qExp>0?"- "+(qExp>=1000?(qExp/1000).toFixed(1)+"k":qExp)+" مصاريف":""}</div>
+              <div style={{fontSize:9,color:"#C97B63"}}>{qExp>0&&<><span dir="ltr">{"−"+(qExp>=1000?(qExp/1000).toFixed(1)+"k":qExp)}</span>{" مصاريف"}</>}</div>
             </div>
           );
         })}

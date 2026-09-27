@@ -44,6 +44,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
   const [cf, setCf]         = useState("");
   const [ct, setCt]         = useState("");
   const [compareMode, setCompareMode] = useState<CompareMode>("none");
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const effFch = lockedChalet || fch;
   const canCompareChalets = !lockedChalet && names.length > 1;
@@ -178,62 +179,118 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
   }
 
-  const StatementRow = ({ label, value, sub, bold, indent }: { label: string; value: number; sub?: string; bold?: boolean; indent?: boolean }) => (
-    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", padding: bold?"10px 0":"6px 0", paddingRight: indent?18:0, borderTop: bold?`1.5px solid rgba(197,172,136,.3)`:"none" }}>
+  // أرقام سالبة داخل صفحة RTL تحتاج اتجاه LTR صريح، وإلا تنعكس إشارة السالب بصرياً
+  const Money = ({ value, size, color }: { value: number; size?: number; color?: string }) => (
+    <span dir="ltr" style={{ fontSize:size, color, whiteSpace:"nowrap" }}>
+      {value<0?"−":""}{Math.abs(value).toLocaleString()} <span style={{fontSize: size?size*0.7:11, opacity:.6}}>ر</span>
+    </span>
+  );
+
+  const StatementRow = ({ label, value, sub, bold }: { label: string; value: number; sub?: string; bold?: boolean }) => (
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", padding: bold?"10px 0 0":"6px 0", borderTop: bold?`1.5px solid rgba(197,172,136,.3)`:"none" }}>
       <span style={{ fontSize: bold?14:13, fontWeight: bold?800:500, color: bold?B:T }}>{label}{sub&&<span style={{fontSize:11,color:SI,marginRight:6}}>{sub}</span>}</span>
-      <span style={{ fontSize: bold?16:13, fontWeight: bold?900:700, color: value<0?"#8B3A3A":(bold?B:B) }}>
-        {value<0?"−":""}{Math.abs(value).toLocaleString()} <span style={{fontSize:11,opacity:.6}}>ر</span>
+      <span style={{ fontSize: bold?16:13, fontWeight: bold?900:700, color:B }}>
+        <Money value={value}/>
       </span>
     </div>
   );
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
+      {/* ── الرأس ── */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
         <SectionTitle title={lockedChalet ? "المالية — "+lockedChalet : "المالية"}/>
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-          <button className="btn" onClick={exportCSV} style={{ background:"#059669", color:"#fff", padding:"8px 16px", fontSize:13 }}>
-            ⬇ تصدير Excel
+        <div style={{ position:"relative" }}>
+          <button onClick={()=>setMenuOpen(o=>!o)} aria-label="خيارات إضافية"
+            style={{ background:SL, color:B, border:"1px solid rgba(197,172,136,.35)", borderRadius:10, width:38, height:38, fontSize:18, fontWeight:900, cursor:"pointer" }}>
+            ⋯
           </button>
-          <button className="btn" onClick={sendInvestorReport} style={{ background:"#25D366", color:"#fff", padding:"8px 16px", fontSize:13 }}>
-            📤 إرسال تقرير للمستثمرين
-          </button>
-          {onAddExpense && <button className="btn bp" onClick={onAddExpense}>+ مصروف</button>}
-          {onAddFixedExpense && <button className="btn" onClick={onAddFixedExpense} style={{ background:"#7C3AED", color:"#fff", padding:"8px 14px", fontSize:13 }}>📌 مصروف ثابت</button>}
+          {menuOpen && (
+            <>
+              <div style={{ position:"fixed", inset:0, zIndex:299 }} onClick={()=>setMenuOpen(false)}/>
+              <div style={{ position:"absolute", top:"110%", left:0, zIndex:300, background:"#fff", borderRadius:12, boxShadow:"0 8px 24px rgba(0,0,0,.18)", border:"1px solid rgba(197,172,136,.2)", minWidth:210, overflow:"hidden" }}>
+                {[
+                  { l:"⬇ تصدير Excel", fn:exportCSV },
+                  { l:"📤 إرسال تقرير للمستثمرين", fn:sendInvestorReport },
+                  ...(onAddExpense?[{ l:"+ إضافة مصروف", fn:onAddExpense }]:[]),
+                  ...(onAddFixedExpense?[{ l:"📌 مصروف ثابت", fn:onAddFixedExpense }]:[]),
+                ].map((a,i,arr)=>(
+                  <button key={i} onClick={()=>{setMenuOpen(false);a.fn();}}
+                    style={{ display:"block", width:"100%", textAlign:"right", padding:"12px 16px", background:"none", border:"none", borderBottom:i<arr.length-1?"1px solid rgba(197,172,136,.12)":"none", cursor:"pointer", fontFamily:"'Tajawal',sans-serif", fontSize:13, fontWeight:600, color:B }}>
+                    {a.l}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* فلاتر الفترة والشاليه */}
-      <div className="row" style={{ marginBottom:12, justifyContent:"space-between" }}>
-        <div className="row">
+      {/* ── بطاقة صافي الربح + القائمة المالية ── */}
+      <div className="card" style={{ padding:"18px 18px 16px", marginBottom:14 }}>
+        {/* شريط الفترة — سطر واحد قابل للتمرير */}
+        <div style={{ display:"flex", gap:7, overflowX:"auto", paddingBottom:4, marginBottom:16, WebkitOverflowScrolling:"touch" }}>
           {(Object.entries(PERIOD_LABELS) as [Period, string][]).map(([v, l]) => (
             <button key={v} className="btn" onClick={() => setPeriod(v)}
-              style={{ background:period===v?B:W, color:period===v?S:B, border:"1.5px solid "+(period===v?B:"rgba(197,172,136,.4)"), padding:"8px 12px", fontSize:12 }}>
+              style={{ background:period===v?B:W, color:period===v?S:B, border:"1.5px solid "+(period===v?B:"rgba(197,172,136,.4)"), padding:"7px 14px", fontSize:12, flexShrink:0, whiteSpace:"nowrap" }}>
               {l}
             </button>
           ))}
         </div>
+
+        <div style={{ fontSize:11.5, color:SI, fontWeight:700, marginBottom:6 }}>
+          {"صافي الربح · " + plab + (effFch !== "الكل" ? " · " + effFch : "")}
+        </div>
+        <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
+          <div style={{ fontSize:34, fontWeight:900, color: trueNet>=0?SD:"#8B3A3A", lineHeight:1 }}>
+            <Money value={trueNet} size={34}/>
+          </div>
+          {compareMode==="periods" && prev && <DeltaChip v={delta(trueNet, prev.trueNet)}/>}
+        </div>
+        <div style={{ fontSize:12, color:T, marginTop:4 }}>
+          هامش الربح {margin}%
+          {compareMode==="periods" && prev && prevRange && (" · مقابل "+prevRange.label+": "+prev.trueNet.toLocaleString()+" ر")}
+        </div>
+
+        <div style={{ height:1, background:"rgba(197,172,136,.18)", margin:"16px 0 10px" }}/>
+
+        <StatementRow label="إيرادات الحجوزات" value={rev} sub={fb.length+" حجز"}/>
+        <StatementRow label="تكاليف الصيانة" value={-mex}/>
+        <StatementRow label="مصاريف عامة" value={-exTotal}/>
+        <StatementRow label="صافي الربح" value={trueNet} bold/>
+      </div>
+
+      {/* ── مؤشرات ثانوية ── */}
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:10, marginBottom:14 }}>
+        {[
+          { l:"عدد الحجوزات",       v:String(fb.length),              i:"📅" },
+          { l:"ليالي محجوزة",       v:String(nts),                    i:"🌙" },
+          { l:"متوسط سعر الليلة",   v:adr.toLocaleString()+" ر",      i:"💳" },
+          { l:"إيداعات التأمين",    v:insIn.toLocaleString()+" ر",    i:"🛡️" },
+        ].map((s,i)=>(
+          <div key={i} style={{ background:SL, borderRadius:12, padding:"12px 14px", border:"1px solid rgba(197,172,136,.18)" }}>
+            <div style={{ fontSize:16, marginBottom:4 }}>{s.i}</div>
+            <div style={{ fontSize:14.5, fontWeight:800, color:B }}>{s.v}</div>
+            <div style={{ fontSize:10, color:T, marginTop:2 }}>{s.l}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── فلاتر إضافية: الشاليه + وضع المقارنة ── */}
+      <div style={{ display:"flex", flexWrap:"wrap", gap:8, alignItems:"center", marginBottom:18 }}>
         {!lockedChalet && (
           <select className="inp" style={{ width:"auto", minWidth:150 }} value={fch} onChange={e => setFch(e.target.value)}>
             <option value="الكل">كل الشاليهات</option>
             {names.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         )}
-      </div>
-
-      {period === "custom" && (
-        <div className="row" style={{ marginBottom:12 }}>
-          <div><label className="lbl">من</label><input className="inp" type="date" style={{ width:"auto" }} value={cf} onChange={e => setCf(e.target.value)}/></div>
-          <div><label className="lbl">إلى</label><input className="inp" type="date" style={{ width:"auto" }} value={ct} onChange={e => setCt(e.target.value)}/></div>
-        </div>
-      )}
-
-      {/* وضع العرض: عادي / مقارنة فترات / مقارنة شاليهات */}
-      <div className="row" style={{ marginBottom:18 }}>
-        <div style={{ padding:"7px 12px", background:SL, borderRadius:8, fontSize:13, color:T, fontWeight:600 }}>
-          {"تقرير: " + plab + (effFch !== "الكل" ? " · " + effFch : "")}
-        </div>
-        <div style={{ display:"flex", gap:6 }}>
+        {period === "custom" && (
+          <>
+            <input className="inp" type="date" style={{ width:"auto" }} value={cf} onChange={e => setCf(e.target.value)} placeholder="من"/>
+            <input className="inp" type="date" style={{ width:"auto" }} value={ct} onChange={e => setCt(e.target.value)} placeholder="إلى"/>
+          </>
+        )}
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
           {([
             ["none","نظرة عامة"],
             ...(prevRange?[["periods","↔ مقارنة الفترات"]]:[]),
@@ -243,55 +300,6 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
               style={{ background:compareMode===v?"#7C3AED":"#F3F4F6", color:compareMode===v?"#fff":"#374151", padding:"6px 12px", fontSize:12, fontWeight:700 }}>
               {l}
             </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── القائمة المالية (Income Statement) ── */}
-      <div className="card" style={{ padding:0, overflow:"hidden", marginBottom:16, display:"grid", gridTemplateColumns:"1.3fr 1fr", gap:0 }}>
-        <div style={{ padding:"22px 24px" }}>
-          <div style={{ fontSize:12, color:SI, fontWeight:700, marginBottom:14, letterSpacing:".3px" }}>📄 القائمة المالية — {plab}</div>
-
-          <div style={{ fontSize:11, fontWeight:800, color:SI, marginBottom:2 }}>الإيرادات</div>
-          <StatementRow label="إيرادات الحجوزات" value={rev} sub={fb.length+" حجز"} indent/>
-          <StatementRow label="إجمالي الإيرادات" value={rev} bold/>
-
-          <div style={{ fontSize:11, fontWeight:800, color:SI, marginTop:14, marginBottom:2 }}>المصروفات التشغيلية</div>
-          <StatementRow label="تكاليف الصيانة" value={-mex} indent/>
-          <StatementRow label="مصاريف عامة" value={-exTotal} indent/>
-          <StatementRow label="إجمالي المصروفات" value={-(mex+exTotal)} bold/>
-
-          <div style={{ marginTop:16, paddingTop:14, borderTop:`2.5px solid ${B}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <div>
-              <div style={{ fontSize:15, fontWeight:900, color:B }}>صافي الربح</div>
-              <div style={{ fontSize:11, color:SI, marginTop:2 }}>هامش الربح {margin}%</div>
-            </div>
-            <div style={{ fontSize:26, fontWeight:900, color: trueNet>=0?SD:"#8B3A3A" }}>
-              {trueNet<0?"−":""}{Math.abs(trueNet).toLocaleString()} <span style={{fontSize:13,opacity:.6}}>ر</span>
-            </div>
-          </div>
-
-          {compareMode==="periods" && prev && (
-            <div style={{ marginTop:12, fontSize:11, color:SI }}>
-              مقابل {prevRange!.label}: {prev.trueNet.toLocaleString()} ر <DeltaChip v={delta(trueNet, prev.trueNet)}/>
-            </div>
-          )}
-        </div>
-
-        <div style={{ background:SL, padding:"22px 20px", display:"flex", flexDirection:"column", gap:14, justifyContent:"center" }}>
-          {[
-            { l:"عدد الحجوزات",       v:String(fb.length),              i:"📅" },
-            { l:"ليالي محجوزة",       v:String(nts),                    i:"🌙" },
-            { l:"متوسط سعر الليلة",   v:adr.toLocaleString()+" ر",      i:"💳" },
-            { l:"إيداعات التأمين",    v:insIn.toLocaleString()+" ر",    i:"🛡️" },
-          ].map((s,i)=>(
-            <div key={i} style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <span style={{ fontSize:18 }}>{s.i}</span>
-              <div>
-                <div style={{ fontSize:15, fontWeight:800, color:B }}>{s.v}</div>
-                <div style={{ fontSize:10.5, color:T }}>{s.l}</div>
-              </div>
-            </div>
           ))}
         </div>
       </div>
@@ -311,8 +319,8 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
             ].map((row,i)=>(
               <tr key={i}>
                 <td data-label="البند" style={{ fontWeight:row.bold?800:600, color:row.bold?B:T }}>{row.l}</td>
-                <td data-label={plab} style={{ fontWeight:row.bold?800:700, color:B }}>{row.c.toLocaleString()+" ر"}</td>
-                <td data-label={prevRange.label} style={{ color:SI }}>{row.p.toLocaleString()+" ر"}</td>
+                <td data-label={plab} style={{ fontWeight:row.bold?800:700, color:B }}><Money value={row.c}/></td>
+                <td data-label={prevRange.label} style={{ color:SI }}><Money value={row.p}/></td>
                 <td data-label="التغيّر"><DeltaChip v={delta(row.c,row.p)}/></td>
               </tr>
             ))}
@@ -332,7 +340,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                   <td data-label="الشاليه" style={{ fontWeight:700 }}>{"🏠 " + c.n}</td>
                   <td data-label="الإيرادات" style={{ fontWeight:700, color:T }}>{c.r.toLocaleString() + " ر"}</td>
                   <td data-label="المصروفات" style={{ fontWeight:700, color:"#8B3A3A" }}>{(c.e+c.x).toLocaleString() + " ر"}</td>
-                  <td data-label="صافي الربح" style={{ fontWeight:800, color:c.net>=0?SD:"#8B3A3A" }}>{c.net.toLocaleString() + " ر"}</td>
+                  <td data-label="صافي الربح" style={{ fontWeight:800, color:c.net>=0?SD:"#8B3A3A" }}><Money value={c.net}/></td>
                   <td data-label="نسبة الربح">
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                       <div style={{ flex:1, background:"#f1f5f9", borderRadius:99, height:7, overflow:"hidden", minWidth:60 }}>
@@ -490,7 +498,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                 <td data-label="التاريخ">{formatDate(t.trans_date)}</td>
                 <td data-label="الشاليه" style={{ fontWeight:600 }}>{t.chalet}</td>
                 <td data-label="النوع"><Bdg bg={t.type==="إيداع"?"#EEF0E9":"#F5E6E6"} color={t.type==="إيداع"?SD:"#8B3A3A"}>{t.type}</Bdg></td>
-                <td data-label="المبلغ" style={{ fontWeight:700, color:t.type==="إيداع"?T:"#8B3A3A" }}>{(t.type==="إيداع"?"+":"-") + t.amount.toLocaleString() + " ر"}</td>
+                <td data-label="المبلغ" style={{ fontWeight:700, color:t.type==="إيداع"?T:"#8B3A3A" }}><span dir="ltr" style={{whiteSpace:"nowrap"}}>{t.type==="إيداع"?"+":"−"}{t.amount.toLocaleString()} ر</span></td>
                 <td data-label="ملاحظة" style={{ color:T, fontSize:12 }}>{t.note || "-"}</td>
                 <td data-label="">
                   <div style={{ display:"flex", gap:4 }}>
