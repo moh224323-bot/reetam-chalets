@@ -2901,7 +2901,7 @@ ${poolLine}
                     </div>
 
                     {/* الصف الثاني: 4 بطاقات صغيرة */}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
                       {[
                         {l:"إيرادات العام", v:yearRev.toLocaleString()+" ر", i:"📈", c:"#4A9BAF", bg:"rgba(74,155,175,.08)", sub:yearCount+" حجز"},
                         {l:"محفظة التأمين", v:walletBal.toLocaleString()+" ر", i:"🛡️", c:"#7B8FA6", bg:"rgba(123,143,166,.08)", sub:"الرصيد الكلي"},
@@ -3290,7 +3290,7 @@ ${poolLine}
               )}
 
               {/* ── الحجوزات القادمة + أداء الشاليهات ── */}
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16,marginBottom:20}}>
                 {/* الحجوزات القادمة */}
                 {(()=>{
                   const now=new Date();
