@@ -2163,6 +2163,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [bkFrom,setBkFrom]     = useState(monthStart());
   const [bkTo,setBkTo]         = useState(monthEnd());
   const [bkLang,setBkLang]     = useState<"ar"|"hi">(()=>{ try{ return (localStorage.getItem("bk_lang") as "ar"|"hi") || "ar"; }catch{ return "ar"; } });
+  const [bkCollapsed,setBkCollapsed] = useState<Record<string,boolean>>({});
   const bt = (key: string): string => BK_I18N[bkLang][key] ?? BK_I18N.ar[key] ?? key;
   useEffect(()=>{ try{ localStorage.setItem("bk_lang", bkLang); }catch{} },[bkLang]);
   const [selChalet,setSelChalet] = useState<Chalet | null>(null);
@@ -3317,6 +3318,60 @@ ${poolLine}
             );
             const vbNights = visibleBookings.reduce((s,b)=>s+fn(b.date_from,b.date_to),0);
             const vbRevenue = visibleBookings.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+Number(b.price),0);
+            const groupByChalet = fch==="الكل";
+            const groupNames = groupByChalet ? names.filter(n=>visibleBookings.some(b=>b.chalet===n)) : [fch];
+            const renderBookingRow = (b: Booking) => {
+              const sc=STATUS[b.status]||{bg:"#eee",color:"#333",label:b.status};
+              const scLabel=bt(STATUS_LABEL_KEY[b.status]||"")||sc.label;
+              const nights=fn(b.date_from,b.date_to);
+              return (
+                <tr key={b.id} style={{cursor:"pointer"}} onClick={()=>setBkDetail(b)}>
+                  <td data-label={bt("guest")}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{width:4,height:36,borderRadius:4,background:sc.color,flexShrink:0}}/>
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                          <span style={{fontWeight:800,color:B,fontSize:13}}>{b.guest}</span>
+                          {b.pre_arrival_sent&&<span style={{fontSize:9,background:"#DCFCE7",color:"#166534",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ رسالة</span>}
+                          {isGuestBlocked(b.phone)&&<span style={{fontSize:9,background:"#F5E6E6",color:"#8B3A3A",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>{bt("blocked")}</span>}
+                        </div>
+                        <div style={{fontSize:11,color:T,marginTop:1,direction:"ltr",textAlign:"right"}}>{b.phone||"-"}</div>
+                      </div>
+                    </div>
+                  </td>
+                  {!groupByChalet && (
+                    <td data-label={bt("chalet")}>
+                      <div style={{fontWeight:600,color:B,fontSize:13}}>{b.chalet}</div>
+                    </td>
+                  )}
+                  <td data-label={bt("period")}>
+                    <div style={{fontSize:12,color:B,fontWeight:600}}>{fd(b.date_from)}</div>
+                    <div style={{fontSize:11,color:T,marginTop:1}}>{"← "+fd(b.date_to)}</div>
+                  </td>
+                  <td data-label={bt("nights")} style={{textAlign:"center"}}>
+                    <div style={{background:SL,borderRadius:8,padding:"4px 10px",display:"inline-block",fontWeight:800,color:B,fontSize:13}}>{nights}</div>
+                  </td>
+                  <td data-label={bt("price")}>
+                    <div style={{fontWeight:900,color:T,fontSize:14}}>{Number(b.price).toLocaleString()}</div>
+                    <div style={{fontSize:10,color:SI}}>ريال</div>
+                  </td>
+                  <td data-label={bt("status")}>
+                    <span style={{background:sc.bg,color:sc.color,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{scLabel}</span>
+                  </td>
+                  <td data-label="" style={{textAlign:"left"}}>
+                    <RowActionsMenu actions={[
+                      {label:bt("edit"), onClick:e=>{e.stopPropagation();setBMdl({...b})}},
+                      {label:bt("delete"), color:"#8B3A3A", onClick:async e=>{e.stopPropagation();if(window.confirm(bt("deleteConfirm"))){await db("bookings","DELETE",null,b.id);await loadAll();}}},
+                      {label:bt("preArrival"), onClick:e=>{e.stopPropagation();setPreArrMdl({booking:b});}},
+                      {label:bt("whatsappCheckin"), onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=checkin`;const msg=`مرحباً ${b.guest} 👋%0aأهلاً بك في ${b.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
+                      {label:bt("sendReview"), onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=review`;const msg=`${b.guest} 😊%0aرابط التقييم:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
+                      ...(isCheckedOut(b)?[{label:bt("rateGuest"), onClick:(e:React.MouseEvent)=>{e.stopPropagation();setGrMdl({booking:b,rating:0,note:""});}}]:[]),
+                      {label:isGuestBlocked(b.phone)?bt("unblock"):bt("block"), color:"#8B3A3A", onClick:e=>{e.stopPropagation();if(isGuestBlocked(b.phone))unblockGuest(b.phone);else setBlockMdl({booking:b,reason:""});}},
+                    ]}/>
+                  </td>
+                </tr>
+              );
+            };
             return (
             <div>
               <BookingCalendar
@@ -3375,60 +3430,36 @@ ${poolLine}
                 {(fch!=="الكل"||bkStatus!=="الكل"||bkFrom||bkTo)&&
                   <button className="btn be bsm" onClick={()=>{setFch("الكل");setBkStatus("الكل");setBkFrom("");setBkTo("");}}>{bt("showAll")}</button>}
               </div>
-              <div className="card" style={{overflow:"hidden"}}>
-                <Tbl heads={[bt("guest"),bt("chalet"),bt("period"),bt("nights"),bt("price"),bt("status"),bt("actions")]}
-                  rows={visibleBookings.map((b,idx)=>{
-                    const sc=STATUS[b.status]||{bg:"#eee",color:"#333",label:b.status};
-                    const scLabel=bt(STATUS_LABEL_KEY[b.status]||"")||sc.label;
-                    const nights=fn(b.date_from,b.date_to);
-                    return (
-                      <tr key={b.id} style={{cursor:"pointer"}} onClick={()=>setBkDetail(b)}>
-                        <td data-label={bt("guest")}>
-                          <div style={{display:"flex",alignItems:"center",gap:8}}>
-                            <div style={{width:4,height:36,borderRadius:4,background:sc.color,flexShrink:0}}/>
-                            <div>
-                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                <span style={{fontWeight:800,color:B,fontSize:13}}>{b.guest}</span>
-                                {b.pre_arrival_sent&&<span style={{fontSize:9,background:"#DCFCE7",color:"#166534",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ رسالة</span>}
-                                {isGuestBlocked(b.phone)&&<span style={{fontSize:9,background:"#F5E6E6",color:"#8B3A3A",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>{bt("blocked")}</span>}
-                              </div>
-                              <div style={{fontSize:11,color:T,marginTop:1,direction:"ltr",textAlign:"right"}}>{b.phone||"-"}</div>
-                            </div>
-                          </div>
-                        </td>
-                        <td data-label={bt("chalet")}>
-                          <div style={{fontWeight:600,color:B,fontSize:13}}>{b.chalet}</div>
-                        </td>
-                        <td data-label={bt("period")}>
-                          <div style={{fontSize:12,color:B,fontWeight:600}}>{fd(b.date_from)}</div>
-                          <div style={{fontSize:11,color:T,marginTop:1}}>{"← "+fd(b.date_to)}</div>
-                        </td>
-                        <td data-label={bt("nights")} style={{textAlign:"center"}}>
-                          <div style={{background:SL,borderRadius:8,padding:"4px 10px",display:"inline-block",fontWeight:800,color:B,fontSize:13}}>{nights}</div>
-                        </td>
-                        <td data-label={bt("price")}>
-                          <div style={{fontWeight:900,color:T,fontSize:14}}>{Number(b.price).toLocaleString()}</div>
-                          <div style={{fontSize:10,color:SI}}>ريال</div>
-                        </td>
-                        <td data-label={bt("status")}>
-                          <span style={{background:sc.bg,color:sc.color,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{scLabel}</span>
-                        </td>
-                        <td data-label="" style={{textAlign:"left"}}>
-                          <RowActionsMenu actions={[
-                            {label:bt("edit"), onClick:e=>{e.stopPropagation();setBMdl({...b})}},
-                            {label:bt("delete"), color:"#8B3A3A", onClick:async e=>{e.stopPropagation();if(window.confirm(bt("deleteConfirm"))){await db("bookings","DELETE",null,b.id);await loadAll();}}},
-                            {label:bt("preArrival"), onClick:e=>{e.stopPropagation();setPreArrMdl({booking:b});}},
-                            {label:bt("whatsappCheckin"), onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=checkin`;const msg=`مرحباً ${b.guest} 👋%0aأهلاً بك في ${b.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
-                            {label:bt("sendReview"), onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=review`;const msg=`${b.guest} 😊%0aرابط التقييم:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
-                            ...(isCheckedOut(b)?[{label:bt("rateGuest"), onClick:(e:React.MouseEvent)=>{e.stopPropagation();setGrMdl({booking:b,rating:0,note:""});}}]:[]),
-                            {label:isGuestBlocked(b.phone)?bt("unblock"):bt("block"), color:"#8B3A3A", onClick:e=>{e.stopPropagation();if(isGuestBlocked(b.phone))unblockGuest(b.phone);else setBlockMdl({booking:b,reason:""});}},
-                          ]}/>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                />
-              </div>
+              {groupNames.length===0 ? (
+                <div className="card" style={{padding:24,textAlign:"center",color:T}}>{bkLang==="ar"?"لا توجد حجوزات مطابقة":"कोई मेल खाती बुकिंग नहीं"}</div>
+              ) : groupNames.map(chaletName=>{
+                const groupBookings = visibleBookings.filter(b=>b.chalet===chaletName);
+                if (groupBookings.length===0) return null;
+                const groupRevenue = groupBookings.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+Number(b.price),0);
+                const collapsed = groupByChalet && !!bkCollapsed[chaletName];
+                return (
+                  <div key={chaletName} className="card" style={{overflow:"hidden",marginBottom:14}}>
+                    {groupByChalet && (
+                      <button onClick={()=>setBkCollapsed(p=>({...p,[chaletName]:!p[chaletName]}))}
+                        style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",background:SL,border:"none",borderBottom:collapsed?"none":"2px solid rgba(197,172,136,.2)",cursor:"pointer",textAlign:"right",fontFamily:"'Tajawal',sans-serif"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:12,color:T,transition:"transform .15s",transform:collapsed?"rotate(-90deg)":"none",display:"inline-block"}}>▾</span>
+                          <span style={{fontWeight:800,color:B,fontSize:14}}>🏠 {chaletName}</span>
+                          <span style={{fontSize:11,color:B,background:"#fff",borderRadius:99,padding:"2px 9px",fontWeight:700}}>{groupBookings.length}</span>
+                        </div>
+                        <span style={{fontSize:13,fontWeight:800,color:B}}>{groupRevenue.toLocaleString()+" ر"}</span>
+                      </button>
+                    )}
+                    {!collapsed && (
+                      <Tbl heads={groupByChalet
+                        ? [bt("guest"),bt("period"),bt("nights"),bt("price"),bt("status"),bt("actions")]
+                        : [bt("guest"),bt("chalet"),bt("period"),bt("nights"),bt("price"),bt("status"),bt("actions")]}
+                        rows={groupBookings.map(renderBookingRow)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
             );
           })()}
