@@ -2559,7 +2559,13 @@ ${poolLine}
   function CheckoutMdl({booking}) {
     const [amt,setAmt]=useState(String(booking.price||""));
     const [pay,setPay]=useState("نقد");
-    const [recv,setRecv]=useState(currentUser.name||currentUser.username||"");
+    const defaultRecv = currentUser.name||currentUser.username||"";
+    const knownReceivers = Array.from(new Set([
+      ...users.map(u=>u.name||u.username).filter(Boolean),
+      ...bookings.map(b=>b.received_by).filter(Boolean),
+    ])).sort((a,b)=>a.localeCompare(b,"ar"));
+    const [recv,setRecv]=useState(defaultRecv);
+    const [addingNew,setAddingNew]=useState(knownReceivers.length===0);
     const [loading,setLoading]=useState(false);
     return (
       <Mdl onClose={()=>setCoMdl(null)} title="🚪 تسجيل الخروج">
@@ -2580,21 +2586,32 @@ ${poolLine}
           </div>
         </div>
         <div style={{marginBottom:20}}>
-          <label className="lbl">👤 استلم المبلغ</label>
-          {users.length>0
-            ? <select className="inp" value={recv} onChange={e=>setRecv(e.target.value)}>
-                {!users.some(u=>(u.name||u.username)===recv)&&recv&&<option value={recv}>{recv}</option>}
-                {users.map(u=><option key={u.id} value={u.name||u.username}>{u.name||u.username}</option>)}
+          <label className="lbl">👤 استلم المبلغ *</label>
+          {addingNew
+            ? <div style={{display:"flex",gap:6}}>
+                <input className="inp" value={recv} onChange={e=>setRecv(e.target.value)} placeholder="اسم الشخص" autoFocus/>
+                {knownReceivers.length>0 && (
+                  <button type="button" className="btn bsm" onClick={()=>{setAddingNew(false);setRecv(defaultRecv);}}
+                    style={{background:SL,color:B,padding:"0 12px",flexShrink:0}}>القائمة</button>
+                )}
+              </div>
+            : <select className="inp" value={recv} onChange={e=>{
+                if(e.target.value==="__new__"){setAddingNew(true);setRecv("");}
+                else setRecv(e.target.value);
+              }}>
+                {!knownReceivers.includes(recv)&&recv&&<option value={recv}>{recv}</option>}
+                {knownReceivers.map(n=><option key={n} value={n}>{n}</option>)}
+                <option value="__new__">+ إضافة اسم جديد...</option>
               </select>
-            : <input className="inp" value={recv} onChange={e=>setRecv(e.target.value)} placeholder="اسم الشخص"/>
           }
+          {!recv.trim() && <div style={{fontSize:11,color:"#8B3A3A",marginTop:4}}>لازم تحدد من استلم المبلغ</div>}
         </div>
         <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#92400E",fontWeight:600}}>
           سيتم تسجيل {Number(amt||0).toLocaleString()} ريال في الإيرادات
         </div>
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
           <button className="btn bo" onClick={()=>setCoMdl(null)}>إلغاء</button>
-          <button className="btn bp" disabled={loading} onClick={async()=>{setLoading(true);await handleCheckout(booking,Number(amt||0),pay,recv);setLoading(false);}}>
+          <button className="btn bp" disabled={loading||!recv.trim()} onClick={async()=>{setLoading(true);await handleCheckout(booking,Number(amt||0),pay,recv.trim());setLoading(false);}}>
             {loading?"جاري...":"✅ تأكيد الخروج"}
           </button>
         </div>
