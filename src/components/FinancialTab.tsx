@@ -412,7 +412,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
         <Modal title={"💵 إيرادات الحجوزات (" + fb.length + ")"} onClose={()=>setDetailModal(null)}>
           {fb.length === 0
             ? <div style={{ padding:24, textAlign:"center", color:SI }}>لا توجد حجوزات في هذه الفترة</div>
-            : <DataTable heads={["الضيف","الشاليه","الفترة","الليالي","المبلغ","الحالة"]}
+            : <DataTable heads={["الضيف","الشاليه","الفترة","الليالي","المبلغ","استلم المبلغ","الحالة"]}
                 rows={fb.map(b => (
                   <tr key={b.id}>
                     <td data-label="الضيف" style={{ fontWeight:600 }}>{b.guest}</td>
@@ -420,13 +420,14 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                     <td data-label="الفترة" style={{ fontSize:12 }}>{formatDate(b.date_from) + " - " + formatDate(b.date_to)}</td>
                     <td data-label="الليالي" style={{ textAlign:"center" }}>{nightsBetween(b.date_from, b.date_to)}</td>
                     <td data-label="المبلغ" style={{ fontWeight:700, color:T }}>{Number(b.price).toLocaleString() + " ر"}</td>
+                    <td data-label="استلم المبلغ" style={{ fontSize:12, color:b.received_by?B:SI }}>{b.received_by || "-"}</td>
                     <td data-label="الحالة"><Bdg bg={BOOKING_STATUS[b.status]?.bg||"#eee"} color={BOOKING_STATUS[b.status]?.color||"#333"}>{BOOKING_STATUS[b.status]?.label||b.status}</Bdg></td>
                   </tr>
                 ))}
                 footer={[
                   <td key={0} colSpan={4} style={{ fontWeight:800, color:B }}>الإجمالي</td>,
                   <td key={1} style={{ fontWeight:800, color:T, fontSize:15 }}>{rev.toLocaleString() + " ر"}</td>,
-                  <td key={2}/>,
+                  <td key={2}/>, <td key={3}/>,
                 ]}
               />
           }
