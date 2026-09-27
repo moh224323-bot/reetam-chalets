@@ -45,7 +45,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
   const [ct, setCt]         = useState("");
   const [compareMode, setCompareMode] = useState<CompareMode>("none");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [detailModal, setDetailModal] = useState<null | "bookings" | "fixed" | "maint" | "expenses" | "insurance">(null);
+  const [detailModal, setDetailModal] = useState<null | "bookings" | "receivers" | "fixed" | "maint" | "expenses" | "insurance">(null);
 
   const effFch = lockedChalet || fch;
   const canCompareChalets = !lockedChalet && names.length > 1;
@@ -101,6 +101,17 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
   const thisYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const paidThisMonth = new Set(expenses.filter(e => e.expense_date?.startsWith(thisYM)).map(e => e.note));
   const unpaidFixedCount = fixedList.filter(fx => fx.active && !paidThisMonth.has(fx.name)).length;
+
+  const receiverBreakdown = (() => {
+    const map = new Map<string, { count: number; total: number }>();
+    fb.forEach(b => {
+      const name = b.received_by || "غير محدد";
+      const cur = map.get(name) || { count: 0, total: 0 };
+      cur.count += 1; cur.total += Number(b.price);
+      map.set(name, cur);
+    });
+    return Array.from(map.entries()).map(([name, v]) => ({ name, ...v })).sort((a, b) => b.total - a.total);
+  })();
 
   const prevRange = getPrevRange();
   const prev = prevRange ? computeStats(byCh, prevRange.from, prevRange.to, false) : null;
@@ -393,6 +404,9 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
         <div style={{ padding:"2px 14px" }}>
           {[
             { key:"bookings" as const, icon:"💵", label:"إيرادات الحجوزات", sub:fb.length+" حجز", value:rev, valueColor:T, badge:null as React.ReactNode, show:true },
+            { key:"receivers" as const, icon:"👥", label:"حسب المستلم", sub:receiverBreakdown.length+" شخص", value:rev, valueColor:T,
+              badge: (()=>{ const unassigned = receiverBreakdown.find(r=>r.name==="غير محدد"); return (unassigned ? <span style={{color:"#8B3A3A",fontWeight:700}}>{" · ⚠ "+unassigned.count+" بدون مستلم"}</span> : null) as React.ReactNode; })(),
+              show:fb.length>0 },
             { key:"fixed" as const, icon:"📌", label:"المصروفات الثابتة", sub:fixedList.length+" بند", value:fixedActiveMonthly, valueColor:"#7C3AED",
               badge: (unpaidFixedCount>0 ? <span style={{color:"#92400E",fontWeight:700}}>{" · ⚠ "+unpaidFixedCount+" لم يُسدَّد"}</span> : null) as React.ReactNode,
               show:fixedList.length>0 },
@@ -431,6 +445,26 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                 ]}
               />
           }
+        </Modal>
+      )}
+
+      {/* حسب المستلم */}
+      {detailModal==="receivers" && (
+        <Modal title={"👥 الإيرادات حسب المستلم (" + plab + ")"} onClose={()=>setDetailModal(null)}>
+          <DataTable heads={["المستلم","عدد الحجوزات","المبلغ"]}
+            rows={receiverBreakdown.map((r,i) => (
+              <tr key={i}>
+                <td data-label="المستلم" style={{ fontWeight:700, color: r.name==="غير محدد"?"#8B3A3A":B }}>{r.name}</td>
+                <td data-label="عدد الحجوزات" style={{ textAlign:"center" }}>{r.count}</td>
+                <td data-label="المبلغ" style={{ fontWeight:700, color:T }}>{r.total.toLocaleString() + " ر"}</td>
+              </tr>
+            ))}
+            footer={[
+              <td key={0} style={{ fontWeight:800, color:B }}>الإجمالي</td>,
+              <td key={1} style={{ textAlign:"center", fontWeight:800, color:B }}>{fb.length}</td>,
+              <td key={2} style={{ fontWeight:800, color:T, fontSize:15 }}>{rev.toLocaleString() + " ر"}</td>,
+            ]}
+          />
         </Modal>
       )}
 
