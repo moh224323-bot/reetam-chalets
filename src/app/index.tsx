@@ -2497,6 +2497,28 @@ ${poolLine}
     await loadAll();
     setCoMdl(null);
   }
+  function sendBookingsToWorkersHindi(bks: Booking[]): void {
+    // للعمال المتحدثين بالهندية: قائمة بالشاليه ورقم جوال الزبون ووقت الدخول والخروج
+    const fmtDate = (s?: string) => {
+      if (!s) return "-";
+      const d = new Date(s);
+      return String(d.getDate()).padStart(2,"0")+"/"+String(d.getMonth()+1).padStart(2,"0")+"/"+d.getFullYear();
+    };
+    const lines = [
+      `🏠 *बुकिंग सूची — रीतम ग्रुप*`,
+      `🗓️ ${fmtDate(td())}`,
+      ``,
+      ...bks.map((b,i) => {
+        const phone = (b.phone||"").replace(/[^0-9]/g,"").replace(/^0/,"966") || "-";
+        const inStr = fmtDate(b.date_from) + (b.checkin_time?` ${b.checkin_time}`:"");
+        const outStr = fmtDate(b.date_to) + (b.checkout_time?` ${b.checkout_time}`:"");
+        return `${i+1}. 🏠 शैले: *${b.chalet}*\n📞 फोन: ${phone}\n🟢 चेक-इन: ${inStr}\n🔴 चेक-आउट: ${outStr}`;
+      }),
+      ``,
+      `_रीतम सिस्टम से स्वचालित सूची_`,
+    ];
+    window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
+  }
 
   const TABS = [
     {id:"dashboard",  l:"الرئيسية",    i:"⊞"},
@@ -3285,16 +3307,41 @@ ${poolLine}
           )}
 
           {/* ── Bookings ── */}
-          {tab==="bookings"&&(
+          {tab==="bookings"&&(()=>{
+            const visibleBookings = bookings.filter(b=>
+              (fch==="الكل"||b.chalet===fch)&&
+              (bkStatus==="الكل"||b.status===bkStatus)&&
+              (!bkFrom||!b.date_to||b.date_to>=bkFrom)&&
+              (!bkTo||!b.date_from||b.date_from<=bkTo)&&
+              (isAdmin||isStaff||(isChaletMgr&&b.chalet===currentUser.chalet))
+            );
+            const vbNights = visibleBookings.reduce((s,b)=>s+fn(b.date_from,b.date_to),0);
+            const vbRevenue = visibleBookings.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+Number(b.price),0);
+            return (
             <div>
               <BookingCalendar bookings={isChaletMgr?bookings.filter(b=>b.chalet===currentUser.chalet):bookings} names={isChaletMgr?[currentUser.chalet]:names}/>
               {(isAdmin||isStaff)&&<BlockedGuestsBanner guests={blockedGuests} onUnblock={unblockGuest}/>}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
                 <TH title={bt("title")}/>
-                <div style={{display:"flex",gap:8}}>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
                   <button className="btn be bsm" onClick={()=>setBkLang(l=>l==="ar"?"hi":"ar")}>{bkLang==="ar"?"🌐 हिंदी":"🌐 عربي"}</button>
+                  <button className="btn be bsm" onClick={()=>sendBookingsToWorkersHindi(visibleBookings)} disabled={visibleBookings.length===0}
+                    style={{opacity:visibleBookings.length===0?.5:1}}>{bkLang==="ar"?"📤 إرسال للعمال":"📤 कर्मचारियों को भेजें"}</button>
                   <button className="btn bp" onClick={()=>setBMdl({...eB})}>{bt("addBooking")}</button>
                 </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:14}}>
+                {[
+                  {l:bkLang==="ar"?"عدد الحجوزات":"बुकिंग की संख्या", v:String(visibleBookings.length), i:"📅"},
+                  {l:bkLang==="ar"?"الليالي":"रातें", v:String(vbNights), i:"🌙"},
+                  {l:bkLang==="ar"?"الإجمالي":"कुल", v:vbRevenue.toLocaleString()+" ر", i:"💰"},
+                ].map((s,i)=>(
+                  <div key={i} style={{background:SL,borderRadius:12,padding:"12px 14px",border:"1px solid rgba(197,172,136,.18)"}}>
+                    <div style={{fontSize:16,marginBottom:4}}>{s.i}</div>
+                    <div style={{fontSize:14.5,fontWeight:800,color:B}}>{s.v}</div>
+                    <div style={{fontSize:10,color:T,marginTop:2}}>{s.l}</div>
+                  </div>
+                ))}
               </div>
               <div className="card" style={{padding:"14px 16px",marginBottom:16,display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
                 <div>
@@ -3325,13 +3372,7 @@ ${poolLine}
               </div>
               <div className="card" style={{overflow:"hidden"}}>
                 <Tbl heads={[bt("guest"),bt("chalet"),bt("period"),bt("nights"),bt("price"),bt("status"),bt("actions")]}
-                  rows={bookings.filter(b=>
-                    (fch==="الكل"||b.chalet===fch)&&
-                    (bkStatus==="الكل"||b.status===bkStatus)&&
-                    (!bkFrom||!b.date_to||b.date_to>=bkFrom)&&
-                    (!bkTo||!b.date_from||b.date_from<=bkTo)&&
-                    (isAdmin||isStaff||(isChaletMgr&&b.chalet===currentUser.chalet))
-                  ).map((b,idx)=>{
+                  rows={visibleBookings.map((b,idx)=>{
                     const sc=STATUS[b.status]||{bg:"#eee",color:"#333",label:b.status};
                     const scLabel=bt(STATUS_LABEL_KEY[b.status]||"")||sc.label;
                     const nights=fn(b.date_from,b.date_to);
@@ -3384,7 +3425,8 @@ ${poolLine}
                 />
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* ── Finance ── */}
           {tab==="finance"&&(isAdmin||isStaff||isChaletMgr)&&(
