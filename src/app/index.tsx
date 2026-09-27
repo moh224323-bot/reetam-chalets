@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase";
 import useRealtimeSync   from "../hooks/useRealtimeSync";
 import useDarkMode       from "../hooks/useDarkMode";
 import BookingCalendar   from "../components/BookingCalendar";
+import MonthlyChart      from "../components/MonthlyChart";
 import type {
   Chalet, Booking, MaintenanceRequest, WalletTransaction,
   CleaningTransaction, CleaningExpense, CleaningTask, CleaningLog,
@@ -464,195 +465,6 @@ function Mdl({onClose,title,children}) {
   );
 }
 const logoImg = require("../../assets/logo-reetam.png");
-function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookings:Booking[];expenses:any[];maint:any[];B:string;T:string;SI:string;SL:string}) {
-  const [hovered,setHovered]=useState<number|null>(null);
-  const [selected,setSelected]=useState<number|null>(null);
-  const [mounted,setMounted]=useState(false);
-  useEffect(()=>{const id=setTimeout(()=>setMounted(true),60);return()=>clearTimeout(id);},[]);
-
-  const MONTHS=["يناير","فبراير","مارس","أبريل","مايو","يونيو","يوليو","أغسطس","سبتمبر","أكتوبر","نوفمبر","ديسمبر"];
-  const currentYear=new Date().getFullYear();
-  const curMonth=new Date().getMonth();
-  const activeStatuses=["completed","confirmed"];
-
-  const monthlyData=MONTHS.map((_,mi)=>{
-    const bks=bookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===currentYear&&new Date(b.date_from).getMonth()===mi);
-    const rev=bks.reduce((s,b)=>s+Number(b.price),0);
-    const exp=expenses.filter(e=>e.expense_date&&new Date(e.expense_date).getFullYear()===currentYear&&new Date(e.expense_date).getMonth()===mi).reduce((s,e)=>s+Number(e.amount),0)
-      +maint.filter(m=>m.cost&&m.maint_date&&new Date(m.maint_date).getFullYear()===currentYear&&new Date(m.maint_date).getMonth()===mi).reduce((s,m)=>s+Number(m.cost),0);
-    return {rev,exp,cnt:bks.length,net:rev-exp};
-  });
-
-  const maxRev=Math.max(...monthlyData.map(d=>d.rev),1);
-  const total=monthlyData.reduce((s,d)=>s+d.rev,0);
-  const totalExp=monthlyData.reduce((s,d)=>s+d.exp,0);
-  const avgRev=total/12;
-  const activeMos=monthlyData.filter(d=>d.rev>0).length;
-  const bestIdx=monthlyData.reduce((bi,d,i)=>d.rev>monthlyData[bi].rev?i:bi,0);
-
-  const active=selected!==null?selected:hovered;
-  const activeData=active!==null?monthlyData[active]:null;
-
-  const yStep=Math.ceil(maxRev/4/1000)*1000||1000;
-  const yLines=[1,2,3,4].map(n=>n*yStep).filter(v=>v<=maxRev*1.1);
-
-  return (
-    <div className="card" style={{overflow:"hidden",marginBottom:16}}>
-      {/* الرأس */}
-      <div style={{padding:"14px 18px",borderBottom:"1px solid rgba(197,172,136,.15)",background:SL,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-        <div>
-          <div style={{fontWeight:800,color:B,fontSize:14}}>📊 الإيرادات الشهرية {currentYear}</div>
-          <div style={{fontSize:11,color:SI,marginTop:2}}>{activeMos} أشهر نشطة · أفضل شهر: <span style={{color:B,fontWeight:700}}>{MONTHS[bestIdx]}</span></div>
-        </div>
-        <div style={{display:"flex",gap:16,alignItems:"center"}}>
-          {[
-            {label:"إجمالي الإيرادات",v:total,c:B},
-            {label:"إجمالي المصاريف",v:totalExp,c:"#C97B63"},
-            {label:"صافي الربح",v:total-totalExp,c:total>=totalExp?"#4CAF50":"#FF6B6B"},
-          ].map(({label,v,c})=>(
-            <div key={label} style={{textAlign:"center"}}>
-              <div style={{fontSize:18,fontWeight:900,color:c,lineHeight:1}}>{v.toLocaleString()}</div>
-              <div style={{fontSize:9,color:SI,fontWeight:600}}>{label} ر</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Tooltip المنبثق */}
-      {activeData&&active!==null&&(
-        <div style={{margin:"12px 18px 0",background:"rgba(197,172,136,.08)",border:"1px solid rgba(197,172,136,.25)",borderRadius:12,padding:"12px 16px",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,transition:"all .2s"}}>
-          <div>
-            <div style={{fontSize:11,color:SI,marginBottom:2}}>📅 الشهر</div>
-            <div style={{fontWeight:800,color:B,fontSize:14}}>{MONTHS[active]}</div>
-            <div style={{fontSize:10,color:SI}}>{currentYear}</div>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:SI,marginBottom:2}}>💰 الإيرادات</div>
-            <div style={{fontWeight:900,color:B,fontSize:15}}>{activeData.rev.toLocaleString()} <span style={{fontSize:11}}>ر</span></div>
-            <div style={{fontSize:10,color:SI}}>{activeData.cnt} حجز</div>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:SI,marginBottom:2}}>📤 المصاريف</div>
-            <div style={{fontWeight:900,color:"#C97B63",fontSize:15}}>{activeData.exp.toLocaleString()} <span style={{fontSize:11}}>ر</span></div>
-            <div style={{fontSize:10,color:SI}}>صيانة + نفقات</div>
-          </div>
-          <div>
-            <div style={{fontSize:11,color:SI,marginBottom:2}}>📈 صافي الربح</div>
-            <div style={{fontWeight:900,color:activeData.net>=0?"#4CAF50":"#FF6B6B",fontSize:15}}>{activeData.net.toLocaleString()} <span style={{fontSize:11}}>ر</span></div>
-            <div style={{fontSize:10,color:SI}}>هامش {activeData.rev>0?Math.round(activeData.net/activeData.rev*100):0}%</div>
-          </div>
-        </div>
-      )}
-
-      {/* الرسم */}
-      <div style={{padding:"20px 18px 12px",position:"relative"}}>
-        <div style={{position:"absolute",inset:"20px 18px 56px",pointerEvents:"none"}}>
-          {yLines.map(v=>(
-            <div key={v} style={{position:"absolute",bottom:(v/maxRev)*100+"%",left:0,right:0,display:"flex",alignItems:"center",gap:6}}>
-              <div style={{fontSize:9,color:SI,whiteSpace:"nowrap",width:36,textAlign:"left",flexShrink:0}}>{v>=1000?(v/1000)+"k":v}</div>
-              <div style={{flex:1,height:1,background:"rgba(197,172,136,.1)"}}/>
-            </div>
-          ))}
-          {avgRev>0&&(
-            <div style={{position:"absolute",bottom:(avgRev/maxRev)*100+"%",left:40,right:0,display:"flex",alignItems:"center",gap:6}}>
-              <div style={{flex:1,height:1,borderTop:"1.5px dashed rgba(197,172,136,.35)"}}/>
-              <div style={{fontSize:9,color:T,fontWeight:700,whiteSpace:"nowrap"}}>متوسط</div>
-            </div>
-          )}
-        </div>
-
-        <div style={{display:"flex",alignItems:"flex-end",gap:4,height:180,paddingRight:44,paddingLeft:4}}>
-          {monthlyData.map((d,i)=>{
-            const isHov=i===active;
-            const isCur=i===curMonth;
-            const isPast=i<curMonth;
-            const isBest=i===bestIdx&&d.rev>0;
-            const revH=mounted&&maxRev>0?Math.max((d.rev/maxRev)*100,d.rev>0?3:0):0;
-            const expH=mounted&&maxRev>0&&d.exp>0?Math.max((d.exp/maxRev)*100,2):0;
-            const revColor=isCur?"linear-gradient(180deg,#C5AC88,#8B7355)":isBest?"linear-gradient(180deg,#4CAF50,#2E7D32)":isPast?"linear-gradient(180deg,rgba(87,109,111,.9),rgba(87,109,111,.5))":"rgba(197,172,136,.2)";
-            return (
-              <div
-                key={i}
-                style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,height:"100%",justifyContent:"flex-end",cursor:"pointer",padding:"0 1px"}}
-                onMouseEnter={()=>setHovered(i)}
-                onMouseLeave={()=>setHovered(null)}
-                onClick={()=>setSelected(selected===i?null:i)}
-              >
-                <div style={{fontSize:8,color:isHov?B:isBest?"#4CAF50":isPast&&d.rev>0?T:"transparent",fontWeight:800,textAlign:"center",lineHeight:1.2,marginBottom:1,transition:"color .15s"}}>
-                  {d.rev>=1000?(d.rev/1000).toFixed(1)+"k":d.rev>0?d.rev:""}
-                </div>
-                <div style={{width:"100%",display:"flex",gap:1,alignItems:"flex-end",height:"100%"}}>
-                  <div style={{
-                    flex:1,
-                    height:revH+"%",
-                    background:revColor,
-                    borderRadius:"4px 4px 0 0",
-                    position:"relative",
-                    transition:"height .5s cubic-bezier(.34,1.56,.64,1), box-shadow .15s, transform .15s",
-                    boxShadow:isHov?"0 0 16px rgba(197,172,136,.5)":isCur?"0 0 10px rgba(197,172,136,.3)":"none",
-                    transform:isHov?"scaleX(1.08)":"scaleX(1)",
-                    minHeight:d.rev>0?"3px":0,
-                    outline:selected===i?"2px solid #C5AC88":"none",
-                    outlineOffset:1,
-                  }}>
-                    {isCur&&<div style={{position:"absolute",top:-4,left:"50%",transform:"translateX(-50%)",width:8,height:8,borderRadius:"50%",background:"#C5AC88",boxShadow:"0 0 6px rgba(197,172,136,.8)"}}/>}
-                  </div>
-                  {d.exp>0&&<div style={{width:3,height:expH+"%",background:isHov?"rgba(201,123,99,.9)":"rgba(201,123,99,.5)",borderRadius:"2px 2px 0 0",minHeight:2,transition:"height .5s cubic-bezier(.34,1.56,.64,1)"}}/>}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div style={{display:"flex",gap:4,paddingRight:44,paddingLeft:4,marginTop:6}}>
-          {monthlyData.map((d,i)=>{
-            const isCur=i===curMonth;
-            const isActive=i===active;
-            return (
-              <div key={i} style={{flex:1,textAlign:"center",cursor:"pointer"}} onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)} onClick={()=>setSelected(selected===i?null:i)}>
-                <div style={{fontSize:8.5,color:isActive?B:isCur?B:i<curMonth?T:SI,fontWeight:isActive||isCur?900:500,lineHeight:1,transition:"color .15s"}}>{MONTHS[i].slice(0,3)}</div>
-                {d.cnt>0&&<div style={{fontSize:7.5,color:isActive?"#C5AC88":SI,fontWeight:600,marginTop:1,transition:"color .15s"}}>{d.cnt}</div>}
-              </div>
-            );
-          })}
-        </div>
-
-        <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:12,flexWrap:"wrap"}}>
-          {[
-            {color:"linear-gradient(90deg,#C5AC88,#8B7355)",label:"الشهر الحالي"},
-            {color:"linear-gradient(90deg,#4CAF50,#2E7D32)",label:"أفضل شهر"},
-            {color:"rgba(87,109,111,.7)",label:"الأشهر الماضية"},
-            {color:"rgba(197,172,136,.2)",label:"القادمة"},
-            {color:"rgba(201,123,99,.6)",label:"المصاريف"},
-          ].map(({color,label})=>(
-            <div key={label} style={{display:"flex",alignItems:"center",gap:5}}>
-              <div style={{width:14,height:8,borderRadius:3,background:color,flexShrink:0}}/>
-              <span style={{fontSize:9,color:SI}}>{label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ملخص ربع سنوي */}
-      <div style={{borderTop:"1px solid rgba(197,172,136,.12)",display:"grid",gridTemplateColumns:"repeat(4,1fr)"}}>
-        {["Q1","Q2","Q3","Q4"].map((q,qi)=>{
-          const slice=monthlyData.slice(qi*3,qi*3+3);
-          const qRev=slice.reduce((s,d)=>s+d.rev,0);
-          const qExp=slice.reduce((s,d)=>s+d.exp,0);
-          const isCurQ=Math.floor(curMonth/3)===qi;
-          const isSelQ=selected!==null&&Math.floor(selected/3)===qi;
-          return (
-            <div key={q} style={{padding:"10px 12px",borderLeft:qi>0?"1px solid rgba(197,172,136,.12)":"none",background:isSelQ?"rgba(197,172,136,.12)":isCurQ?SL:"transparent",cursor:"pointer",transition:"background .2s"}} onClick={()=>{}}>
-              <div style={{fontSize:10,color:isCurQ||isSelQ?B:SI,fontWeight:isCurQ||isSelQ?800:600,marginBottom:3}}>{q}{isCurQ?" ← الآن":""}</div>
-              <div style={{fontSize:13,fontWeight:900,color:isCurQ||isSelQ?B:T}}>{qRev>=1000?(qRev/1000).toFixed(1)+"k":qRev} <span style={{fontSize:9,opacity:.6}}>ر</span></div>
-              <div style={{fontSize:9,color:"#C97B63"}}>{qExp>0?"- "+(qExp>=1000?(qExp/1000).toFixed(1)+"k":qExp)+" مصاريف":""}</div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
 function Logo({size}) {
   const s = size||40;
   return <img src={logoImg} width={s} height={s} style={{objectFit:"contain"}}/>;
@@ -2444,23 +2256,33 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   }
 
   const names    = chalets.map(c=>c.name);
-  const totRev   = useMemo(()=>{const br=bookings.filter(b=>b.status==="completed"||b.status==="confirmed").reduce((s,b)=>s+Number(b.price),0);const pr=chalets.reduce((s,c)=>s+Number(c.prev_revenue||0),0);return br+pr;},[bookings,chalets]);
-  const walletBal  = useMemo(()=>wallet.reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[wallet]);
+
+  // ── عزل بيانات مدير الشاليه على شاليهه فقط (يمنع تسرّب أرقام/حجوزات باقي الشاليهات) ──
+  const scChalets  = isChaletMgr ? chalets.filter(c=>c.name===currentUser.chalet)  : chalets;
+  const scBookings = isChaletMgr ? bookings.filter(b=>b.chalet===currentUser.chalet) : bookings;
+  const scMaint    = isChaletMgr ? maint.filter(m=>m.chalet===currentUser.chalet)    : maint;
+  const scExpenses = isChaletMgr ? expenses.filter(e=>e.chalet===currentUser.chalet) : expenses;
+  const scWallet   = isChaletMgr ? wallet.filter(w=>w.chalet===currentUser.chalet)   : wallet;
+  const scFixedExpenses = isChaletMgr ? fixedExpenses.filter(fx=>fx.chalet===currentUser.chalet) : fixedExpenses;
+  const scNames    = isChaletMgr ? scChalets.map(c=>c.name) : names;
+
+  const totRev   = useMemo(()=>{const br=scBookings.filter(b=>b.status==="completed"||b.status==="confirmed").reduce((s,b)=>s+Number(b.price),0);const pr=scChalets.reduce((s,c)=>s+Number(c.prev_revenue||0),0);return br+pr;},[scBookings,scChalets]);
+  const walletBal  = useMemo(()=>scWallet.reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[scWallet]);
   const cleaningBal= useMemo(()=>cleaning.reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[cleaning]);
-  const actB     = bookings.filter(b=>b.status==="confirmed"||b.status==="pending").length;
-  const opM      = maint.filter(m=>m.status==="open").length;
-  const mCost    = maint.filter(m=>m.cost).reduce((s,m)=>s+Number(m.cost),0);
-  const cBal     = useMemo(()=>{const map={};chalets.forEach(c=>{map[c.name]=0;});wallet.forEach(t=>{if(!Object.prototype.hasOwnProperty.call(map,t.chalet))return;if(t.type==="إيداع")map[t.chalet]+=t.amount;else map[t.chalet]=Math.max(0,map[t.chalet]-t.amount);});return map;},[wallet,chalets]);
+  const actB     = scBookings.filter(b=>b.status==="confirmed"||b.status==="pending").length;
+  const opM      = scMaint.filter(m=>m.status==="open").length;
+  const mCost    = scMaint.filter(m=>m.cost).reduce((s,m)=>s+Number(m.cost),0);
+  const cBal     = useMemo(()=>{const map={};scChalets.forEach(c=>{map[c.name]=0;});scWallet.forEach(t=>{if(!Object.prototype.hasOwnProperty.call(map,t.chalet))return;if(t.type==="إيداع")map[t.chalet]+=t.amount;else map[t.chalet]=Math.max(0,map[t.chalet]-t.amount);});return map;},[scWallet,scChalets]);
   const cStats   = useMemo(()=>{
     const now=new Date(); const y=now.getFullYear(); const mo=now.getMonth();
     // precompute maps once instead of filtering per chalet
     const bMap: Record<string,Booking[]>={};
-    for(const b of bookings){if(!bMap[b.chalet])bMap[b.chalet]=[];bMap[b.chalet].push(b);}
+    for(const b of scBookings){if(!bMap[b.chalet])bMap[b.chalet]=[];bMap[b.chalet].push(b);}
     const mMap: Record<string,typeof maint[0][]>={};
-    for(const m of maint){if(!mMap[m.chalet])mMap[m.chalet]=[];mMap[m.chalet].push(m);}
+    for(const m of scMaint){if(!mMap[m.chalet])mMap[m.chalet]=[];mMap[m.chalet].push(m);}
     const exMap: Record<string,typeof expenses[0][]>={};
-    for(const e of expenses){if(!e.chalet)continue;if(!exMap[e.chalet])exMap[e.chalet]=[];exMap[e.chalet].push(e);}
-    return chalets.map(c=>{
+    for(const e of scExpenses){if(!e.chalet)continue;if(!exMap[e.chalet])exMap[e.chalet]=[];exMap[e.chalet].push(e);}
+    return scChalets.map(c=>{
       const cb=bMap[c.name]||[];
       const cm=mMap[c.name]||[];
       const ce=exMap[c.name]||[];
@@ -2483,7 +2305,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
         goal:Number(c.monthly_goal||0),
       };
     });
-  },[chalets,bookings,maint,expenses,cBal]);
+  },[scChalets,scBookings,scMaint,scExpenses,cBal]);
 
   const invPeriodRange = ()=>{
     const now=new Date();
@@ -2638,14 +2460,14 @@ ${poolLine}
     return d;
   }
   const soonArrivals = useMemo(()=>{
-    return bookings.filter(b=>{
+    return scBookings.filter(b=>{
       if(b.status!=="confirmed") return false;
       const dt=checkinDateTime(b);
       if(!dt) return false;
       const diffMin=(dt.getTime()-nowTick)/60000;
       return diffMin>0&&diffMin<=60;
     }).sort((a,b)=>(checkinDateTime(a)!.getTime())-(checkinDateTime(b)!.getTime()));
-  },[bookings,nowTick]);
+  },[scBookings,nowTick]);
   const [notifiedArrivals,setNotifiedArrivals] = useState<Set<number>>(new Set());
   useEffect(()=>{
     soonArrivals.forEach(b=>{
@@ -2692,7 +2514,7 @@ ${poolLine}
 
   function allowedTabs(t) {
     if(isAdmin) return true;
-    if(isChaletMgr) return ["dashboard","bookings","maintenance","loyalty","smart"].includes(t.id);
+    if(isChaletMgr) return ["dashboard","bookings","maintenance","loyalty","smart","finance"].includes(t.id);
     if(isStaff)     return ["dashboard","bookings","chalets","maintenance"].includes(t.id);
     return ["dashboard","bookings"].includes(t.id);
   }
@@ -2921,11 +2743,11 @@ ${poolLine}
               {(()=>{
                 const todayStr=new Date().toISOString().slice(0,10);
                 const tomStr=new Date(Date.now()+86400000).toISOString().slice(0,10);
-                const checkoutsToday=bookings.filter(b=>(b.status==="confirmed"||b.status==="pending")&&b.date_to===todayStr).length;
-                const checkinsToday=bookings.filter(b=>b.status==="confirmed"&&b.date_from===todayStr).length;
-                const arrivingTomorrow=bookings.filter(b=>b.status==="confirmed"&&b.date_from===tomStr).length;
-                const poolPending=bookings.filter(b=>b.pool_preference&&!b.pool_approved&&b.status==="confirmed").length;
-                const openMaint=maint.filter(m=>m.status==="open").length;
+                const checkoutsToday=scBookings.filter(b=>(b.status==="confirmed"||b.status==="pending")&&b.date_to===todayStr).length;
+                const checkinsToday=scBookings.filter(b=>b.status==="confirmed"&&b.date_from===todayStr).length;
+                const arrivingTomorrow=scBookings.filter(b=>b.status==="confirmed"&&b.date_from===tomStr).length;
+                const poolPending=scBookings.filter(b=>b.pool_preference&&!b.pool_approved&&b.status==="confirmed").length;
+                const openMaint=scMaint.filter(m=>m.status==="open").length;
                 const items=[
                   checkoutsToday&&{icon:"🚪",label:"خروج اليوم",val:checkoutsToday,color:"#DC2626",bg:"rgba(220,38,38,.08)"},
                   checkinsToday&&{icon:"🏡",label:"دخول اليوم",val:checkinsToday,color:"#059669",bg:"rgba(5,150,105,.08)"},
@@ -2955,7 +2777,7 @@ ${poolLine}
                 const now=new Date();
                 const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
                 const yesterday=new Date(today); yesterday.setDate(today.getDate()-1);
-                const checkouts=bookings.filter(b=>{
+                const checkouts=scBookings.filter(b=>{
                   if(b.status!=="confirmed"&&b.status!=="pending") return false;
                   if(!b.date_to) return false;
                   const to=new Date(b.date_to);
@@ -3024,7 +2846,7 @@ ${poolLine}
               {(()=>{
                 const tom=new Date(); tom.setDate(tom.getDate()+1);
                 const tomStr=tom.toISOString().slice(0,10);
-                const arrivals=bookings.filter(b=>b.status==="confirmed"&&b.date_from===tomStr);
+                const arrivals=scBookings.filter(b=>b.status==="confirmed"&&b.date_from===tomStr);
                 if(!arrivals.length) return null;
                 return (
                   <div style={{background:"linear-gradient(135deg,#312E81,#4338CA)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 4px 20px rgba(67,56,202,.35)"}}>
@@ -3067,7 +2889,7 @@ ${poolLine}
 
               {/* ── طلبات المسبح المعلقة ── */}
               {(()=>{
-                const poolReqs = bookings.filter(b=>b.pool_preference&&!b.pool_approved&&b.status==="confirmed");
+                const poolReqs = scBookings.filter(b=>b.pool_preference&&!b.pool_approved&&b.status==="confirmed");
                 if(!poolReqs.length) return null;
                 function poolLabel(pref: string){
                   if(!pref) return "-";
@@ -3236,9 +3058,9 @@ ${poolLine}
               {(()=>{
                 const nowD=new Date();
                 const thisYM=`${nowD.getFullYear()}-${String(nowD.getMonth()+1).padStart(2,"0")}`;
-                const activeFixed=fixedExpenses.filter(fx=>fx.active);
+                const activeFixed=scFixedExpenses.filter(fx=>fx.active);
                 if(!activeFixed.length) return null;
-                const paidNames=new Set(expenses.filter(e=>e.expense_date?.startsWith(thisYM)).map(e=>e.note));
+                const paidNames=new Set(scExpenses.filter(e=>e.expense_date?.startsWith(thisYM)).map(e=>e.note));
                 const unpaid=activeFixed.filter(fx=>!paidNames.has(fx.name));
                 if(!unpaid.length) return null;
                 const unpaidTotal=unpaid.reduce((s,fx)=>s+Number(fx.amount),0);
@@ -3254,7 +3076,7 @@ ${poolLine}
                 const activeStatuses=["completed","confirmed"];
 
                 // هذا الشهر: date_from يقع في الشهر الحالي (نفس منطق صفحة المالية)
-                const monthBks=bookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&
+                const monthBks=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&
                   new Date(b.date_from).getFullYear()===y&&new Date(b.date_from).getMonth()===mo
                 );
                 const monthRev=monthBks.reduce((s,b)=>s+Number(b.price),0);
@@ -3262,19 +3084,19 @@ ${poolLine}
 
                 // الشهر الماضي
                 const lastMo=mo===0?11:mo-1; const lastY=mo===0?y-1:y;
-                const lastMonthRev=bookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&
+                const lastMonthRev=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&
                   new Date(b.date_from).getFullYear()===lastY&&new Date(b.date_from).getMonth()===lastMo
                 ).reduce((s,b)=>s+Number(b.price),0);
 
                 const diff=lastMonthRev>0?Math.round((monthRev-lastMonthRev)/lastMonthRev*100):0;
 
                 // هذا العام
-                const yearRev=bookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===y).reduce((s,b)=>s+Number(b.price),0);
-                const yearCount=bookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===y).length;
+                const yearRev=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===y).reduce((s,b)=>s+Number(b.price),0);
+                const yearCount=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===y).length;
 
                 // المصاريف الشهرية
-                const monthExp=expenses.filter(e=>e.expense_date&&new Date(e.expense_date).getFullYear()===y&&new Date(e.expense_date).getMonth()===mo).reduce((s,e)=>s+Number(e.amount),0)
-                  + maint.filter(m=>m.cost&&m.maint_date&&new Date(m.maint_date).getFullYear()===y&&new Date(m.maint_date).getMonth()===mo).reduce((s,m)=>s+Number(m.cost),0);
+                const monthExp=scExpenses.filter(e=>e.expense_date&&new Date(e.expense_date).getFullYear()===y&&new Date(e.expense_date).getMonth()===mo).reduce((s,e)=>s+Number(e.amount),0)
+                  + scMaint.filter(m=>m.cost&&m.maint_date&&new Date(m.maint_date).getFullYear()===y&&new Date(m.maint_date).getMonth()===mo).reduce((s,m)=>s+Number(m.cost),0);
                 const netProfit=monthRev-monthExp;
                 const margin=monthRev>0?Math.round(netProfit/monthRev*100):0;
 
@@ -3368,7 +3190,7 @@ ${poolLine}
                 {(()=>{
                   const now=new Date();
                   const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-                  const upcoming=bookings.filter(b=>b.status!=="cancelled"&&b.status!=="completed").map(b=>{const from=new Date(b.date_from);return{...b,daysLeft:Math.round((new Date(from.getFullYear(),from.getMonth(),from.getDate())-today)/86400000)};}).filter(b=>b.daysLeft>=-1).sort((a,b)=>a.daysLeft-b.daysLeft).slice(0,6);
+                  const upcoming=scBookings.filter(b=>b.status!=="cancelled"&&b.status!=="completed").map(b=>{const from=new Date(b.date_from);return{...b,daysLeft:Math.round((new Date(from.getFullYear(),from.getMonth(),from.getDate())-today)/86400000)};}).filter(b=>b.daysLeft>=-1).sort((a,b)=>a.daysLeft-b.daysLeft).slice(0,6);
                   return (
                     <div className="card" style={{overflow:"hidden"}}>
                       <div style={{padding:"12px 16px",borderBottom:"2px solid rgba(197,172,136,.2)",fontWeight:700,color:B,fontSize:13,background:SL,display:"flex",alignItems:"center",gap:8}}>
@@ -3423,7 +3245,7 @@ ${poolLine}
                 </div>
               </div>
 
-              <MonthlyChart bookings={bookings} expenses={expenses} maint={maint} B={B} T={T} SI={SI} SL={SL}/>
+              <MonthlyChart bookings={scBookings} expenses={scExpenses} maint={scMaint} B={B} T={T} SI={SI} SL={SL}/>
             </div>
           )}
 
@@ -3548,13 +3370,14 @@ ${poolLine}
           )}
 
           {/* ── Finance ── */}
-          {tab==="finance"&&(
+          {tab==="finance"&&(isAdmin||isStaff||isChaletMgr)&&(
             <FinancialTab
-              bookings={bookings} maintenance={maint} wallet={wallet} names={names}
-              expenses={expenses}
-              fixedExpenses={fixedExpenses}
-              onAddExpense={()=>setExMdl({chalet:names[0]||"",category:"إيجار",amount:"",note:"",expense_date:td()})}
-              onAddFixedExpense={()=>setFxMdl({chalet:names[0]||"",name:"",amount:0,frequency:"monthly",category:"إيجار",active:true})}
+              bookings={scBookings} maintenance={scMaint} wallet={scWallet} names={scNames}
+              expenses={scExpenses}
+              fixedExpenses={scFixedExpenses}
+              lockedChalet={isChaletMgr?currentUser.chalet:undefined}
+              onAddExpense={()=>setExMdl({chalet:(isChaletMgr?currentUser.chalet:names[0])||"",category:"إيجار",amount:"",note:"",expense_date:td()})}
+              onAddFixedExpense={()=>setFxMdl({chalet:(isChaletMgr?currentUser.chalet:names[0])||"",name:"",amount:0,frequency:"monthly",category:"إيجار",active:true})}
               onPayFixedExpense={async(fx)=>{const today=td();await db("expenses","POST",{chalet:fx.chalet,category:fx.category||"مصروف ثابت",amount:Number(fx.amount),note:fx.name,expense_date:today});await loadAll();}}
               onEdit={t=>setWMdl({...t})}
               onReload={loadAll}
@@ -3562,7 +3385,7 @@ ${poolLine}
           )}
 
           {/* ── Investors ── */}
-          {tab==="investors"&&(
+          {tab==="investors"&&isAdmin&&(
             <div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
                 <TH title="🤝 إدارة المستثمرين"/>
