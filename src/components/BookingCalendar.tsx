@@ -1,5 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Booking } from "../lib/types";
+
+function useCalMobile() {
+  const [mobile, setMobile] = useState(typeof window !== "undefined" ? window.innerWidth < 640 : false);
+  useEffect(() => {
+    const h = () => setMobile(window.innerWidth < 640);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
+  return mobile;
+}
 
 interface Props {
   bookings: Booking[];
@@ -32,6 +42,7 @@ function dayBks(bookings: Booking[], date: Date) {
 }
 
 export default function BookingCalendar({ bookings, names }: Props) {
+  const mobile = useCalMobile();
   const [view,    setView]    = useState<"month"|"week">("month");
   const [cur,     setCur]     = useState(new Date());
   const [selCh,   setSelCh]   = useState("الكل");
@@ -81,7 +92,7 @@ export default function BookingCalendar({ bookings, names }: Props) {
         {/* Cells */}
         <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:3 }}>
           {cells.map((d, i) => {
-            if (!d) return <div key={i} style={{ minHeight:100, background:"var(--bg)", borderRadius:8, opacity:.4 }}/>;
+            if (!d) return <div key={i} style={{ minHeight:mobile?48:100, background:"var(--bg)", borderRadius:8, opacity:.4 }}/>;
             const date    = new Date(y, m, d);
             const bks     = dayBks(filtered, date);
             const isToday = sameDay(date, today);
@@ -93,7 +104,8 @@ export default function BookingCalendar({ bookings, names }: Props) {
                 key={i}
                 onClick={() => setSelDay(isSel ? null : date)}
                 style={{
-                  minHeight:100, padding:"6px 5px 5px", borderRadius:8,
+                  minHeight:mobile?48:100, padding: mobile?"6px 2px":"6px 5px 5px", borderRadius:8,
+                  display: mobile?"flex":undefined, flexDirection: mobile?"column":undefined, alignItems: mobile?"center":undefined,
                   background: isSel   ? "rgba(87,109,111,.12)"
                             : isToday ? "rgba(197,172,136,.15)"
                             : isWknd  ? "rgba(197,172,136,.04)"
@@ -106,56 +118,82 @@ export default function BookingCalendar({ bookings, names }: Props) {
                   position:"relative", overflow:"hidden",
                 }}
               >
-                {/* Number */}
-                <div style={{
-                  display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5,
-                }}>
-                  <span style={{
-                    fontSize:13, fontWeight:800, lineHeight:1,
-                    color: isToday ? "var(--bg)" : "var(--text)",
-                    background: isToday ? "var(--text)" : "transparent",
-                    borderRadius: isToday ? "50%" : 0,
-                    width:isToday?22:undefined, height:isToday?22:undefined,
-                    display:"flex", alignItems:"center", justifyContent:"center",
-                    minWidth: isToday ? 22 : undefined,
-                  }}>{d}</span>
-                  {bks.length > 0 && (
+                {mobile ? (
+                  <>
+                    {/* رقم اليوم فقط — بدون نصوص أسماء، لتفادي التقطيع على الجوال */}
                     <span style={{
-                      fontSize:9, fontWeight:700, borderRadius:99,
-                      padding:"1px 6px",
-                      background:"var(--text)", color:"var(--bg)",
-                    }}>{bks.length}</span>
-                  )}
-                </div>
-
-                {/* Booking bars */}
-                {bks.slice(0, 3).map((b, j) => {
-                  const cfg = ST[b.status] || ST.confirmed;
-                  const isStart = sameDay(new Date(b.date_from), date);
-                  const isEnd   = sameDay(new Date(b.date_to),   date);
-                  return (
-                    <div key={j} title={`${b.guest} · ${b.chalet}\n${Number(b.price).toLocaleString()} ر`} style={{
-                      display:"flex", alignItems:"center", gap:3,
-                      background: cfg.bar,
-                      borderRight: `3px solid ${cfg.dot}`,
-                      borderRadius: isStart && isEnd ? 5 : isStart ? "5px 0 0 5px" : isEnd ? "0 5px 5px 0" : 0,
-                      padding:"2px 5px 2px 4px",
-                      marginBottom:2,
-                      overflow:"hidden",
+                      fontSize:13, fontWeight:800, lineHeight:1,
+                      color: isToday ? "var(--bg)" : "var(--text)",
+                      background: isToday ? "var(--text)" : "transparent",
+                      borderRadius: isToday ? "50%" : 0,
+                      width:isToday?22:undefined, height:isToday?22:undefined,
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      minWidth: isToday ? 22 : undefined,
+                    }}>{d}</span>
+                    {bks.length > 0 && (
+                      <div style={{ display:"flex", gap:2, flexWrap:"wrap", justifyContent:"center", marginTop:5, maxWidth:"100%" }}>
+                        {bks.slice(0, 4).map((b, j) => {
+                          const cfg = ST[b.status] || ST.confirmed;
+                          return <div key={j} style={{ width:6, height:6, borderRadius:"50%", background:cfg.dot, flexShrink:0 }}/>;
+                        })}
+                        {bks.length > 4 && <span style={{ fontSize:8, color:"var(--text2)", fontWeight:700 }}>{"+"+(bks.length-4)}</span>}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {/* Number */}
+                    <div style={{
+                      display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:5,
                     }}>
-                      {isStart && <span style={{ fontSize:8, color:cfg.dot, flexShrink:0 }}>●</span>}
                       <span style={{
-                        fontSize:10, fontWeight:700, color:cfg.text,
-                        overflow:"hidden", whiteSpace:"nowrap", textOverflow:"ellipsis", flex:1,
-                      }}>{b.guest}</span>
-                      {isEnd && <span style={{ fontSize:8, color:cfg.dot, flexShrink:0 }}>■</span>}
+                        fontSize:13, fontWeight:800, lineHeight:1,
+                        color: isToday ? "var(--bg)" : "var(--text)",
+                        background: isToday ? "var(--text)" : "transparent",
+                        borderRadius: isToday ? "50%" : 0,
+                        width:isToday?22:undefined, height:isToday?22:undefined,
+                        display:"flex", alignItems:"center", justifyContent:"center",
+                        minWidth: isToday ? 22 : undefined,
+                      }}>{d}</span>
+                      {bks.length > 0 && (
+                        <span style={{
+                          fontSize:9, fontWeight:700, borderRadius:99,
+                          padding:"1px 6px",
+                          background:"var(--text)", color:"var(--bg)",
+                        }}>{bks.length}</span>
+                      )}
                     </div>
-                  );
-                })}
-                {bks.length > 3 && (
-                  <div style={{ fontSize:9, color:"var(--text2)", fontWeight:700, textAlign:"center", marginTop:2 }}>
-                    +{bks.length - 3} حجوزات
-                  </div>
+
+                    {/* Booking bars */}
+                    {bks.slice(0, 3).map((b, j) => {
+                      const cfg = ST[b.status] || ST.confirmed;
+                      const isStart = sameDay(new Date(b.date_from), date);
+                      const isEnd   = sameDay(new Date(b.date_to),   date);
+                      return (
+                        <div key={j} title={`${b.guest} · ${b.chalet}\n${Number(b.price).toLocaleString()} ر`} style={{
+                          display:"flex", alignItems:"center", gap:3,
+                          background: cfg.bar,
+                          borderRight: `3px solid ${cfg.dot}`,
+                          borderRadius: isStart && isEnd ? 5 : isStart ? "5px 0 0 5px" : isEnd ? "0 5px 5px 0" : 0,
+                          padding:"2px 5px 2px 4px",
+                          marginBottom:2,
+                          overflow:"hidden",
+                        }}>
+                          {isStart && <span style={{ fontSize:8, color:cfg.dot, flexShrink:0 }}>●</span>}
+                          <span style={{
+                            fontSize:10, fontWeight:700, color:cfg.text,
+                            overflow:"hidden", whiteSpace:"nowrap", textOverflow:"ellipsis", flex:1,
+                          }}>{b.guest}</span>
+                          {isEnd && <span style={{ fontSize:8, color:cfg.dot, flexShrink:0 }}>■</span>}
+                        </div>
+                      );
+                    })}
+                    {bks.length > 3 && (
+                      <div style={{ fontSize:9, color:"var(--text2)", fontWeight:700, textAlign:"center", marginTop:2 }}>
+                        +{bks.length - 3} حجوزات
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             );
@@ -175,7 +213,7 @@ export default function BookingCalendar({ bookings, names }: Props) {
     });
 
     return (
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:6 }}>
+      <div style={{ display:"grid", gridTemplateColumns: mobile?"1fr":"repeat(7,1fr)", gap:6 }}>
         {days.map((date, i) => {
           const bks     = dayBks(filtered, date);
           const isToday = sameDay(date, today);
@@ -189,34 +227,57 @@ export default function BookingCalendar({ bookings, names }: Props) {
               boxShadow: isToday ? "0 4px 16px rgba(0,0,0,.10)" : "0 1px 4px rgba(0,0,0,.04)",
             }}>
               {/* Header */}
-              <div style={{
+              <div style={mobile ? {
+                background: isToday ? "var(--text)" : "var(--th-bg)",
+                padding:"8px 12px", display:"flex", alignItems:"center", justifyContent:"space-between", gap:10,
+              } : {
                 background: isToday ? "var(--text)" : "var(--th-bg)",
                 padding:"10px 6px 8px", textAlign:"center",
               }}>
-                <div style={{ fontSize:11, fontWeight:600, color: isToday ? "var(--bg)" : "var(--text2)", marginBottom:3 }}>
-                  {DAYS[date.getDay()]}
-                </div>
-                <div style={{ fontSize:22, fontWeight:900, color: isToday ? "var(--bg)" : "var(--text)", lineHeight:1 }}>
-                  {date.getDate()}
-                </div>
-                <div style={{ fontSize:10, color: isToday ? "rgba(255,255,255,.7)" : "var(--text3)", marginTop:2 }}>
-                  {MONTHS[date.getMonth()]}
-                </div>
-                {bks.length > 0 && (
-                  <div style={{
-                    display:"inline-block", marginTop:6, fontSize:10, fontWeight:700,
-                    background: isToday ? "rgba(255,255,255,.2)" : "var(--text)",
-                    color: isToday ? "var(--bg)" : "var(--bg)",
-                    borderRadius:99, padding:"2px 10px",
-                  }}>{bks.length} حجز</div>
+                {mobile ? (
+                  <>
+                    <div style={{ display:"flex", alignItems:"baseline", gap:8 }}>
+                      <span style={{ fontSize:18, fontWeight:900, color: isToday ? "var(--bg)" : "var(--text)", lineHeight:1 }}>{date.getDate()}</span>
+                      <span style={{ fontSize:12, fontWeight:700, color: isToday ? "var(--bg)" : "var(--text2)" }}>{DAYS[date.getDay()]}</span>
+                      <span style={{ fontSize:11, color: isToday ? "rgba(255,255,255,.7)" : "var(--text3)" }}>{MONTHS[date.getMonth()]}</span>
+                    </div>
+                    {bks.length > 0 && (
+                      <div style={{
+                        fontSize:10, fontWeight:700,
+                        background: isToday ? "rgba(255,255,255,.2)" : "var(--text)",
+                        color: isToday ? "var(--bg)" : "var(--bg)",
+                        borderRadius:99, padding:"2px 10px", flexShrink:0,
+                      }}>{bks.length} حجز</div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize:11, fontWeight:600, color: isToday ? "var(--bg)" : "var(--text2)", marginBottom:3 }}>
+                      {DAYS[date.getDay()]}
+                    </div>
+                    <div style={{ fontSize:22, fontWeight:900, color: isToday ? "var(--bg)" : "var(--text)", lineHeight:1 }}>
+                      {date.getDate()}
+                    </div>
+                    <div style={{ fontSize:10, color: isToday ? "rgba(255,255,255,.7)" : "var(--text3)", marginTop:2 }}>
+                      {MONTHS[date.getMonth()]}
+                    </div>
+                    {bks.length > 0 && (
+                      <div style={{
+                        display:"inline-block", marginTop:6, fontSize:10, fontWeight:700,
+                        background: isToday ? "rgba(255,255,255,.2)" : "var(--text)",
+                        color: isToday ? "var(--bg)" : "var(--bg)",
+                        borderRadius:99, padding:"2px 10px",
+                      }}>{bks.length} حجز</div>
+                    )}
+                  </>
                 )}
               </div>
 
               {/* Bookings list */}
-              <div style={{ padding:6, minHeight:120 }}>
-                {bks.length === 0
-                  ? <div style={{ fontSize:11, color:"var(--text3)", textAlign:"center", marginTop:20 }}>—</div>
-                  : bks.map((b, j) => {
+              {bks.length === 0
+                ? (!mobile && <div style={{ padding:6, minHeight:120 }}><div style={{ fontSize:11, color:"var(--text3)", textAlign:"center", marginTop:20 }}>—</div></div>)
+                : <div style={{ padding:6, minHeight: mobile?undefined:120 }}>
+                    {bks.map((b, j) => {
                       const cfg = ST[b.status] || ST.confirmed;
                       return (
                         <div key={j} title={`${b.guest}\n${b.chalet}\n${Number(b.price).toLocaleString()} ر`} style={{
@@ -242,9 +303,9 @@ export default function BookingCalendar({ bookings, names }: Props) {
                           </div>
                         </div>
                       );
-                    })
-                }
-              </div>
+                    })}
+                  </div>
+              }
             </div>
           );
         })}
