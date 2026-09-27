@@ -4,6 +4,7 @@ import { Booking, MaintenanceRequest, WalletTransaction, Expense, FixedExpense }
 import { B, S, T, TD, W, SA, SD, SI, SL, BD } from "../lib/colors";
 import { BOOKING_STATUS } from "../lib/constants";
 import { Bdg, SectionTitle, DataTable } from "./ui";
+import MonthlyChart from "./MonthlyChart";
 
 const FREQ_LABEL: Record<string,string> = { monthly:"شهري", quarterly:"ربع سنوي", yearly:"سنوي" };
 
@@ -19,9 +20,12 @@ interface Props {
   onPayFixedExpense?: (fx: FixedExpense) => void;
   onEdit?:     (t: WalletTransaction) => void;
   onReload?:   () => void;
+  /** إن حُدّد، الصفحة تُقفل على هذا الشاليه فقط — بدون اختيار شاليه أو مقارنة بين الشاليهات (وضع مالك/مدير الشاليه) */
+  lockedChalet?: string;
 }
 
 type Period = "this_month" | "last_month" | "this_year" | "all" | "custom";
+type CompareMode = "none" | "periods" | "chalets";
 
 const PERIOD_LABELS: Record<Period, string> = {
   this_month: "هذا الشهر",
@@ -31,53 +35,81 @@ const PERIOD_LABELS: Record<Period, string> = {
   custom:     "مخصص",
 };
 
-export default function FinancialTab({ bookings, maintenance, wallet, names, expenses = [], fixedExpenses = [], onAddExpense, onAddFixedExpense, onPayFixedExpense, onEdit, onReload }: Props) {
+const isRevenue = (b: { status: string }) => b.status === "completed" || b.status === "confirmed";
+
+export default function FinancialTab({ bookings, maintenance, wallet, names, expenses = [], fixedExpenses = [], onAddExpense, onAddFixedExpense, onPayFixedExpense, onEdit, onReload, lockedChalet }: Props) {
   const now = new Date();
   const [period, setPeriod] = useState<Period>("this_month");
-  const [fch, setFch]       = useState("الكل");
+  const [fch, setFch]       = useState(lockedChalet || "الكل");
   const [cf, setCf]         = useState("");
   const [ct, setCt]         = useState("");
+  const [compareMode, setCompareMode] = useState<CompareMode>("none");
 
-  function getRange() {
+  const effFch = lockedChalet || fch;
+  const canCompareChalets = !lockedChalet && names.length > 1;
+
+  function getRange(p: Period) {
     const y = now.getFullYear(), m = now.getMonth();
-    if (period === "this_month") return { from: new Date(y, m, 1),    to: new Date(y, m + 1, 0) };
-    if (period === "last_month") return { from: new Date(y, m - 1, 1), to: new Date(y, m, 0) };
-    if (period === "this_year")  return { from: new Date(y, 0, 1),     to: new Date(y, 11, 31) };
-    if (period === "custom")     return { from: cf ? new Date(cf) : null, to: ct ? new Date(ct) : null };
+    if (p === "this_month") return { from: new Date(y, m, 1),    to: new Date(y, m + 1, 0) };
+    if (p === "last_month") return { from: new Date(y, m - 1, 1), to: new Date(y, m, 0) };
+    if (p === "this_year")  return { from: new Date(y, 0, 1),     to: new Date(y, 11, 31) };
+    if (p === "custom")     return { from: cf ? new Date(cf) : null, to: ct ? new Date(ct) : null };
     return { from: null, to: null };
   }
+  function getPrevRange(): { from: Date; to: Date; label: string } | null {
+    const y = now.getFullYear(), m = now.getMonth();
+    if (period === "this_month") return { from: new Date(y, m - 1, 1), to: new Date(y, m, 0),     label: "الشهر الماضي" };
+    if (period === "last_month") return { from: new Date(y, m - 2, 1), to: new Date(y, m - 1, 0), label: "قبل الشهر الماضي" };
+    if (period === "this_year")  return { from: new Date(y - 1, 0, 1), to: new Date(y - 1, 11, 31), label: "العام الماضي" };
+    return null; // "كل الوقت" و"مخصص" ما لهم فترة سابقة محددة
+  }
 
-  const { from: rf, to: rt } = getRange();
-  const inRange = (d?: string) => {
-    if (!d) return false;
-    const x = new Date(d);
-    if (rf && x < rf) return false;
-    if (rt && x > rt) return false;
-    return true;
-  };
+  const { from: rf, to: rt } = getRange(period);
+  const byCh  = (item: { chalet: string }) => effFch === "الكل" || item.chalet === effFch;
 
-  const byCh  = (item: { chalet: string }) => fch === "الكل" || item.chalet === fch;
-  const byPer = (d?: string) => period === "all" || inRange(d);
-  const isRevenue = (b: { status: string }) => b.status === "completed" || b.status === "confirmed";
+  function computeStats(chFilter: (item: { chalet: string }) => boolean, from: Date | null, to: Date | null, allTime: boolean) {
+    const inR = (d?: string) => {
+      if (!d) return false;
+      if (allTime) return true;
+      const x = new Date(d);
+      if (from && x < from) return false;
+      if (to && x > to) return false;
+      return true;
+    };
+    const b = bookings.filter(x => isRevenue(x) && chFilter(x) && inR(x.date_from));
+    const m = maintenance.filter(x => Number(x.cost) > 0 && chFilter(x) && inR(x.maint_date));
+    const e = expenses.filter(x => chFilter(x) && inR(x.expense_date));
+    const w = wallet.filter(x => chFilter(x) && inR(x.trans_date) && x.type === "إيداع");
+    const rev = b.reduce((s, x) => s + Number(x.price), 0);
+    const mex = m.reduce((s, x) => s + Number(x.cost), 0);
+    const exTotal = e.reduce((s, x) => s + Number(x.amount), 0);
+    const insIn = w.reduce((s, x) => s + x.amount, 0);
+    const nts = b.reduce((s, x) => s + nightsBetween(x.date_from, x.date_to), 0);
+    return { bookings: b, maint: m, expenses: e, rev, mex, exTotal, insIn, net: rev - mex, trueNet: rev - mex - exTotal, nts, count: b.length };
+  }
 
-  const fb  = bookings.filter(b  => isRevenue(b) && byCh(b) && byPer(b.date_from));
-  const fm  = maintenance.filter(m => Number(m.cost) > 0 && byCh(m) && byPer(m.maint_date));
-  const ft  = wallet.filter(t     => byCh(t) && byPer(t.trans_date));
-  const fex = expenses.filter(e   => byCh(e) && byPer(e.expense_date));
+  const cur = computeStats(byCh, rf, rt, period === "all");
+  const { bookings: fb, maint: fm, expenses: fex, rev, mex, exTotal, insIn, net, trueNet, nts } = cur;
+  const ft = wallet.filter(t => byCh(t) && (period === "all" || (t.trans_date && (!rf || new Date(t.trans_date) >= rf) && (!rt || new Date(t.trans_date) <= rt))));
+  const margin = rev > 0 ? Math.round(trueNet / rev * 100) : 0;
+  const adr = nts > 0 ? Math.round(rev / nts) : 0;
 
-  const rev      = fb.reduce((s, b) => s + Number(b.price), 0);
-  const mex      = fm.reduce((s, m) => s + Number(m.cost), 0);
-  const exTotal  = fex.reduce((s, e) => s + Number(e.amount), 0);
-  const insIn    = ft.filter(t => t.type === "إيداع").reduce((s, t) => s + t.amount, 0);
-  const net      = rev - mex;
-  const trueNet  = rev - mex - exTotal;
-  const nts      = fb.reduce((s, b) => s + nightsBetween(b.date_from, b.date_to), 0);
+  const prevRange = getPrevRange();
+  const prev = prevRange ? computeStats(byCh, prevRange.from, prevRange.to, false) : null;
+  function delta(curV: number, prevV: number): number | null {
+    if (!prevV) return null;
+    return Math.round((curV - prevV) / Math.abs(prevV) * 100);
+  }
+  const DeltaChip = ({ v }: { v: number | null }) => v === null ? null : (
+    <span style={{ fontSize: 11, fontWeight: 800, color: v >= 0 ? SD : "#8B3A3A", background: v >= 0 ? "rgba(109,142,118,.12)" : "rgba(139,58,58,.1)", borderRadius: 6, padding: "1px 7px", marginRight: 6 }}>
+      {v >= 0 ? "↑" : "↓"} {Math.abs(v)}%
+    </span>
+  );
 
   const csum = names.map(n => {
-    const r = bookings.filter(b => b.chalet === n && isRevenue(b) && byPer(b.date_from)).reduce((s, b) => s + Number(b.price), 0);
-    const e = maintenance.filter(m => m.chalet === n && Number(m.cost) > 0 && byPer(m.maint_date)).reduce((s, m) => s + Number(m.cost), 0);
-    return { n, r, e, net: r - e };
-  }).filter(c => c.r > 0 || c.e > 0);
+    const s = computeStats(item => item.chalet === n, rf, rt, period === "all");
+    return { n, r: s.rev, e: s.mex, x: s.exTotal, net: s.trueNet };
+  }).filter(c => c.r > 0 || c.e > 0 || c.x > 0);
 
   const plab = PERIOD_LABELS[period];
 
@@ -146,10 +178,19 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
     window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(lines.join("\n"))}`, "_blank");
   }
 
+  const StatementRow = ({ label, value, sub, bold, indent }: { label: string; value: number; sub?: string; bold?: boolean; indent?: boolean }) => (
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", padding: bold?"10px 0":"6px 0", paddingRight: indent?18:0, borderTop: bold?`1.5px solid rgba(197,172,136,.3)`:"none" }}>
+      <span style={{ fontSize: bold?14:13, fontWeight: bold?800:500, color: bold?B:T }}>{label}{sub&&<span style={{fontSize:11,color:SI,marginRight:6}}>{sub}</span>}</span>
+      <span style={{ fontSize: bold?16:13, fontWeight: bold?900:700, color: value<0?"#8B3A3A":(bold?B:B) }}>
+        {value<0?"−":""}{Math.abs(value).toLocaleString()} <span style={{fontSize:11,opacity:.6}}>ر</span>
+      </span>
+    </div>
+  );
+
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-        <SectionTitle title="المالية"/>
+        <SectionTitle title={lockedChalet ? "المالية — "+lockedChalet : "المالية"}/>
         <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           <button className="btn" onClick={exportCSV} style={{ background:"#059669", color:"#fff", padding:"8px 16px", fontSize:13 }}>
             ⬇ تصدير Excel
@@ -162,8 +203,8 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
         </div>
       </div>
 
-      {/* فلاتر الفترة */}
-      <div className="row" style={{ marginBottom:12 }}>
+      {/* فلاتر الفترة والشاليه */}
+      <div className="row" style={{ marginBottom:12, justifyContent:"space-between" }}>
         <div className="row">
           {(Object.entries(PERIOD_LABELS) as [Period, string][]).map(([v, l]) => (
             <button key={v} className="btn" onClick={() => setPeriod(v)}
@@ -172,10 +213,12 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
             </button>
           ))}
         </div>
-        <select className="inp" style={{ width:"auto", minWidth:150 }} value={fch} onChange={e => setFch(e.target.value)}>
-          <option value="الكل">كل الشاليهات</option>
-          {names.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+        {!lockedChalet && (
+          <select className="inp" style={{ width:"auto", minWidth:150 }} value={fch} onChange={e => setFch(e.target.value)}>
+            <option value="الكل">كل الشاليهات</option>
+            {names.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        )}
       </div>
 
       {period === "custom" && (
@@ -185,42 +228,110 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
         </div>
       )}
 
-      <div style={{ marginBottom:18, padding:"7px 12px", background:SL, borderRadius:8, display:"inline-block", fontSize:13, color:T, fontWeight:600 }}>
-        {"تقرير: " + plab + (fch !== "الكل" ? " · " + fch : "")}
+      {/* وضع العرض: عادي / مقارنة فترات / مقارنة شاليهات */}
+      <div className="row" style={{ marginBottom:18 }}>
+        <div style={{ padding:"7px 12px", background:SL, borderRadius:8, fontSize:13, color:T, fontWeight:600 }}>
+          {"تقرير: " + plab + (effFch !== "الكل" ? " · " + effFch : "")}
+        </div>
+        <div style={{ display:"flex", gap:6 }}>
+          {([
+            ["none","نظرة عامة"],
+            ...(prevRange?[["periods","↔ مقارنة الفترات"]]:[]),
+            ...(canCompareChalets?[["chalets","🏠 مقارنة الشاليهات"]]:[]),
+          ] as [CompareMode,string][]).map(([v,l]) => (
+            <button key={v} className="btn bsm" onClick={()=>setCompareMode(v)}
+              style={{ background:compareMode===v?"#7C3AED":"#F3F4F6", color:compareMode===v?"#fff":"#374151", padding:"6px 12px", fontSize:12, fontWeight:700 }}>
+              {l}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* بطاقات الإحصائيات */}
-      <div className="sg" style={{ marginBottom:20 }}>
-        {[
-          { l:"الإيرادات",           v:rev.toLocaleString()+" ر",     i:"💵", bg:`linear-gradient(135deg,${T},${TD})`,                                                                        c:"#fff" },
-          { l:"تكاليف الصيانة",     v:mex.toLocaleString()+" ر",     i:"🔧", bg:"linear-gradient(135deg,#8B3A3A,#6B2A2A)",                                                                   c:"#fff" },
-          { l:"صافي الربح",         v:net.toLocaleString()+" ر",     i:"📈", bg:net>=0?`linear-gradient(135deg,${SA},${SD})`:"linear-gradient(135deg,#8B3A3A,#6B2A2A)",                       c:"#fff" },
-          { l:"إيداعات التأمين",    v:insIn.toLocaleString()+" ر",   i:"🛡️", bg:`linear-gradient(135deg,${B},${BD})`,                                                                        c:S     },
-          { l:"إجمالي المصاريف",    v:exTotal.toLocaleString()+" ر", i:"💸", bg:"linear-gradient(135deg,#8B3A3A,#6B2A2A)",                                                                   c:"#fff" },
-          { l:"صافي الربح الحقيقي", v:trueNet.toLocaleString()+" ر", i:"🏆", bg:trueNet>=0?`linear-gradient(135deg,${T},${TD})`:"linear-gradient(135deg,#8B3A3A,#6B2A2A)",                   c:"#fff" },
-          { l:"عدد الحجوزات",       v:String(fb.length),              i:"📅", bg:W,                                                                                                           c:B     },
-          { l:"ليالي محجوزة",       v:String(nts),                    i:"🌙", bg:W,                                                                                                           c:B     },
-        ].map((s, i) => (
-          <div key={i} style={{ background:s.bg, borderRadius:12, padding:16, boxShadow:"0 4px 14px rgba(65,53,35,.1)", border:s.bg===W?"1px solid rgba(197,172,136,.3)":"none" }}>
-            <div style={{ fontSize:18, marginBottom:4 }}>{s.i}</div>
-            <div style={{ fontSize:18, fontWeight:800, color:s.c }}>{s.v}</div>
-            <div style={{ fontSize:11, color:s.bg===W?T:"rgba(255,255,255,.8)", marginTop:2 }}>{s.l}</div>
+      {/* ── القائمة المالية (Income Statement) ── */}
+      <div className="card" style={{ padding:0, overflow:"hidden", marginBottom:16, display:"grid", gridTemplateColumns:"1.3fr 1fr", gap:0 }}>
+        <div style={{ padding:"22px 24px" }}>
+          <div style={{ fontSize:12, color:SI, fontWeight:700, marginBottom:14, letterSpacing:".3px" }}>📄 القائمة المالية — {plab}</div>
+
+          <div style={{ fontSize:11, fontWeight:800, color:SI, marginBottom:2 }}>الإيرادات</div>
+          <StatementRow label="إيرادات الحجوزات" value={rev} sub={fb.length+" حجز"} indent/>
+          <StatementRow label="إجمالي الإيرادات" value={rev} bold/>
+
+          <div style={{ fontSize:11, fontWeight:800, color:SI, marginTop:14, marginBottom:2 }}>المصروفات التشغيلية</div>
+          <StatementRow label="تكاليف الصيانة" value={-mex} indent/>
+          <StatementRow label="مصاريف عامة" value={-exTotal} indent/>
+          <StatementRow label="إجمالي المصروفات" value={-(mex+exTotal)} bold/>
+
+          <div style={{ marginTop:16, paddingTop:14, borderTop:`2.5px solid ${B}`, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <div>
+              <div style={{ fontSize:15, fontWeight:900, color:B }}>صافي الربح</div>
+              <div style={{ fontSize:11, color:SI, marginTop:2 }}>هامش الربح {margin}%</div>
+            </div>
+            <div style={{ fontSize:26, fontWeight:900, color: trueNet>=0?SD:"#8B3A3A" }}>
+              {trueNet<0?"−":""}{Math.abs(trueNet).toLocaleString()} <span style={{fontSize:13,opacity:.6}}>ر</span>
+            </div>
           </div>
-        ))}
+
+          {compareMode==="periods" && prev && (
+            <div style={{ marginTop:12, fontSize:11, color:SI }}>
+              مقابل {prevRange!.label}: {prev.trueNet.toLocaleString()} ر <DeltaChip v={delta(trueNet, prev.trueNet)}/>
+            </div>
+          )}
+        </div>
+
+        <div style={{ background:SL, padding:"22px 20px", display:"flex", flexDirection:"column", gap:14, justifyContent:"center" }}>
+          {[
+            { l:"عدد الحجوزات",       v:String(fb.length),              i:"📅" },
+            { l:"ليالي محجوزة",       v:String(nts),                    i:"🌙" },
+            { l:"متوسط سعر الليلة",   v:adr.toLocaleString()+" ر",      i:"💳" },
+            { l:"إيداعات التأمين",    v:insIn.toLocaleString()+" ر",    i:"🛡️" },
+          ].map((s,i)=>(
+            <div key={i} style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ fontSize:18 }}>{s.i}</span>
+              <div>
+                <div style={{ fontSize:15, fontWeight:800, color:B }}>{s.v}</div>
+                <div style={{ fontSize:10.5, color:T }}>{s.l}</div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* مقارنة الشاليهات */}
-      {fch === "الكل" && csum.length > 0 && (
+      {/* ── مقارنة الفترات ── */}
+      {compareMode==="periods" && prev && prevRange && (
+        <div className="card" style={{ overflow:"hidden", marginBottom:16 }}>
+          <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(197,172,136,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>
+            {"↔ مقارنة: " + plab + " مقابل " + prevRange.label}
+          </div>
+          <DataTable heads={["البند", plab, prevRange.label, "التغيّر"]}
+            rows={[
+              { l:"الإيرادات", c:rev, p:prev.rev },
+              { l:"تكاليف الصيانة", c:mex, p:prev.mex },
+              { l:"مصاريف عامة", c:exTotal, p:prev.exTotal },
+              { l:"صافي الربح", c:trueNet, p:prev.trueNet, bold:true },
+            ].map((row,i)=>(
+              <tr key={i}>
+                <td data-label="البند" style={{ fontWeight:row.bold?800:600, color:row.bold?B:T }}>{row.l}</td>
+                <td data-label={plab} style={{ fontWeight:row.bold?800:700, color:B }}>{row.c.toLocaleString()+" ر"}</td>
+                <td data-label={prevRange.label} style={{ color:SI }}>{row.p.toLocaleString()+" ر"}</td>
+                <td data-label="التغيّر"><DeltaChip v={delta(row.c,row.p)}/></td>
+              </tr>
+            ))}
+          />
+        </div>
+      )}
+
+      {/* ── مقارنة الشاليهات ── */}
+      {compareMode==="chalets" && csum.length > 0 && (
         <div className="card" style={{ overflow:"hidden", marginBottom:16 }}>
           <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(197,172,136,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>{"🏠 مقارنة الشاليهات — " + plab}</div>
-          <DataTable heads={["الشاليه","الإيرادات","تكاليف الصيانة","صافي الربح","نسبة الربح"]}
-            rows={csum.map((c, i) => {
+          <DataTable heads={["الشاليه","الإيرادات","المصروفات","صافي الربح","نسبة الربح"]}
+            rows={[...csum].sort((a,b)=>b.net-a.net).map((c, i) => {
               const pct = c.r > 0 ? Math.min(100, Math.max(0, (c.net / c.r) * 100)) : 0;
               return (
                 <tr key={i}>
                   <td data-label="الشاليه" style={{ fontWeight:700 }}>{"🏠 " + c.n}</td>
                   <td data-label="الإيرادات" style={{ fontWeight:700, color:T }}>{c.r.toLocaleString() + " ر"}</td>
-                  <td data-label="تكاليف الصيانة" style={{ fontWeight:700, color:"#8B3A3A" }}>{c.e.toLocaleString() + " ر"}</td>
+                  <td data-label="المصروفات" style={{ fontWeight:700, color:"#8B3A3A" }}>{(c.e+c.x).toLocaleString() + " ر"}</td>
                   <td data-label="صافي الربح" style={{ fontWeight:800, color:c.net>=0?SD:"#8B3A3A" }}>{c.net.toLocaleString() + " ر"}</td>
                   <td data-label="نسبة الربح">
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
@@ -236,6 +347,14 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
           />
         </div>
       )}
+
+      {/* ── اتجاه الإيرادات خلال العام ── */}
+      <MonthlyChart
+        bookings={bookings.filter(byCh)}
+        expenses={expenses.filter(byCh)}
+        maint={maintenance.filter(byCh)}
+        B={B} T={T} SI={SI} SL={SL}
+      />
 
       {/* إيرادات الحجوزات */}
       <div className="card" style={{ overflow:"hidden", marginBottom:16 }}>
@@ -263,19 +382,19 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
       </div>
 
       {/* المصروفات الثابتة */}
-      {fixedExpenses.filter(fx => fch === "الكل" || fx.chalet === fch).length > 0 && (
+      {fixedExpenses.filter(fx => effFch === "الكل" || fx.chalet === effFch).length > 0 && (
         <div className="card" style={{ overflow:"hidden", marginBottom:16 }}>
           <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(197,172,136,.2)", fontWeight:700, color:"#5B21B6", fontSize:14, background:"#F5F3FF", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
             <span>{"📌 المصروفات الثابتة"}</span>
             <span style={{ fontWeight:800, color:"#7C3AED", fontSize:13 }}>
-              {"شهري: " + fixedExpenses.filter(fx=>(fch==="الكل"||fx.chalet===fch)&&fx.frequency==="monthly"&&fx.active).reduce((s,fx)=>s+Number(fx.amount),0).toLocaleString() + " ر"}
+              {"شهري: " + fixedExpenses.filter(fx=>(effFch==="الكل"||fx.chalet===effFch)&&fx.frequency==="monthly"&&fx.active).reduce((s,fx)=>s+Number(fx.amount),0).toLocaleString() + " ر"}
             </span>
           </div>
           <DataTable heads={["الشاليه","المصروف","الفئة","التكرار","المبلغ","الحالة","إجراءات"]}
             rows={(() => {
               const thisYM = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`; })();
-              const paidThisMonth = new Set(fex.filter(e => e.expense_date?.startsWith(thisYM)).map(e => e.note));
-              return fixedExpenses.filter(fx => fch === "الكل" || fx.chalet === fch).map(fx => {
+              const paidThisMonth = new Set(expenses.filter(e => e.expense_date?.startsWith(thisYM)).map(e => e.note));
+              return fixedExpenses.filter(fx => effFch === "الكل" || fx.chalet === effFch).map(fx => {
                 const paid = paidThisMonth.has(fx.name);
                 return (
                   <tr key={fx.id} style={{ opacity: fx.active ? 1 : 0.5 }}>
