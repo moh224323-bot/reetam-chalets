@@ -3319,7 +3319,12 @@ ${poolLine}
             const vbRevenue = visibleBookings.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+Number(b.price),0);
             return (
             <div>
-              <BookingCalendar bookings={isChaletMgr?bookings.filter(b=>b.chalet===currentUser.chalet):bookings} names={isChaletMgr?[currentUser.chalet]:names}/>
+              <BookingCalendar
+                bookings={isChaletMgr?bookings.filter(b=>b.chalet===currentUser.chalet):bookings}
+                names={isChaletMgr?[currentUser.chalet]:names}
+                onSelectBooking={b=>setBkDetail(b)}
+                onAddAt={(chalet,dateISO)=>setBMdl({...eB,chalet,date_from:dateISO,date_to:dateISO})}
+              />
               {(isAdmin||isStaff)&&<BlockedGuestsBanner guests={blockedGuests} onUnblock={unblockGuest}/>}
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
                 <TH title={bt("title")}/>
