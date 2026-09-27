@@ -3,7 +3,7 @@ import { db, formatDate, nightsBetween } from "../lib/db";
 import { Booking, MaintenanceRequest, WalletTransaction, Expense, FixedExpense } from "../lib/types";
 import { B, S, T, TD, W, SA, SD, SI, SL, BD } from "../lib/colors";
 import { BOOKING_STATUS } from "../lib/constants";
-import { Bdg, SectionTitle, DataTable } from "./ui";
+import { Bdg, SectionTitle, DataTable, Modal } from "./ui";
 import MonthlyChart from "./MonthlyChart";
 
 const FREQ_LABEL: Record<string,string> = { monthly:"شهري", quarterly:"ربع سنوي", yearly:"سنوي" };
@@ -45,6 +45,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
   const [ct, setCt]         = useState("");
   const [compareMode, setCompareMode] = useState<CompareMode>("none");
   const [menuOpen, setMenuOpen] = useState(false);
+  const [detailModal, setDetailModal] = useState<null | "bookings" | "fixed" | "maint" | "expenses" | "insurance">(null);
 
   const effFch = lockedChalet || fch;
   const canCompareChalets = !lockedChalet && names.length > 1;
@@ -94,6 +95,12 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
   const ft = wallet.filter(t => byCh(t) && (period === "all" || (t.trans_date && (!rf || new Date(t.trans_date) >= rf) && (!rt || new Date(t.trans_date) <= rt))));
   const margin = rev > 0 ? Math.round(trueNet / rev * 100) : 0;
   const adr = nts > 0 ? Math.round(rev / nts) : 0;
+
+  const fixedList = fixedExpenses.filter(fx => effFch === "الكل" || fx.chalet === effFch);
+  const fixedActiveMonthly = fixedList.filter(fx => fx.frequency === "monthly" && fx.active).reduce((s, fx) => s + Number(fx.amount), 0);
+  const thisYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const paidThisMonth = new Set(expenses.filter(e => e.expense_date?.startsWith(thisYM)).map(e => e.note));
+  const unpaidFixedCount = fixedList.filter(fx => fx.active && !paidThisMonth.has(fx.name)).length;
 
   const prevRange = getPrevRange();
   const prev = prevRange ? computeStats(byCh, prevRange.from, prevRange.to, false) : null;
@@ -184,6 +191,22 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
     <span dir="ltr" style={{ fontSize:size, color, whiteSpace:"nowrap" }}>
       {value<0?"−":""}{Math.abs(value).toLocaleString()} <span style={{fontSize: size?size*0.7:11, opacity:.6}}>ر</span>
     </span>
+  );
+
+  const DetailRow = ({ icon, label, sub, badge, value, valueColor, onClick }: { icon: string; label: string; sub: string; badge?: React.ReactNode; value: number; valueColor?: string; onClick: () => void }) => (
+    <button onClick={onClick} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%", background:"none", border:"none", padding:"13px 2px", cursor:"pointer", textAlign:"right", fontFamily:"'Tajawal',sans-serif" }}>
+      <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
+        <div style={{ fontSize:18, width:36, height:36, borderRadius:10, background:SL, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{icon}</div>
+        <div style={{ textAlign:"right", minWidth:0 }}>
+          <div style={{ fontSize:13.5, fontWeight:700, color:B }}>{label}</div>
+          <div style={{ fontSize:11, color:SI, marginTop:2 }}>{sub}{badge}</div>
+        </div>
+      </div>
+      <div style={{ display:"flex", alignItems:"center", gap:8, flexShrink:0 }}>
+        <span style={{ fontSize:14.5, fontWeight:800, color:valueColor||B }}><Money value={value}/></span>
+        <span style={{ fontSize:16, color:SI }}>‹</span>
+      </div>
+    </button>
   );
 
   const StatementRow = ({ label, value, sub, bold }: { label: string; value: number; sub?: string; bold?: boolean }) => (
@@ -364,86 +387,96 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
         B={B} T={T} SI={SI} SL={SL}
       />
 
-      {/* إيرادات الحجوزات */}
-      <div className="card" style={{ overflow:"hidden", marginBottom:16 }}>
-        <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(197,172,136,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>{"💵 إيرادات الحجوزات (" + fb.length + ")"}</div>
-        {fb.length === 0
-          ? <div style={{ padding:24, textAlign:"center", color:SI }}>لا توجد حجوزات في هذه الفترة</div>
-          : <DataTable heads={["الضيف","الشاليه","الفترة","الليالي","المبلغ","الحالة"]}
-              rows={fb.map(b => (
-                <tr key={b.id}>
-                  <td data-label="الضيف" style={{ fontWeight:600 }}>{b.guest}</td>
-                  <td data-label="الشاليه">{b.chalet}</td>
-                  <td data-label="الفترة" style={{ fontSize:12 }}>{formatDate(b.date_from) + " - " + formatDate(b.date_to)}</td>
-                  <td data-label="الليالي" style={{ textAlign:"center" }}>{nightsBetween(b.date_from, b.date_to)}</td>
-                  <td data-label="المبلغ" style={{ fontWeight:700, color:T }}>{Number(b.price).toLocaleString() + " ر"}</td>
-                  <td data-label="الحالة"><Bdg bg={BOOKING_STATUS[b.status]?.bg||"#eee"} color={BOOKING_STATUS[b.status]?.color||"#333"}>{BOOKING_STATUS[b.status]?.label||b.status}</Bdg></td>
-                </tr>
-              ))}
-              footer={[
-                <td key={0} colSpan={4} style={{ fontWeight:800, color:B }}>الإجمالي</td>,
-                <td key={1} style={{ fontWeight:800, color:T, fontSize:15 }}>{rev.toLocaleString() + " ر"}</td>,
-                <td key={2}/>,
-              ]}
-            />
-        }
+      {/* ── تفاصيل الإيرادات والمصاريف — أرقام مختصرة، والتفاصيل في نافذة منبثقة ── */}
+      <div className="card" style={{ overflow:"hidden" }}>
+        <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(197,172,136,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>📋 التفاصيل</div>
+        <div style={{ padding:"2px 14px" }}>
+          {[
+            { key:"bookings" as const, icon:"💵", label:"إيرادات الحجوزات", sub:fb.length+" حجز", value:rev, valueColor:T, badge:null as React.ReactNode, show:true },
+            { key:"fixed" as const, icon:"📌", label:"المصروفات الثابتة", sub:fixedList.length+" بند", value:fixedActiveMonthly, valueColor:"#7C3AED",
+              badge: (unpaidFixedCount>0 ? <span style={{color:"#92400E",fontWeight:700}}>{" · ⚠ "+unpaidFixedCount+" لم يُسدَّد"}</span> : null) as React.ReactNode,
+              show:fixedList.length>0 },
+            { key:"maint" as const, icon:"🔧", label:"تكاليف الصيانة", sub:fm.length+" عملية", value:mex, valueColor:"#8B3A3A", badge:null as React.ReactNode, show:fm.length>0 },
+            { key:"expenses" as const, icon:"💸", label:"المصاريف", sub:fex.length+" مصروف", value:exTotal, valueColor:"#8B3A3A", badge:null as React.ReactNode, show:fex.length>0 },
+            { key:"insurance" as const, icon:"🛡️", label:"معاملات التأمين", sub:ft.length+" معاملة", value:insIn, valueColor:T, badge:null as React.ReactNode, show:ft.length>0 },
+          ].filter(r=>r.show).map((r,i,arr)=>(
+            <div key={r.key} style={{ borderBottom: i<arr.length-1?"1px solid rgba(197,172,136,.12)":"none" }}>
+              <DetailRow icon={r.icon} label={r.label} sub={r.sub} badge={r.badge} value={r.value} valueColor={r.valueColor} onClick={()=>setDetailModal(r.key)}/>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* المصروفات الثابتة */}
-      {fixedExpenses.filter(fx => effFch === "الكل" || fx.chalet === effFch).length > 0 && (
-        <div className="card" style={{ overflow:"hidden", marginBottom:16 }}>
-          <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(197,172,136,.2)", fontWeight:700, color:"#5B21B6", fontSize:14, background:"#F5F3FF", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <span>{"📌 المصروفات الثابتة"}</span>
-            <span style={{ fontWeight:800, color:"#7C3AED", fontSize:13 }}>
-              {"شهري: " + fixedExpenses.filter(fx=>(effFch==="الكل"||fx.chalet===effFch)&&fx.frequency==="monthly"&&fx.active).reduce((s,fx)=>s+Number(fx.amount),0).toLocaleString() + " ر"}
-            </span>
-          </div>
-          <DataTable heads={["الشاليه","المصروف","الفئة","التكرار","المبلغ","الحالة","إجراءات"]}
-            rows={(() => {
-              const thisYM = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`; })();
-              const paidThisMonth = new Set(expenses.filter(e => e.expense_date?.startsWith(thisYM)).map(e => e.note));
-              return fixedExpenses.filter(fx => effFch === "الكل" || fx.chalet === effFch).map(fx => {
-                const paid = paidThisMonth.has(fx.name);
-                return (
-                  <tr key={fx.id} style={{ opacity: fx.active ? 1 : 0.5 }}>
-                    <td data-label="الشاليه" style={{ fontWeight:600 }}>{fx.chalet}</td>
-                    <td data-label="المصروف" style={{ fontWeight:700 }}>{fx.name}</td>
-                    <td data-label="الفئة"><Bdg bg="#EDE9FE" color="#5B21B6">{fx.category}</Bdg></td>
-                    <td data-label="التكرار"><Bdg bg="#F3F4F6" color="#374151">{FREQ_LABEL[fx.frequency]||fx.frequency}</Bdg></td>
-                    <td data-label="المبلغ" style={{ fontWeight:800, color:"#7C3AED" }}>{Number(fx.amount).toLocaleString() + " ر"}</td>
-                    <td data-label="الحالة">
-                      {!fx.active
-                        ? <Bdg bg="#F3F4F6" color="#6B7280">موقف</Bdg>
-                        : paid
-                          ? <Bdg bg="#DCFCE7" color="#166534">✓ مدفوع</Bdg>
-                          : <Bdg bg="#FEF3C7" color="#92400E">⚠ لم يُسدَّد</Bdg>
-                      }
-                    </td>
-                    <td data-label="">
-                      <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-                        {!paid && fx.active && (
-                          <button className="btn bsm" onClick={() => onPayFixedExpense?.(fx)}
-                            style={{ background:"#059669", color:"#fff", padding:"5px 10px", fontSize:12 }}>✓ تسديد</button>
-                        )}
-                        <button className="btn bsm" onClick={async () => { await db("fixed_expenses","PATCH",{active:!fx.active},fx.id); onReload?.(); }}
-                          style={{ background: fx.active ? "#F5E6E6" : "#EEF0E9", color: fx.active ? "#8B3A3A" : "#3D7A5A", padding:"5px 10px", fontSize:12 }}>
-                          {fx.active ? "إيقاف" : "تفعيل"}
-                        </button>
-                        <button className="btn bd bsm" onClick={async () => { if(window.confirm("حذف هذا المصروف الثابت؟")){await db("fixed_expenses","DELETE",null,fx.id); onReload?.();} }}>🗑️</button>
-                      </div>
-                    </td>
+      {/* إيرادات الحجوزات */}
+      {detailModal==="bookings" && (
+        <Modal title={"💵 إيرادات الحجوزات (" + fb.length + ")"} onClose={()=>setDetailModal(null)}>
+          {fb.length === 0
+            ? <div style={{ padding:24, textAlign:"center", color:SI }}>لا توجد حجوزات في هذه الفترة</div>
+            : <DataTable heads={["الضيف","الشاليه","الفترة","الليالي","المبلغ","الحالة"]}
+                rows={fb.map(b => (
+                  <tr key={b.id}>
+                    <td data-label="الضيف" style={{ fontWeight:600 }}>{b.guest}</td>
+                    <td data-label="الشاليه">{b.chalet}</td>
+                    <td data-label="الفترة" style={{ fontSize:12 }}>{formatDate(b.date_from) + " - " + formatDate(b.date_to)}</td>
+                    <td data-label="الليالي" style={{ textAlign:"center" }}>{nightsBetween(b.date_from, b.date_to)}</td>
+                    <td data-label="المبلغ" style={{ fontWeight:700, color:T }}>{Number(b.price).toLocaleString() + " ر"}</td>
+                    <td data-label="الحالة"><Bdg bg={BOOKING_STATUS[b.status]?.bg||"#eee"} color={BOOKING_STATUS[b.status]?.color||"#333"}>{BOOKING_STATUS[b.status]?.label||b.status}</Bdg></td>
                   </tr>
-                );
-              });
-            })()}
+                ))}
+                footer={[
+                  <td key={0} colSpan={4} style={{ fontWeight:800, color:B }}>الإجمالي</td>,
+                  <td key={1} style={{ fontWeight:800, color:T, fontSize:15 }}>{rev.toLocaleString() + " ر"}</td>,
+                  <td key={2}/>,
+                ]}
+              />
+          }
+        </Modal>
+      )}
+
+      {/* المصروفات الثابتة */}
+      {detailModal==="fixed" && (
+        <Modal title={"📌 المصروفات الثابتة · شهري " + fixedActiveMonthly.toLocaleString() + " ر"} onClose={()=>setDetailModal(null)}>
+          <DataTable heads={["الشاليه","المصروف","الفئة","التكرار","المبلغ","الحالة","إجراءات"]}
+            rows={fixedList.map(fx => {
+              const paid = paidThisMonth.has(fx.name);
+              return (
+                <tr key={fx.id} style={{ opacity: fx.active ? 1 : 0.5 }}>
+                  <td data-label="الشاليه" style={{ fontWeight:600 }}>{fx.chalet}</td>
+                  <td data-label="المصروف" style={{ fontWeight:700 }}>{fx.name}</td>
+                  <td data-label="الفئة"><Bdg bg="#EDE9FE" color="#5B21B6">{fx.category}</Bdg></td>
+                  <td data-label="التكرار"><Bdg bg="#F3F4F6" color="#374151">{FREQ_LABEL[fx.frequency]||fx.frequency}</Bdg></td>
+                  <td data-label="المبلغ" style={{ fontWeight:800, color:"#7C3AED" }}>{Number(fx.amount).toLocaleString() + " ر"}</td>
+                  <td data-label="الحالة">
+                    {!fx.active
+                      ? <Bdg bg="#F3F4F6" color="#6B7280">موقف</Bdg>
+                      : paid
+                        ? <Bdg bg="#DCFCE7" color="#166534">✓ مدفوع</Bdg>
+                        : <Bdg bg="#FEF3C7" color="#92400E">⚠ لم يُسدَّد</Bdg>
+                    }
+                  </td>
+                  <td data-label="">
+                    <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
+                      {!paid && fx.active && (
+                        <button className="btn bsm" onClick={() => onPayFixedExpense?.(fx)}
+                          style={{ background:"#059669", color:"#fff", padding:"5px 10px", fontSize:12 }}>✓ تسديد</button>
+                      )}
+                      <button className="btn bsm" onClick={async () => { await db("fixed_expenses","PATCH",{active:!fx.active},fx.id); onReload?.(); }}
+                        style={{ background: fx.active ? "#F5E6E6" : "#EEF0E9", color: fx.active ? "#8B3A3A" : "#3D7A5A", padding:"5px 10px", fontSize:12 }}>
+                        {fx.active ? "إيقاف" : "تفعيل"}
+                      </button>
+                      <button className="btn bd bsm" onClick={async () => { if(window.confirm("حذف هذا المصروف الثابت؟")){await db("fixed_expenses","DELETE",null,fx.id); onReload?.();} }}>🗑️</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           />
-        </div>
+        </Modal>
       )}
 
       {/* تكاليف الصيانة */}
-      {fm.length > 0 && (
-        <div className="card" style={{ overflow:"hidden", marginBottom:16 }}>
-          <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(197,172,136,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>{"🔧 تكاليف الصيانة (" + fm.length + ")"}</div>
+      {detailModal==="maint" && (
+        <Modal title={"🔧 تكاليف الصيانة (" + fm.length + ")"} onClose={()=>setDetailModal(null)}>
           <DataTable heads={["الشاليه","المشكلة","التاريخ","التكلفة"]}
             rows={fm.map(m => (
               <tr key={m.id}>
@@ -458,16 +491,12 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
               <td key={1} style={{ fontWeight:800, color:"#8B3A3A", fontSize:15 }}>{mex.toLocaleString() + " ر"}</td>,
             ]}
           />
-        </div>
+        </Modal>
       )}
 
       {/* المصاريف */}
-      {fex.length > 0 && (
-        <div className="card" style={{ overflow:"hidden", marginBottom:16 }}>
-          <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(197,172,136,.2)", fontWeight:700, color:B, fontSize:14, background:SL, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <span>{"💸 المصاريف (" + fex.length + ")"}</span>
-            <span style={{ fontWeight:800, color:"#8B3A3A" }}>{exTotal.toLocaleString() + " ر"}</span>
-          </div>
+      {detailModal==="expenses" && (
+        <Modal title={"💸 المصاريف (" + fex.length + ") · " + exTotal.toLocaleString() + " ر"} onClose={()=>setDetailModal(null)}>
           <DataTable heads={["التاريخ","الشاليه","الفئة","المبلغ","ملاحظة","حذف"]}
             rows={[...fex].reverse().map((e, i) => (
               <tr key={i}>
@@ -485,13 +514,12 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
               <td key={2}/>, <td key={3}/>,
             ]}
           />
-        </div>
+        </Modal>
       )}
 
       {/* معاملات التأمين */}
-      {ft.length > 0 && (
-        <div className="card" style={{ overflow:"hidden" }}>
-          <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(197,172,136,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>{"🛡️ معاملات التأمين (" + ft.length + ")"}</div>
+      {detailModal==="insurance" && (
+        <Modal title={"🛡️ معاملات التأمين (" + ft.length + ")"} onClose={()=>setDetailModal(null)}>
           <DataTable heads={["التاريخ","الشاليه","النوع","المبلغ","ملاحظة","إجراءات"]}
             rows={[...ft].reverse().map((t, i) => (
               <tr key={i}>
@@ -509,7 +537,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
               </tr>
             ))}
           />
-        </div>
+        </Modal>
       )}
     </div>
   );
