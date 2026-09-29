@@ -2922,7 +2922,7 @@ ${poolLine}
               })()}
 
               {/* ── نشاط الأسبوع ── */}
-              <WeeklyActivity bookings={scBookings}/>
+              <WeeklyActivity bookings={scBookings} onSelectBooking={b=>setBkDetail(b)}/>
 
               {/* ── يحتاج انتباهك: مركز التنبيهات الموحّد ── */}
               {(()=>{
