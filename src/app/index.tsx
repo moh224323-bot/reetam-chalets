@@ -5,6 +5,7 @@ import useRealtimeSync   from "../hooks/useRealtimeSync";
 import useDarkMode       from "../hooks/useDarkMode";
 import BookingCalendar   from "../components/BookingCalendar";
 import MonthlyChart      from "../components/MonthlyChart";
+import WeeklyActivity    from "../components/WeeklyActivity";
 import type {
   Chalet, Booking, MaintenanceRequest, WalletTransaction,
   CleaningTransaction, CleaningExpense, CleaningTask, CleaningLog,
@@ -2919,6 +2920,9 @@ ${poolLine}
                   </div>
                 );
               })()}
+
+              {/* ── نشاط الأسبوع ── */}
+              <WeeklyActivity bookings={scBookings}/>
 
               {/* ── يحتاج انتباهك: مركز التنبيهات الموحّد ── */}
               {(()=>{
