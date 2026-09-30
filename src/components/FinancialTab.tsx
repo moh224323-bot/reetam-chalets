@@ -46,6 +46,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
   const [compareMode, setCompareMode] = useState<CompareMode>("none");
   const [menuOpen, setMenuOpen] = useState(false);
   const [detailModal, setDetailModal] = useState<null | "bookings" | "receivers" | "fixed" | "maint" | "expenses" | "insurance">(null);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const effFch = lockedChalet || fch;
   const canCompareChalets = !lockedChalet && names.length > 1;
@@ -131,6 +132,57 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
   }).filter(c => c.r > 0 || c.e > 0 || c.x > 0);
 
   const plab = PERIOD_LABELS[period];
+
+  // ── تقرير المصاريف الاحترافي: تصنيفات + نسبة لكل شاليه + أكبر البنود + توصيات آلية ──
+  function categorizeSpend(expArr: Expense[], maintArr: MaintenanceRequest[]) {
+    const map = new Map<string, number>();
+    expArr.forEach(e => map.set(e.category, (map.get(e.category) || 0) + Number(e.amount)));
+    const maintTotal = maintArr.reduce((s, m) => s + Number(m.cost), 0);
+    if (maintTotal > 0) map.set("صيانة", (map.get("صيانة") || 0) + maintTotal);
+    return map;
+  }
+  const totalSpend = exTotal + mex;
+  const curCatMap = categorizeSpend(fex, fm);
+  const prevCatMap = prev ? categorizeSpend(prev.expenses, prev.maint) : new Map<string, number>();
+  const catReport = Array.from(curCatMap.entries()).map(([cat, amt]) => ({
+    cat, amt,
+    pctOfTotal: totalSpend > 0 ? Math.round(amt / totalSpend * 100) : 0,
+    chg: (prevCatMap.get(cat) || 0) > 0 ? Math.round((amt - (prevCatMap.get(cat) || 0)) / (prevCatMap.get(cat) || 1) * 100) : null,
+  })).sort((a, b) => b.amt - a.amt);
+
+  const chaletSpend = csum.map(c => ({
+    ...c,
+    spend: c.e + c.x,
+    ratio: c.r > 0 ? Math.round((c.e + c.x) / c.r * 100) : null,
+  })).sort((a, b) => (b.ratio ?? 999) - (a.ratio ?? 999));
+
+  const largestItems = [
+    ...fex.map(e => ({ label: e.category + (e.note ? " — " + e.note : ""), chalet: e.chalet, amount: Number(e.amount), date: e.expense_date })),
+    ...fm.map(m => ({ label: "صيانة — " + m.issue, chalet: m.chalet, amount: Number(m.cost), date: m.maint_date })),
+  ].sort((a, b) => b.amount - a.amount).slice(0, 6);
+
+  const spendInsights: { icon: string; text: string; level: "warn" | "good" }[] = [];
+  catReport.forEach(c => {
+    if (c.chg !== null && c.chg >= 30 && c.amt >= 200) {
+      spendInsights.push({ icon: "🔺", level: "warn", text: `تصنيف "${c.cat}" ارتفع ${c.chg}% مقارنة بـ${prevRange?.label || "الفترة السابقة"} (${c.amt.toLocaleString()} ر) — يستحق المراجعة.` });
+    }
+  });
+  chaletSpend.forEach(c => {
+    if (c.r === 0 && c.spend > 0) {
+      spendInsights.push({ icon: "⚠️", level: "warn", text: `${c.n}: صُرف ${c.spend.toLocaleString()} ر بدون أي إيرادات في ${plab} — تحقق من السبب.` });
+    } else if (c.ratio !== null && c.ratio >= 50) {
+      spendInsights.push({ icon: "🏠", level: "warn", text: `${c.n}: المصاريف تلتهم ${c.ratio}% من إيراداته — راجع التكاليف أو أسعار الحجز لهذا الشاليه.` });
+    }
+  });
+  if (rev > 0 && fixedActiveMonthly / rev >= 0.3) {
+    spendInsights.push({ icon: "📌", level: "warn", text: `الالتزامات الثابتة الشهرية (${fixedActiveMonthly.toLocaleString()} ر) تمثل ${Math.round(fixedActiveMonthly / rev * 100)}% من الإيرادات — فكر بإعادة التفاوض على العقود الثابتة.` });
+  }
+  if (rev > 0 && mex / rev >= 0.15) {
+    spendInsights.push({ icon: "🔧", level: "warn", text: `تكاليف الصيانة مرتفعة نسبياً (${Math.round(mex / rev * 100)}% من الإيرادات) — فكر بخطة صيانة وقائية لتقليل الأعطال الطارئة.` });
+  }
+  if (spendInsights.length === 0) {
+    spendInsights.push({ icon: "✅", level: "good", text: "لا توجد مشاكل واضحة في نمط المصاريف الحالي — استمر على نفس المستوى." });
+  }
 
   function exportCSV() {
     const rows: string[][] = [];
@@ -244,6 +296,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
               <div style={{ position:"fixed", inset:0, zIndex:299 }} onClick={()=>setMenuOpen(false)}/>
               <div style={{ position:"absolute", top:"110%", left:0, zIndex:300, background:"#fff", borderRadius:12, boxShadow:"0 8px 24px rgba(0,0,0,.18)", border:"1px solid rgba(197,172,136,.2)", minWidth:210, overflow:"hidden" }}>
                 {[
+                  { l:"📋 تقرير المصاريف الاحترافي", fn:()=>setReportOpen(true) },
                   { l:"⬇ تصدير Excel", fn:exportCSV },
                   { l:"📤 إرسال تقرير للمستثمرين", fn:sendInvestorReport },
                   ...(onAddExpense?[{ l:"+ إضافة مصروف", fn:onAddExpense }]:[]),
@@ -572,6 +625,112 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
               </tr>
             ))}
           />
+        </Modal>
+      )}
+
+      {/* تقرير المصاريف الاحترافي */}
+      {reportOpen && (
+        <Modal title={"📋 تقرير المصاريف الاحترافي · " + plab + (effFch !== "الكل" ? " · " + effFch : "")} onClose={()=>setReportOpen(false)}>
+          {/* ملخص الإجمالي */}
+          <div style={{ background:SL, borderRadius:12, padding:"14px 16px", marginBottom:18, border:"1px solid rgba(197,172,136,.25)" }}>
+            <div style={{ fontSize:11, color:T, fontWeight:700, marginBottom:4 }}>إجمالي المصاريف (ثابتة مدفوعة + صيانة + متنوعة)</div>
+            <div style={{ fontSize:26, fontWeight:900, color:"#8B3A3A" }}><Money value={totalSpend} size={26}/></div>
+            {prev && prevRange && (
+              <div style={{ fontSize:11, color:T, marginTop:4 }}>
+                مقابل {prevRange.label}: {(prev.exTotal+prev.mex).toLocaleString()} ر
+                {(prev.exTotal+prev.mex) > 0 && (
+                  <span style={{ marginRight:6, fontWeight:800, color: totalSpend > (prev.exTotal+prev.mex) ? "#8B3A3A" : SD }}>
+                    {totalSpend > (prev.exTotal+prev.mex) ? "↑" : "↓"} {Math.abs(Math.round((totalSpend-(prev.exTotal+prev.mex))/(prev.exTotal+prev.mex)*100))}%
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* التوصيات */}
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontWeight:800, color:B, fontSize:14, marginBottom:10 }}>🔍 التوصيات</div>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {spendInsights.map((ins, i) => (
+                <div key={i} style={{
+                  display:"flex", alignItems:"flex-start", gap:10, padding:"10px 12px", borderRadius:10,
+                  background: ins.level==="warn" ? "#FEF3C7" : "#DCFCE7",
+                  borderRight: `3px solid ${ins.level==="warn" ? "#B45309" : "#166534"}`,
+                }}>
+                  <span style={{ fontSize:15, flexShrink:0 }}>{ins.icon}</span>
+                  <span style={{ fontSize:12.5, color: ins.level==="warn" ? "#7C4A0A" : "#14532D", fontWeight:600, lineHeight:1.6 }}>{ins.text}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* التصنيفات الأعلى إنفاقاً */}
+          <div style={{ marginBottom:20 }}>
+            <div style={{ fontWeight:800, color:B, fontSize:14, marginBottom:10 }}>📊 التصنيفات الأعلى إنفاقاً</div>
+            {catReport.length===0
+              ? <div style={{ padding:16, textAlign:"center", color:SI, fontSize:12 }}>لا توجد مصاريف في هذه الفترة</div>
+              : <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  {catReport.map((c,i) => (
+                    <div key={i}>
+                      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:4 }}>
+                        <span style={{ fontSize:12.5, fontWeight:700, color:B }}>
+                          {c.cat}
+                          {c.chg !== null && (
+                            <span style={{ fontSize:10.5, fontWeight:800, marginRight:6, color: c.chg>=0?"#8B3A3A":SD }}>
+                              {c.chg>=0?"↑":"↓"} {Math.abs(c.chg)}%
+                            </span>
+                          )}
+                        </span>
+                        <span style={{ fontSize:12.5, fontWeight:800, color:"#8B3A3A" }}>{c.amt.toLocaleString()} ر <span style={{ color:SI, fontWeight:600 }}>({c.pctOfTotal}%)</span></span>
+                      </div>
+                      <div style={{ background:"#f1f5f9", borderRadius:99, height:6, overflow:"hidden" }}>
+                        <div style={{ width:c.pctOfTotal+"%", height:"100%", background:"#C97B63", borderRadius:99 }}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            }
+          </div>
+
+          {/* نسبة المصاريف إلى الإيرادات لكل شاليه */}
+          {!lockedChalet && chaletSpend.length > 0 && (
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontWeight:800, color:B, fontSize:14, marginBottom:10 }}>🏠 نسبة المصاريف إلى الإيرادات — لكل شاليه</div>
+              <DataTable heads={["الشاليه","الإيرادات","المصاريف","النسبة"]}
+                rows={chaletSpend.map((c,i) => (
+                  <tr key={i}>
+                    <td data-label="الشاليه" style={{ fontWeight:700 }}>{c.n}</td>
+                    <td data-label="الإيرادات" style={{ color:T }}>{c.r.toLocaleString()+" ر"}</td>
+                    <td data-label="المصاريف" style={{ color:"#8B3A3A" }}>{c.spend.toLocaleString()+" ر"}</td>
+                    <td data-label="النسبة">
+                      {c.ratio===null
+                        ? <span style={{ fontSize:11, fontWeight:700, color:"#8B3A3A" }}>بدون إيراد ⚠️</span>
+                        : <span style={{ fontSize:11, fontWeight:800, color: c.ratio>=50?"#8B3A3A":c.ratio>=30?"#92400E":SD }}>{c.ratio}%</span>
+                      }
+                    </td>
+                  </tr>
+                ))}
+              />
+            </div>
+          )}
+
+          {/* أكبر المصاريف الفردية */}
+          <div>
+            <div style={{ fontWeight:800, color:B, fontSize:14, marginBottom:10 }}>🔝 أكبر المصاريف الفردية</div>
+            {largestItems.length===0
+              ? <div style={{ padding:16, textAlign:"center", color:SI, fontSize:12 }}>لا توجد مصاريف في هذه الفترة</div>
+              : <DataTable heads={["البند","الشاليه","التاريخ","المبلغ"]}
+                  rows={largestItems.map((it,i) => (
+                    <tr key={i}>
+                      <td data-label="البند" style={{ fontWeight:600, fontSize:12 }}>{it.label}</td>
+                      <td data-label="الشاليه">{it.chalet}</td>
+                      <td data-label="التاريخ" style={{ fontSize:12 }}>{formatDate(it.date)}</td>
+                      <td data-label="المبلغ" style={{ fontWeight:800, color:"#8B3A3A" }}>{it.amount.toLocaleString()+" ر"}</td>
+                    </tr>
+                  ))}
+                />
+            }
+          </div>
         </Modal>
       )}
     </div>
