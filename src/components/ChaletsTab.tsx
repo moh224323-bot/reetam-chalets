@@ -34,6 +34,14 @@ interface Props {
   onPayRent:     (fx: FixedExpense) => Promise<void>;
 }
 
+function chaletNeedsAttention(c: ChaletStat, fixedExpenses: FixedExpense[], expenses: Expense[]): boolean {
+  if (c.mop > 0) return true;
+  return fixedExpenses
+    .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
+    .map(fx => nextDueInfo(fx, expenses))
+    .some(info => info && info.daysUntil <= 5);
+}
+
 function compressImage(file: File, maxPx = 600): Promise<string> {
   return new Promise(resolve => {
     const reader = new FileReader();
@@ -140,14 +148,17 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
     .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
     .map(fx => ({ fx, info: nextDueInfo(fx, expenses) }));
 
-  const stats: { l: string; v: string; i: string; color?: string }[] = [
+  // بيانات ثابتة عن الشاليه (سعة وأسعار) منفصلة عن الأداء المالي المتغيّر — تجميع أوضح من قائمة واحدة مختلطة.
+  const baseStats: { l: string; v: string; i: string; color?: string }[] = [
     { l:"السعة",           v: c.cap + " شخص",                  i:"👥" },
     { l:"سعر عادي",        v: c.price + " ريال",                i:"🌙" },
     { l:"سعر ويكند",       v: c.wprice ? c.wprice+" ريال" : "-", i:"🎉" },
+  ];
+  const financeStats: { l: string; v: string; i: string; color?: string }[] = [
+    { l:"صافي الشهر",      v: netMonth.toLocaleString() + " ر", i: netMonth>=0?"✅":"⚠️", color: netMonth>=0?SD:"#8B3A3A" },
     { l:"إيرادات النظام",  v: c.rev.toLocaleString() + " ر",   i:"📈" },
     // "إجمالي الإيرادات" يُعرض فقط لو يختلف فعلاً عن إيرادات النظام (أي فيه إيراد سابق مسجّل)، تجنباً لتكرار نفس الرقم بلا فائدة.
     ...(c.totalRev !== c.rev ? [{ l:"إجمالي الإيرادات", v: c.totalRev.toLocaleString()+" ر", i:"💰" }] : []),
-    { l:"صافي الشهر",      v: netMonth.toLocaleString() + " ر", i: netMonth>=0?"✅":"⚠️", color: netMonth>=0?SD:"#8B3A3A" },
     { l:"التأمين",         v: c.ins.toLocaleString() + " ر",   i:"🛡️" },
   ];
 
@@ -192,8 +203,19 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
       <div style={{ padding:"14px 16px" }}>
         {c.description && <p style={{ color:T, fontSize:12, marginBottom:12 }}>{c.description}</p>}
 
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:7, marginBottom:12 }}>
-          {stats.map((item, i) => (
+        <div style={{ fontSize:11, fontWeight:700, color:T, marginBottom:6 }}>📋 بيانات الشاليه</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:7, marginBottom:14 }}>
+          {baseStats.map((item, i) => (
+            <div key={i} style={{ background:SL, borderRadius:8, padding:"7px 9px", border:"1px solid rgba(197,172,136,.2)" }}>
+              <div style={{ fontSize:10, color:T }}>{item.i + " " + item.l}</div>
+              <div style={{ fontWeight:700, color:item.color||B, fontSize:12, marginTop:2 }}>{item.v}</div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ fontSize:11, fontWeight:700, color:T, marginBottom:6 }}>📊 الأداء المالي</div>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:7, marginBottom:14 }}>
+          {financeStats.map((item, i) => (
             <div key={i} style={{ background:SL, borderRadius:8, padding:"7px 9px", border:"1px solid rgba(197,172,136,.2)" }}>
               <div style={{ fontSize:10, color:T }}>{item.i + " " + item.l}</div>
               <div style={{ fontWeight:700, color:item.color||B, fontSize:12, marginTop:2 }}>{item.v}</div>
@@ -202,6 +224,7 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
         </div>
 
         {/* حالة الصيانة */}
+        <div style={{ fontSize:11, fontWeight:700, color:T, marginBottom:6 }}>🔧 الصيانة</div>
         <div style={{ display:"flex", gap:5, marginBottom:12 }}>
           {[
             { l:"مفتوح",  c:"#8B3A3A", bg:"#F5E6E6", v:c.mop },
@@ -366,14 +389,43 @@ export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expe
     );
   }
 
+  const activeCount    = cStats.filter(c => c.st==="active").length;
+  const totalNetMonth  = cStats.reduce((s,c) => s + (c.monthRev-c.monthExp), 0);
+  const attentionList  = cStats.map(c => chaletNeedsAttention(c, fixedExpenses, expenses));
+  const attentionCount = attentionList.filter(Boolean).length;
+  // الشاليهات اللي تحتاج متابعة تطلع أول — أهم شي يشوفه المدير أول ما يفتح الصفحة.
+  const sortedStats = cStats
+    .map((c,i) => ({ c, attn: attentionList[i] }))
+    .sort((a,b) => Number(b.attn) - Number(a.attn))
+    .map(x => x.c);
+
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
         <div style={{ fontWeight:800, color:B, fontSize:18 }}>إدارة الشاليهات</div>
         <button className="btn bp" onClick={onAdd}>+ إضافة شاليه</button>
       </div>
+
+      {cStats.length > 0 && (
+        <div className="card" style={{ padding:"14px 16px", marginBottom:18, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:14 }}>
+          {[
+            { i:"🏠", l:"الشاليهات النشطة",   v:`${activeCount} من ${cStats.length}` },
+            { i:"💰", l:"صافي الشهر (الإجمالي)", v: totalNetMonth.toLocaleString()+" ر", color: totalNetMonth>=0?SD:"#8B3A3A" },
+            { i: attentionCount>0?"🔔":"✅", l:"يحتاج متابعة", v: attentionCount>0?`${attentionCount} شاليه`:"لا شيء، تمام", color: attentionCount>0?"#8B3A3A":SD },
+          ].map((x,i) => (
+            <div key={i} style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <span style={{ fontSize:22 }}>{x.i}</span>
+              <div style={{ minWidth:0 }}>
+                <div style={{ fontSize:10.5, color:T }}>{x.l}</div>
+                <div style={{ fontSize:15, fontWeight:800, color:x.color||B }}>{x.v}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="cg">
-        {cStats.map(c => (
+        {sortedStats.map(c => (
           <ChaletSummaryCard
             key={c.id}
             c={c}
