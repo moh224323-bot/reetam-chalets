@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import { Chalet, Room, FixedExpense, Expense } from "../lib/types";
 import { B, BD, S, SI, T, SL, SD } from "../lib/colors";
 import { Bdg } from "./ui";
@@ -53,8 +53,80 @@ function compressImage(file: File, maxPx = 600): Promise<string> {
   });
 }
 
-const ChaletCard = memo(function ChaletCard({ c, rooms, fixedExpenses, expenses, onEdit, onDelete, onGoal, onQr, onImgChange, onAddRent, onEditRent, onPayRent }: {
+/** بطاقة مختصرة في شبكة الشاليهات — فقط الأرقام المهمة وإشارات الانتباه، والتفاصيل الكاملة في صفحة الإدارة. */
+const ChaletSummaryCard = memo(function ChaletSummaryCard({ c, fixedExpenses, expenses, onOpen }: {
+  c: ChaletStat; fixedExpenses: FixedExpense[]; expenses: Expense[];
+  onOpen: (name: string) => void;
+}) {
+  const netMonth = c.monthRev - c.monthExp;
+  const rentWarn = fixedExpenses
+    .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
+    .map(fx => nextDueInfo(fx, expenses))
+    .some(info => info && info.daysUntil <= 5);
+
+  const chips = [
+    { l:"السعة",        v: c.cap + " شخص", i:"👥" },
+    { l:"سعر الليلة",   v: c.price + " ر",  i:"🌙" },
+    { l:"صافي الشهر",   v: netMonth.toLocaleString() + " ر", i:"💰", color: netMonth >= 0 ? SD : "#8B3A3A" },
+  ];
+
+  return (
+    <div className="cc" onClick={() => onOpen(c.name)} style={{ cursor:"pointer" }}>
+      <div style={{ position:"relative", height:140, overflow:"hidden", background:`linear-gradient(135deg,${B},${BD})` }}>
+        {c.img
+          ? <img src={c.img} alt={c.name} style={{ width:"100%", height:"100%", objectFit:"cover" }} loading="lazy"/>
+          : <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center" }}>
+              <span style={{ fontSize:36, opacity:.25 }}>🏠</span>
+            </div>
+        }
+        <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"linear-gradient(transparent,rgba(42,34,24,.9))", padding:"16px 14px 10px" }}>
+          <div style={{ color:S, fontWeight:800, fontSize:15 }}>{c.name}</div>
+          <div style={{ color:SI, fontSize:11, marginTop:2 }}>{"📍 " + c.loc}</div>
+        </div>
+        <div style={{ position:"absolute", top:8, left:8 }}>
+          <Bdg bg={c.st==="active" ? "rgba(141,149,119,.85)" : "rgba(139,58,58,.85)"} color="#fff">
+            {c.st==="active" ? "نشط" : "موقف"}
+          </Bdg>
+        </div>
+      </div>
+
+      <div style={{ padding:"12px 14px 14px" }}>
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:7, marginBottom: (c.mop > 0 || rentWarn) ? 10 : 12 }}>
+          {chips.map((item, i) => (
+            <div key={i} style={{ background:SL, borderRadius:8, padding:"7px 9px", border:"1px solid rgba(197,172,136,.2)" }}>
+              <div style={{ fontSize:10, color:T }}>{item.i + " " + item.l}</div>
+              <div style={{ fontWeight:700, color:item.color||B, fontSize:12, marginTop:2 }}>{item.v}</div>
+            </div>
+          ))}
+        </div>
+
+        {(c.mop > 0 || rentWarn) && (
+          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:12 }}>
+            {c.mop > 0 && (
+              <span style={{ fontSize:10.5, fontWeight:700, color:"#8B3A3A", background:"#F5E6E6", borderRadius:7, padding:"4px 9px" }}>
+                🔧 {c.mop} صيانة مفتوحة
+              </span>
+            )}
+            {rentWarn && (
+              <span style={{ fontSize:10.5, fontWeight:700, color:"#8B6914", background:"#F5EFD6", borderRadius:7, padding:"4px 9px" }}>
+                🏠 الإيجار يحتاج متابعة
+              </span>
+            )}
+          </div>
+        )}
+
+        <button onClick={e => { e.stopPropagation(); onOpen(c.name); }} className="btn bp" style={{ width:"100%", padding:"9px", fontSize:13 }}>
+          إدارة الشاليه ←
+        </button>
+      </div>
+    </div>
+  );
+});
+
+/** صفحة إدارة شاليه واحد — كل التفاصيل والإعدادات والأدوات المتعلقة به. */
+const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expenses, onBack, onEdit, onDelete, onGoal, onQr, onImgChange, onAddRent, onEditRent, onPayRent }: {
   c: ChaletStat; rooms: Room[]; fixedExpenses: FixedExpense[]; expenses: Expense[];
+  onBack: () => void;
   onEdit: Props["onEdit"]; onDelete: Props["onDelete"];
   onGoal: Props["onGoal"]; onQr: Props["onQr"];
   onImgChange: Props["onImgChange"];
@@ -78,9 +150,14 @@ const ChaletCard = memo(function ChaletCard({ c, rooms, fixedExpenses, expenses,
   ];
 
   return (
-    <div className="cc">
+    <div className="cc" style={{ maxWidth:520, margin:"0 auto" }}>
+      <button onClick={onBack} style={{
+        display:"flex", alignItems:"center", gap:6, background:"none", border:"none", cursor:"pointer",
+        color:T, fontSize:13, fontWeight:700, padding:"12px 14px 0", fontFamily:"'Tajawal',sans-serif",
+      }}>→ رجوع لكل الشاليهات</button>
+
       {/* صورة الغلاف */}
-      <div style={{ position:"relative", height:170, overflow:"hidden", background:`linear-gradient(135deg,${B},${BD})` }}>
+      <div style={{ position:"relative", height:170, overflow:"hidden", background:`linear-gradient(135deg,${B},${BD})`, marginTop:10 }}>
         {c.img
           ? <img src={c.img} alt={c.name} style={{ width:"100%", height:"100%", objectFit:"cover" }} loading="lazy"/>
           : <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -208,7 +285,7 @@ const ChaletCard = memo(function ChaletCard({ c, rooms, fixedExpenses, expenses,
             🎯
           </button>
           <button className="btn bd bsm" style={{ padding:"8px 12px" }}
-            onClick={() => onDelete(c.id)}>
+            onClick={() => { onDelete(c.id); onBack(); }}>
             🗑️
           </button>
         </div>
@@ -248,6 +325,8 @@ const ChaletCard = memo(function ChaletCard({ c, rooms, fixedExpenses, expenses,
 });
 
 export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expenses, onAdd, onEdit, onDelete, onGoal, onQr, onImgChange, onAddRent, onEditRent, onPayRent }: Props) {
+  const [selected, setSelected] = useState<string | null>(null);
+
   if (loading && cStats.length === 0) {
     return (
       <div className="cg">
@@ -263,6 +342,27 @@ export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expe
     );
   }
 
+  const openChalet = selected ? cStats.find(c => c.name === selected) : undefined;
+  if (selected && openChalet) {
+    return (
+      <ChaletDetail
+        c={openChalet}
+        rooms={rooms}
+        fixedExpenses={fixedExpenses}
+        expenses={expenses}
+        onBack={() => setSelected(null)}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onGoal={onGoal}
+        onQr={onQr}
+        onImgChange={onImgChange}
+        onAddRent={onAddRent}
+        onEditRent={onEditRent}
+        onPayRent={onPayRent}
+      />
+    );
+  }
+
   return (
     <div>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, flexWrap:"wrap", gap:10 }}>
@@ -271,20 +371,12 @@ export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expe
       </div>
       <div className="cg">
         {cStats.map(c => (
-          <ChaletCard
+          <ChaletSummaryCard
             key={c.id}
             c={c}
-            rooms={rooms}
             fixedExpenses={fixedExpenses}
             expenses={expenses}
-            onEdit={onEdit}
-            onDelete={onDelete}
-            onGoal={onGoal}
-            onQr={onQr}
-            onImgChange={onImgChange}
-            onAddRent={onAddRent}
-            onEditRent={onEditRent}
-            onPayRent={onPayRent}
+            onOpen={setSelected}
           />
         ))}
       </div>
