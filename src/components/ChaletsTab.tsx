@@ -2,7 +2,7 @@ import { memo, useState } from "react";
 import { Chalet, Room, FixedExpense, Expense } from "../lib/types";
 import { B, BD, S, SI, T, SL, SD } from "../lib/colors";
 import { Bdg } from "./ui";
-import { nextDueInfo } from "../lib/dueDate";
+import { nextDueInfo, formatDueDate, RENT_REMINDER_DAYS } from "../lib/dueDate";
 
 export interface ChaletStat extends Chalet {
   rev: number;
@@ -39,7 +39,7 @@ function chaletNeedsAttention(c: ChaletStat, fixedExpenses: FixedExpense[], expe
   return fixedExpenses
     .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
     .map(fx => nextDueInfo(fx, expenses))
-    .some(info => info && info.daysUntil <= 5);
+    .some(info => info && info.daysUntil <= RENT_REMINDER_DAYS);
 }
 
 function compressImage(file: File, maxPx = 600): Promise<string> {
@@ -70,7 +70,7 @@ const ChaletSummaryCard = memo(function ChaletSummaryCard({ c, fixedExpenses, ex
   const rentWarn = fixedExpenses
     .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
     .map(fx => nextDueInfo(fx, expenses))
-    .some(info => info && info.daysUntil <= 5);
+    .some(info => info && info.daysUntil <= RENT_REMINDER_DAYS);
 
   const chips = [
     { l:"السعة",        v: c.cap + " شخص", i:"👥" },
@@ -269,15 +269,16 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
           {rentItems.map(({ fx, info }) => {
             const overdue  = info ? info.daysUntil < 0  : false;
             const dueToday = info ? info.daysUntil === 0 : false;
-            const soon     = info ? info.daysUntil > 0 && info.daysUntil <= 5 : false;
+            const soon     = info ? info.daysUntil > 0 && info.daysUntil <= RENT_REMINDER_DAYS : false;
             const urgent   = overdue || dueToday || soon;
             const badgeColor = !info ? SI : overdue ? "#8B3A3A" : dueToday || soon ? "#8B6914" : SD;
             const badgeBg    = !info ? "rgba(197,172,136,.15)" : overdue ? "#F5E6E6" : dueToday || soon ? "#F5EFD6" : "#EEF0E9";
+            const dueDateLabel = info ? formatDueDate(info.nextDue) : null;
             const badgeText  = !info
               ? "حدّد يوم الاستحقاق"
-              : overdue  ? `متأخر ${Math.abs(info.daysUntil)} يوم`
-              : dueToday ? "يستحق اليوم"
-              : `باقي ${info.daysUntil} يوم`;
+              : overdue  ? `متأخر ${Math.abs(info.daysUntil)} يوم · ${dueDateLabel}`
+              : dueToday ? `يستحق اليوم · ${dueDateLabel}`
+              : `${dueDateLabel} · باقي ${info.daysUntil} يوم`;
             return (
               <div key={fx.id} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 0", borderTop:"1px solid rgba(197,172,136,.15)" }}>
                 <div style={{ flex:1, minWidth:0 }}>

@@ -15,7 +15,7 @@ import type {
 import FinancialTab   from "../components/FinancialTab";
 import ChaletsTab     from "../components/ChaletsTab";
 import SettingsTab    from "../components/SettingsTab";
-import { nextDueInfo } from "../lib/dueDate";
+import { nextDueInfo, formatDueDate, RENT_REMINDER_DAYS } from "../lib/dueDate";
 
 const SUPA_URL = process.env.EXPO_PUBLIC_SUPA_URL!;
 const SUPA_KEY = process.env.EXPO_PUBLIC_SUPA_KEY!;
@@ -430,6 +430,8 @@ function RentDueBanner({items,onPay}:{items:{fx:FixedExpense;info:ReturnType<typ
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,color:B,fontSize:13}}>{fx.chalet} · {fx.name}</div>
                 <div style={{fontSize:11,color:info!.daysUntil<0?"#8B3A3A":T,marginTop:2,fontWeight:info!.daysUntil<0?700:400}}>
+                  {formatDueDate(info!.nextDue)}
+                  {" · "}
                   {info!.daysUntil<0?`متأخر ${Math.abs(info!.daysUntil)} يوم`:info!.daysUntil===0?"يستحق اليوم":`باقي ${info!.daysUntil} يوم`}
                   {" · "}{Number(fx.amount).toLocaleString()+" ر"}
                 </div>
@@ -2986,7 +2988,7 @@ ${poolLine}
                 const activeFixed2=scFixedExpenses.filter(fx=>fx.active);
                 const paidNames2=new Set(scExpenses.filter(e=>e.expense_date?.startsWith(thisYM2)).map(e=>e.note));
                 const hasUnpaidFixed=activeFixed2.some(fx=>!paidNames2.has(fx.name));
-                const rentDueItems2=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx,scExpenses)})).filter(x=>x.info&&x.info.daysUntil<=5);
+                const rentDueItems2=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx,scExpenses)})).filter(x=>x.info&&x.info.daysUntil<=RENT_REMINDER_DAYS);
                 const hasRentDue=rentDueItems2.length>0;
                 const hasAnyAlerts=hasCheckoutToday||hasArrivingSoon||hasArrivingTomorrow||hasPoolPending||hasRoomReqs||hasCleaningDue||hasCleaningNeedsApproval||hasUnpaidFixed||hasRentDue;
 
@@ -3285,7 +3287,7 @@ ${poolLine}
 
               {/* ── تنبيه استحقاق الإيجار ── */}
               {(()=>{
-                const rentDueItems=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx,scExpenses)})).filter(x=>x.info&&x.info.daysUntil<=5).sort((a,b)=>a.info!.daysUntil-b.info!.daysUntil);
+                const rentDueItems=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx,scExpenses)})).filter(x=>x.info&&x.info.daysUntil<=RENT_REMINDER_DAYS).sort((a,b)=>a.info!.daysUntil-b.info!.daysUntil);
                 if(!rentDueItems.length) return null;
                 return <RentDueBanner items={rentDueItems} onPay={payFixedExpense}/>;
               })()}
