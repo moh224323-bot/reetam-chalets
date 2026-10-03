@@ -15,6 +15,7 @@ import type {
 import FinancialTab   from "../components/FinancialTab";
 import ChaletsTab     from "../components/ChaletsTab";
 import SettingsTab    from "../components/SettingsTab";
+import { nextDueInfo } from "../lib/dueDate";
 
 const SUPA_URL = process.env.EXPO_PUBLIC_SUPA_URL!;
 const SUPA_KEY = process.env.EXPO_PUBLIC_SUPA_KEY!;
@@ -398,6 +399,41 @@ function UnpaidFixedBanner({unpaid,total,onPay}:{unpaid:FixedExpense[];total:num
                 <div style={{fontSize:11,color:T,marginTop:2}}>{fx.chalet} · {fx.category}</div>
               </div>
               <div style={{fontWeight:800,color:"#92400E",fontSize:14}}>{Number(fx.amount).toLocaleString()+" ر"}</div>
+              <SaveBtn label="تسديد" onClick={()=>onPay(fx)} style={{padding:"6px 14px",fontSize:12}}/>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+function RentDueBanner({items,onPay}:{items:{fx:FixedExpense;info:ReturnType<typeof nextDueInfo>}[];onPay:(fx:FixedExpense)=>Promise<void>}) {
+  const [open,setOpen]=useState(false);
+  const anyOverdue=items.some(x=>x.info!.daysUntil<0);
+  return (
+    <div style={{marginBottom:20}}>
+      <button onClick={()=>setOpen(o=>!o)} style={{
+        width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 16px",
+        background:anyOverdue?"linear-gradient(135deg,#7A1F1F,#5C1515)":"linear-gradient(135deg,#8D6B1F,#6B4F13)",
+        border:"none",borderRadius:open?"14px 14px 0 0":14,
+        cursor:"pointer",fontFamily:"'Tajawal',sans-serif",textAlign:"right",
+      }}>
+        <span style={{fontSize:16}}>🏠</span>
+        <span style={{fontWeight:800,color:"#fff",fontSize:14,flex:1}}>{anyOverdue?"إيجارات متأخرة":"إيجارات تستحق قريباً"}</span>
+        <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{items.length}</span>
+        <span style={{color:"rgba(255,255,255,.7)",fontSize:12,marginRight:4}}>{open?"▲":"▼"}</span>
+      </button>
+      {open&&(
+        <div style={{background:anyOverdue?"rgba(122,31,31,.1)":"rgba(141,107,31,.1)",border:`1px solid ${anyOverdue?"rgba(122,31,31,.25)":"rgba(141,107,31,.25)"}`,borderRadius:"0 0 14px 14px",overflow:"hidden"}}>
+          {items.map(({fx,info},i)=>(
+            <div key={fx.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 16px",borderTop:i>0?`1px solid ${anyOverdue?"rgba(122,31,31,.15)":"rgba(141,107,31,.15)"}`:"none"}}>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,color:B,fontSize:13}}>{fx.chalet} · {fx.name}</div>
+                <div style={{fontSize:11,color:info!.daysUntil<0?"#8B3A3A":T,marginTop:2,fontWeight:info!.daysUntil<0?700:400}}>
+                  {info!.daysUntil<0?`متأخر ${Math.abs(info!.daysUntil)} يوم`:info!.daysUntil===0?"يستحق اليوم":`باقي ${info!.daysUntil} يوم`}
+                  {" · "}{Number(fx.amount).toLocaleString()+" ر"}
+                </div>
+              </div>
               <SaveBtn label="تسديد" onClick={()=>onPay(fx)} style={{padding:"6px 14px",fontSize:12}}/>
             </div>
           ))}
@@ -2483,6 +2519,7 @@ ${poolLine}
   async function svM(f: Partial<MaintenanceRequest>, old?: MaintenanceRequest | null): Promise<void> {const cost=Number(f.cost)||0;const wasDone=old?.status==="done";const isDone=f.status==="done";const isNew=!f.id;const body={chalet:f.chalet,issue:f.issue,maint_date:f.maint_date,priority:f.priority,status:f.status,cost,note:f.note,req:f.req,image:f.image||null};if(f.id)await db("maintenance","PATCH",body as Record<string,unknown>,f.id);else await db("maintenance","POST",body as Record<string,unknown>);if(cost>0&&isDone&&(isNew||!wasDone))await db("wallet","POST",{trans_date:f.maint_date||td(),type:"سحب صيانة",chalet:f.chalet,cat:"صيانة",amount:cost,note:f.issue||"صيانة"});await loadAll();setMMdl(null);}
   async function svAC(chalet: string, field: string, value: unknown, roomId: number | null = null): Promise<void> {if(roomId){const room=rooms.find(r=>r.id===roomId);const body={chalet,room_id:roomId,room_name:room?.name||"",ac_on:field==="ac_on"?value:(room?._acOn||false),ac_temp:field==="ac_temp"?value:(room?._acTemp||22),ac_mode:field==="ac_mode"?value:(room?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(room?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(room?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,room._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setRooms(p=>p.map(x=>x.id===roomId?{...x,_sdId:(res[0] as Room).id}:x));}await sendACCommand(roomId,field,value);}else{const ch=chalets.find(x=>x.name===chalet);const body={chalet,ac_on:field==="ac_on"?value:(ch?._acOn||false),ac_temp:field==="ac_temp"?value:(ch?._acTemp||22),ac_mode:field==="ac_mode"?value:(ch?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(ch?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(ch?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,ch._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setChalets(p=>p.map(x=>x.name===chalet?{...x,_sdId:(res[0] as Chalet).id}:x));}}}
   async function svCln(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("cleaning","POST",{trans_date:td(),type:"إيداع",chalet,amount:amt,note:note||"إيداع نظافة"});await loadAll();setClnMdl(false);}
+  async function payFixedExpense(fx: FixedExpense): Promise<void> {await db("expenses","POST",{chalet:fx.chalet,category:fx.category||"مصروف ثابت",amount:Number(fx.amount),note:fx.name,expense_date:td()});await loadAll();}
   async function svI(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"تأمين",amount:amt,note:note||"إيداع تأمين"});await loadAll();setIMdl(false);}
   async function handleCheckout(booking: Booking, amt: number, pay: string, receivedBy: string): Promise<void> {
     await db("bookings","PATCH",{status:"completed",price:amt,received_by:receivedBy||null},booking.id);
@@ -2949,7 +2986,9 @@ ${poolLine}
                 const activeFixed2=scFixedExpenses.filter(fx=>fx.active);
                 const paidNames2=new Set(scExpenses.filter(e=>e.expense_date?.startsWith(thisYM2)).map(e=>e.note));
                 const hasUnpaidFixed=activeFixed2.some(fx=>!paidNames2.has(fx.name));
-                const hasAnyAlerts=hasCheckoutToday||hasArrivingSoon||hasArrivingTomorrow||hasPoolPending||hasRoomReqs||hasCleaningDue||hasCleaningNeedsApproval||hasUnpaidFixed;
+                const rentDueItems2=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx,scExpenses)})).filter(x=>x.info&&x.info.daysUntil<=5);
+                const hasRentDue=rentDueItems2.length>0;
+                const hasAnyAlerts=hasCheckoutToday||hasArrivingSoon||hasArrivingTomorrow||hasPoolPending||hasRoomReqs||hasCleaningDue||hasCleaningNeedsApproval||hasUnpaidFixed||hasRentDue;
 
                 return (
                   <div style={{marginBottom:20}}>
@@ -3244,6 +3283,13 @@ ${poolLine}
                 );
               })()}
 
+              {/* ── تنبيه استحقاق الإيجار ── */}
+              {(()=>{
+                const rentDueItems=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx,scExpenses)})).filter(x=>x.info&&x.info.daysUntil<=5).sort((a,b)=>a.info!.daysUntil-b.info!.daysUntil);
+                if(!rentDueItems.length) return null;
+                return <RentDueBanner items={rentDueItems} onPay={payFixedExpense}/>;
+              })()}
+
               {/* ── تنبيه المصروفات الثابتة غير المدفوعة ── */}
               {(()=>{
                 const nowD=new Date();
@@ -3254,7 +3300,7 @@ ${poolLine}
                 const unpaid=activeFixed.filter(fx=>!paidNames.has(fx.name));
                 if(!unpaid.length) return null;
                 const unpaidTotal=unpaid.reduce((s,fx)=>s+Number(fx.amount),0);
-                return <UnpaidFixedBanner unpaid={unpaid} total={unpaidTotal} onPay={async(fx)=>{await db("expenses","POST",{chalet:fx.chalet,category:fx.category||"مصروف ثابت",amount:Number(fx.amount),note:fx.name,expense_date:td()});await loadAll();}}/>;
+                return <UnpaidFixedBanner unpaid={unpaid} total={unpaidTotal} onPay={payFixedExpense}/>;
               })()}
                   </div>
                 );
@@ -3364,6 +3410,8 @@ ${poolLine}
               cStats={cStats}
               rooms={rooms}
               loading={loading}
+              fixedExpenses={scFixedExpenses}
+              expenses={scExpenses}
               onAdd={()=>setCMdl({...eC})}
               onEdit={c=>setCMdl({...c})}
               onDelete={dlC}
@@ -3373,6 +3421,9 @@ ${poolLine}
                 setChalets(p=>p.map(x=>x.id===id?{...x,img:dataUrl}:x));
                 await db("chalets","PATCH",{img:dataUrl},id);
               }}
+              onAddRent={chalet=>setFxMdl({chalet,name:"إيجار",amount:0,frequency:"monthly",category:"إيجار",active:true})}
+              onEditRent={fx=>setFxMdl({...fx})}
+              onPayRent={payFixedExpense}
             />
           )}
 
@@ -3542,7 +3593,7 @@ ${poolLine}
               lockedChalet={isChaletMgr?currentUser.chalet:undefined}
               onAddExpense={()=>setExMdl({chalet:(isChaletMgr?currentUser.chalet:names[0])||"",category:"إيجار",amount:"",note:"",expense_date:td()})}
               onAddFixedExpense={()=>setFxMdl({chalet:(isChaletMgr?currentUser.chalet:names[0])||"",name:"",amount:0,frequency:"monthly",category:"إيجار",active:true})}
-              onPayFixedExpense={async(fx)=>{const today=td();await db("expenses","POST",{chalet:fx.chalet,category:fx.category||"مصروف ثابت",amount:Number(fx.amount),note:fx.name,expense_date:today});await loadAll();}}
+              onPayFixedExpense={payFixedExpense}
               onEdit={t=>setWMdl({...t})}
               onReload={loadAll}
             />
@@ -4297,7 +4348,7 @@ ${poolLine}
       )}
 
       {fxMdl&&(
-        <Mdl onClose={()=>setFxMdl(null)} title="إضافة مصروف ثابت">
+        <Mdl onClose={()=>setFxMdl(null)} title={fxMdl.id?"تعديل المصروف الثابت":"إضافة مصروف ثابت"}>
           <div style={{marginBottom:12}}><label className="lbl">اسم المصروف</label><input className="inp" value={fxMdl.name||""} onChange={e=>setFxMdl(p=>({...p,name:e.target.value}))} placeholder="مثال: كهرباء، ماء، إنترنت"/></div>
           <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={fxMdl.chalet} onChange={e=>setFxMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
           <div style={{marginBottom:12}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={fxMdl.amount||""} onChange={e=>setFxMdl(p=>({...p,amount:Number(e.target.value)}))} placeholder="0"/></div>
@@ -4309,7 +4360,7 @@ ${poolLine}
               ))}
             </div>
           </div>
-          <div style={{marginBottom:20}}>
+          <div style={{marginBottom:12}}>
             <label className="lbl">الفئة</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {["إيجار","تنظيف","صيانة","إدارة","كهرباء","اشتراكات","غيره"].map(cat=>(
@@ -4317,10 +4368,16 @@ ${poolLine}
               ))}
             </div>
           </div>
+          <div style={{marginBottom:20}}>
+            <label className="lbl">يوم الاستحقاق من الشهر (اختياري — لتفعيل تذكير الاستحقاق)</label>
+            <input className="inp" type="number" min={1} max={31} value={fxMdl.due_day||""} onChange={e=>setFxMdl(p=>({...p,due_day:e.target.value?Number(e.target.value):undefined}))} placeholder="مثال: 5"/>
+          </div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setFxMdl(null)}>إلغاء</button>
-            <SaveBtn label="حفظ المصروف الثابت" disabled={!fxMdl.name||!fxMdl.chalet||!fxMdl.amount} onClick={async()=>{
-              await db("fixed_expenses","POST",{chalet:fxMdl.chalet,name:fxMdl.name,amount:Number(fxMdl.amount),frequency:fxMdl.frequency||"monthly",category:fxMdl.category||"إيجار",active:true});
+            <SaveBtn label={fxMdl.id?"حفظ التعديلات":"حفظ المصروف الثابت"} disabled={!fxMdl.name||!fxMdl.chalet||!fxMdl.amount} onClick={async()=>{
+              const body={chalet:fxMdl.chalet,name:fxMdl.name,amount:Number(fxMdl.amount),frequency:fxMdl.frequency||"monthly",category:fxMdl.category||"إيجار",active:fxMdl.active!==false,due_day:fxMdl.due_day?Number(fxMdl.due_day):null};
+              if(fxMdl.id) await db("fixed_expenses","PATCH",body,fxMdl.id);
+              else await db("fixed_expenses","POST",body);
               await loadAll();setFxMdl(null);
             }}/>
           </div>

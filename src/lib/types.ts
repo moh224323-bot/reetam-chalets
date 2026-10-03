@@ -97,6 +97,7 @@ export interface FixedExpense {
   frequency: "monthly" | "quarterly" | "yearly";
   category: string;
   active: boolean;
+  due_day?: number | null;
 }
 
 export interface Investor {

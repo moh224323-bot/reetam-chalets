@@ -1,7 +1,8 @@
 import { memo } from "react";
-import { Chalet, Room } from "../lib/types";
+import { Chalet, Room, FixedExpense, Expense } from "../lib/types";
 import { B, BD, S, SI, T, SL, SD } from "../lib/colors";
 import { Bdg } from "./ui";
+import { nextDueInfo } from "../lib/dueDate";
 
 export interface ChaletStat extends Chalet {
   rev: number;
@@ -17,15 +18,20 @@ export interface ChaletStat extends Chalet {
 }
 
 interface Props {
-  cStats:     ChaletStat[];
-  rooms:      Room[];
-  loading:    boolean;
-  onAdd:      () => void;
-  onEdit:     (c: ChaletStat) => void;
-  onDelete:   (id: number) => void;
-  onGoal:     (c: { id: number; name: string; goal: number | string }) => void;
-  onQr:       (chalet: string, rooms: string[]) => void;
-  onImgChange:(id: number, dataUrl: string) => void;
+  cStats:        ChaletStat[];
+  rooms:         Room[];
+  loading:       boolean;
+  fixedExpenses: FixedExpense[];
+  expenses:      Expense[];
+  onAdd:         () => void;
+  onEdit:        (c: ChaletStat) => void;
+  onDelete:      (id: number) => void;
+  onGoal:        (c: { id: number; name: string; goal: number | string }) => void;
+  onQr:          (chalet: string, rooms: string[]) => void;
+  onImgChange:   (id: number, dataUrl: string) => void;
+  onAddRent:     (chalet: string) => void;
+  onEditRent:    (fx: FixedExpense) => void;
+  onPayRent:     (fx: FixedExpense) => Promise<void>;
 }
 
 function compressImage(file: File, maxPx = 600): Promise<string> {
@@ -47,15 +53,20 @@ function compressImage(file: File, maxPx = 600): Promise<string> {
   });
 }
 
-const ChaletCard = memo(function ChaletCard({ c, rooms, onEdit, onDelete, onGoal, onQr, onImgChange }: {
-  c: ChaletStat; rooms: Room[];
+const ChaletCard = memo(function ChaletCard({ c, rooms, fixedExpenses, expenses, onEdit, onDelete, onGoal, onQr, onImgChange, onAddRent, onEditRent, onPayRent }: {
+  c: ChaletStat; rooms: Room[]; fixedExpenses: FixedExpense[]; expenses: Expense[];
   onEdit: Props["onEdit"]; onDelete: Props["onDelete"];
   onGoal: Props["onGoal"]; onQr: Props["onQr"];
   onImgChange: Props["onImgChange"];
+  onAddRent: Props["onAddRent"]; onEditRent: Props["onEditRent"]; onPayRent: Props["onPayRent"];
 }) {
   const netMonth = c.monthRev - c.monthExp;
   const pct      = c.goal > 0 ? Math.min(Math.round(netMonth / c.goal * 100), 100) : 0;
   const goalColor = pct >= 100 ? "#4CAF50" : pct >= 60 ? "#B8A06A" : "#C97B63";
+
+  const rentItems = fixedExpenses
+    .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
+    .map(fx => ({ fx, info: nextDueInfo(fx, expenses) }));
 
   const stats = [
     { l:"السعة",           v: c.cap + " شخص",                  i:"👥" },
@@ -142,6 +153,50 @@ const ChaletCard = memo(function ChaletCard({ c, rooms, onEdit, onDelete, onGoal
           </div>
         )}
 
+        {/* الإيجار - تاريخ الاستحقاق والتذكير */}
+        <div style={{ marginBottom:12, background:SL, borderRadius:10, padding:"10px 12px", border:"1px solid rgba(197,172,136,.2)" }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom: rentItems.length ? 8 : 0 }}>
+            <span style={{ fontSize:11, fontWeight:700, color:B }}>🏠 الإيجار</span>
+            <button onClick={() => onAddRent(c.name)} style={{
+              background:"none", border:"none", color:T, fontSize:11, fontWeight:700, cursor:"pointer", padding:0,
+            }}>+ إضافة</button>
+          </div>
+          {rentItems.length === 0 && (
+            <div style={{ fontSize:10.5, color:T }}>لا يوجد إيجار مسجّل لهذا الشاليه</div>
+          )}
+          {rentItems.map(({ fx, info }) => {
+            const overdue  = info ? info.daysUntil < 0  : false;
+            const dueToday = info ? info.daysUntil === 0 : false;
+            const soon     = info ? info.daysUntil > 0 && info.daysUntil <= 5 : false;
+            const badgeColor = !info ? SI : overdue ? "#8B3A3A" : dueToday || soon ? "#8B6914" : SD;
+            const badgeBg    = !info ? "rgba(197,172,136,.15)" : overdue ? "#F5E6E6" : dueToday || soon ? "#F5EFD6" : "#EEF0E9";
+            const badgeText  = !info
+              ? "حدّد يوم الاستحقاق"
+              : overdue  ? `متأخر ${Math.abs(info.daysUntil)} يوم`
+              : dueToday ? "يستحق اليوم"
+              : `باقي ${info.daysUntil} يوم`;
+            return (
+              <div key={fx.id} style={{ display:"flex", alignItems:"center", gap:6, padding:"6px 0", borderTop:"1px solid rgba(197,172,136,.15)" }}>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:11.5, fontWeight:700, color:B, overflow:"hidden", whiteSpace:"nowrap", textOverflow:"ellipsis" }}>
+                    {fx.name + " · " + Number(fx.amount).toLocaleString() + " ر"}
+                  </div>
+                  <div style={{ display:"inline-block", marginTop:3, fontSize:10, fontWeight:700, color:badgeColor, background:badgeBg, borderRadius:6, padding:"2px 7px" }}>
+                    {badgeText}
+                  </div>
+                </div>
+                <button onClick={() => onEditRent(fx)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13, flexShrink:0 }}>✏️</button>
+                {info && (overdue || dueToday || soon) && (
+                  <button onClick={() => onPayRent(fx)} style={{
+                    background:B, color:S, border:"none", borderRadius:7, padding:"5px 10px",
+                    fontSize:10.5, fontWeight:700, cursor:"pointer", fontFamily:"'Tajawal',sans-serif", flexShrink:0,
+                  }}>تسديد</button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
         {/* أزرار */}
         <div style={{ display:"flex", gap:7, marginBottom:7 }}>
           <button className="btn be" style={{ flex:1, padding:"8px", fontSize:13 }}
@@ -192,7 +247,7 @@ const ChaletCard = memo(function ChaletCard({ c, rooms, onEdit, onDelete, onGoal
   );
 });
 
-export default function ChaletsTab({ cStats, rooms, loading, onAdd, onEdit, onDelete, onGoal, onQr, onImgChange }: Props) {
+export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expenses, onAdd, onEdit, onDelete, onGoal, onQr, onImgChange, onAddRent, onEditRent, onPayRent }: Props) {
   if (loading && cStats.length === 0) {
     return (
       <div className="cg">
@@ -220,11 +275,16 @@ export default function ChaletsTab({ cStats, rooms, loading, onAdd, onEdit, onDe
             key={c.id}
             c={c}
             rooms={rooms}
+            fixedExpenses={fixedExpenses}
+            expenses={expenses}
             onEdit={onEdit}
             onDelete={onDelete}
             onGoal={onGoal}
             onQr={onQr}
             onImgChange={onImgChange}
+            onAddRent={onAddRent}
+            onEditRent={onEditRent}
+            onPayRent={onPayRent}
           />
         ))}
       </div>
