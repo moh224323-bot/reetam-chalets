@@ -140,12 +140,14 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
     .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
     .map(fx => ({ fx, info: nextDueInfo(fx, expenses) }));
 
-  const stats = [
+  const stats: { l: string; v: string; i: string; color?: string }[] = [
     { l:"السعة",           v: c.cap + " شخص",                  i:"👥" },
     { l:"سعر عادي",        v: c.price + " ريال",                i:"🌙" },
     { l:"سعر ويكند",       v: c.wprice ? c.wprice+" ريال" : "-", i:"🎉" },
     { l:"إيرادات النظام",  v: c.rev.toLocaleString() + " ر",   i:"📈" },
-    { l:"إجمالي الإيرادات",v: c.totalRev.toLocaleString()+" ر", i:"💰" },
+    // "إجمالي الإيرادات" يُعرض فقط لو يختلف فعلاً عن إيرادات النظام (أي فيه إيراد سابق مسجّل)، تجنباً لتكرار نفس الرقم بلا فائدة.
+    ...(c.totalRev !== c.rev ? [{ l:"إجمالي الإيرادات", v: c.totalRev.toLocaleString()+" ر", i:"💰" }] : []),
+    { l:"صافي الشهر",      v: netMonth.toLocaleString() + " ر", i: netMonth>=0?"✅":"⚠️", color: netMonth>=0?SD:"#8B3A3A" },
     { l:"التأمين",         v: c.ins.toLocaleString() + " ر",   i:"🛡️" },
   ];
 
@@ -194,7 +196,7 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
           {stats.map((item, i) => (
             <div key={i} style={{ background:SL, borderRadius:8, padding:"7px 9px", border:"1px solid rgba(197,172,136,.2)" }}>
               <div style={{ fontSize:10, color:T }}>{item.i + " " + item.l}</div>
-              <div style={{ fontWeight:700, color:B, fontSize:12, marginTop:2 }}>{item.v}</div>
+              <div style={{ fontWeight:700, color:item.color||B, fontSize:12, marginTop:2 }}>{item.v}</div>
             </div>
           ))}
         </div>
@@ -245,6 +247,7 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
             const overdue  = info ? info.daysUntil < 0  : false;
             const dueToday = info ? info.daysUntil === 0 : false;
             const soon     = info ? info.daysUntil > 0 && info.daysUntil <= 5 : false;
+            const urgent   = overdue || dueToday || soon;
             const badgeColor = !info ? SI : overdue ? "#8B3A3A" : dueToday || soon ? "#8B6914" : SD;
             const badgeBg    = !info ? "rgba(197,172,136,.15)" : overdue ? "#F5E6E6" : dueToday || soon ? "#F5EFD6" : "#EEF0E9";
             const badgeText  = !info
@@ -263,12 +266,12 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
                   </div>
                 </div>
                 <button onClick={() => onEditRent(fx)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13, flexShrink:0 }}>✏️</button>
-                {info && (overdue || dueToday || soon) && (
-                  <button onClick={() => onPayRent(fx)} style={{
-                    background:B, color:S, border:"none", borderRadius:7, padding:"5px 10px",
-                    fontSize:10.5, fontWeight:700, cursor:"pointer", fontFamily:"'Tajawal',sans-serif", flexShrink:0,
-                  }}>تسديد</button>
-                )}
+                <button onClick={() => onPayRent(fx)} style={{
+                  background: urgent ? B : "transparent", color: urgent ? S : T,
+                  border: urgent ? "none" : "1px solid rgba(197,172,136,.4)",
+                  borderRadius:7, padding:"5px 10px",
+                  fontSize:10.5, fontWeight:700, cursor:"pointer", fontFamily:"'Tajawal',sans-serif", flexShrink:0,
+                }}>تسديد</button>
               </div>
             );
           })}
