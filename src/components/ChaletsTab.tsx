@@ -4,6 +4,15 @@ import { B, BD, S, SI, T, SL, SD } from "../lib/colors";
 import { Bdg } from "./ui";
 import { nextDueInfo, formatDueDate, RENT_REMINDER_DAYS } from "../lib/dueDate";
 
+// أرقام سالبة داخل صفحة RTL تحتاج اتجاه LTR صريح، وإلا تنعكس إشارة السالب بصرياً (نفس نمط Money في FinancialTab).
+function Money({ value, size, weight, color }: { value: number; size?: number; weight?: number; color?: string }) {
+  return (
+    <span dir="ltr" style={{ fontSize:size, fontWeight:weight, color, whiteSpace:"nowrap" }}>
+      {value<0?"−":""}{Math.abs(value).toLocaleString()} <span style={{ fontSize:size?size*0.7:11, opacity:.6 }}>ر</span>
+    </span>
+  );
+}
+
 export interface ChaletStat extends Chalet {
   rev: number;
   totalRev: number;
@@ -75,7 +84,6 @@ const ChaletSummaryCard = memo(function ChaletSummaryCard({ c, fixedExpenses, ex
   const chips = [
     { l:"السعة",        v: c.cap + " شخص", i:"👥" },
     { l:"سعر الليلة",   v: c.price + " ر",  i:"🌙" },
-    { l:"صافي الشهر",   v: netMonth.toLocaleString() + " ر", i:"💰", color: netMonth >= 0 ? SD : "#8B3A3A" },
   ];
 
   return (
@@ -99,11 +107,17 @@ const ChaletSummaryCard = memo(function ChaletSummaryCard({ c, fixedExpenses, ex
       </div>
 
       <div style={{ padding:"12px 14px 14px" }}>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:7, marginBottom: (c.mop > 0 || rentWarn) ? 10 : 12 }}>
+        {/* الرقم الأهم (صافي الشهر) بارز وحده فوق، بدل ما يكون مساوي بالحجم للسعة والسعر */}
+        <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:10 }}>
+          <span style={{ fontSize:11, color:T }}>💰 صافي الشهر</span>
+          <Money value={netMonth} size={19} weight={900} color={netMonth >= 0 ? SD : "#8B3A3A"}/>
+        </div>
+
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:7, marginBottom: (c.mop > 0 || rentWarn) ? 10 : 12 }}>
           {chips.map((item, i) => (
             <div key={i} style={{ background:SL, borderRadius:8, padding:"7px 9px", border:"1px solid rgba(197,172,136,.2)" }}>
               <div style={{ fontSize:10, color:T }}>{item.i + " " + item.l}</div>
-              <div style={{ fontWeight:700, color:item.color||B, fontSize:12, marginTop:2 }}>{item.v}</div>
+              <div style={{ fontWeight:700, color:B, fontSize:12, marginTop:2 }}>{item.v}</div>
             </div>
           ))}
         </div>
@@ -154,8 +168,8 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
     { l:"سعر عادي",        v: c.price + " ريال",                i:"🌙" },
     { l:"سعر ويكند",       v: c.wprice ? c.wprice+" ريال" : "-", i:"🎉" },
   ];
-  const financeStats: { l: string; v: string; i: string; color?: string }[] = [
-    { l:"صافي الشهر",      v: netMonth.toLocaleString() + " ر", i: netMonth>=0?"✅":"⚠️", color: netMonth>=0?SD:"#8B3A3A" },
+  const financeStats: { l: string; v: React.ReactNode; i: string; color?: string }[] = [
+    { l:"صافي الشهر",      v: <Money value={netMonth} size={12} weight={700} color={netMonth>=0?SD:"#8B3A3A"}/>, i: netMonth>=0?"✅":"⚠️" },
     { l:"إيرادات النظام",  v: c.rev.toLocaleString() + " ر",   i:"📈" },
     // "إجمالي الإيرادات" يُعرض فقط لو يختلف فعلاً عن إيرادات النظام (أي فيه إيراد سابق مسجّل)، تجنباً لتكرار نفس الرقم بلا فائدة.
     ...(c.totalRev !== c.rev ? [{ l:"إجمالي الإيرادات", v: c.totalRev.toLocaleString()+" ر", i:"💰" }] : []),
@@ -163,14 +177,16 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
   ];
 
   return (
-    <div className="cc" style={{ maxWidth:520, margin:"0 auto" }}>
+    <div className="cc" style={{ maxWidth:980, margin:"0 auto" }}>
       <button onClick={onBack} style={{
         display:"flex", alignItems:"center", gap:6, background:"none", border:"none", cursor:"pointer",
         color:T, fontSize:13, fontWeight:700, padding:"12px 14px 0", fontFamily:"'Tajawal',sans-serif",
       }}>→ رجوع لكل الشاليهات</button>
 
+      {/* على الشاشات الواسعة (تابلت/ديسكتوب) تصير الصورة عمود جنب التفاصيل بدل فراغ فاضي حوالين عمود ضيق */}
+      <div style={{ display:"flex", flexWrap:"wrap", marginTop:10 }}>
       {/* صورة الغلاف */}
-      <div style={{ position:"relative", height:170, overflow:"hidden", background:`linear-gradient(135deg,${B},${BD})`, marginTop:10 }}>
+      <div style={{ position:"relative", height:220, overflow:"hidden", background:`linear-gradient(135deg,${B},${BD})`, flex:"1 1 320px", minWidth:280 }}>
         {c.img
           ? <img src={c.img} alt={c.name} style={{ width:"100%", height:"100%", objectFit:"cover" }} loading="lazy"/>
           : <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center" }}>
@@ -200,7 +216,7 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
       </div>
 
       {/* تفاصيل */}
-      <div style={{ padding:"14px 16px" }}>
+      <div style={{ padding:"14px 16px", flex:"1.6 1 380px", minWidth:300 }}>
         {c.description && <p style={{ color:T, fontSize:12, marginBottom:12 }}>{c.description}</p>}
 
         <div style={{ fontSize:11, fontWeight:700, color:T, marginBottom:6 }}>📋 بيانات الشاليه</div>
@@ -249,7 +265,7 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
               <div style={{ width:pct+"%", height:"100%", background:goalColor, borderRadius:99, transition:"width .4s" }}/>
             </div>
             <div style={{ display:"flex", justifyContent:"space-between", fontSize:10, color:T }}>
-              <span>{"صافي: " + netMonth.toLocaleString() + " ر"}</span>
+              <span>صافي: <Money value={netMonth} size={10}/></span>
               <span>{"هدف: " + c.goal.toLocaleString() + " ر"}</span>
             </div>
           </div>
@@ -347,12 +363,14 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
           }}>📲 مشاركة</button>
         </div>
       </div>
+      </div>
     </div>
   );
 });
 
 export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expenses, onAdd, onEdit, onDelete, onGoal, onQr, onImgChange, onAddRent, onEditRent, onPayRent }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
+  const [query, setQuery]       = useState("");
 
   if (loading && cStats.length === 0) {
     return (
@@ -394,11 +412,28 @@ export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expe
   const totalNetMonth  = cStats.reduce((s,c) => s + (c.monthRev-c.monthExp), 0);
   const attentionList  = cStats.map(c => chaletNeedsAttention(c, fixedExpenses, expenses));
   const attentionCount = attentionList.filter(Boolean).length;
-  // الشاليهات اللي تحتاج متابعة تطلع أول — أهم شي يشوفه المدير أول ما يفتح الصفحة.
-  const sortedStats = cStats
-    .map((c,i) => ({ c, attn: attentionList[i] }))
-    .sort((a,b) => Number(b.attn) - Number(a.attn))
-    .map(x => x.c);
+
+  const q = query.trim();
+  const filtered = q
+    ? cStats.filter(c => c.name.includes(q) || c.loc.includes(q))
+    : cStats;
+  // الشاليهات اللي تحتاج متابعة بمجموعة منفصلة أول، بعنوان واضح — بدل ترتيب صامت يصعب فهمه.
+  const attentionGroup = filtered.filter(c => chaletNeedsAttention(c, fixedExpenses, expenses));
+  const restGroup      = filtered.filter(c => !chaletNeedsAttention(c, fixedExpenses, expenses));
+
+  const renderGrid = (list: ChaletStat[]) => (
+    <div className="cg">
+      {list.map(c => (
+        <ChaletSummaryCard
+          key={c.id}
+          c={c}
+          fixedExpenses={fixedExpenses}
+          expenses={expenses}
+          onOpen={setSelected}
+        />
+      ))}
+    </div>
+  );
 
   return (
     <div>
@@ -409,11 +444,11 @@ export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expe
 
       {cStats.length > 0 && (
         <div className="card" style={{ padding:"14px 16px", marginBottom:18, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:14 }}>
-          {[
+          {([
             { i:"🏠", l:"الشاليهات النشطة",   v:`${activeCount} من ${cStats.length}` },
-            { i:"💰", l:"صافي الشهر (الإجمالي)", v: totalNetMonth.toLocaleString()+" ر", color: totalNetMonth>=0?SD:"#8B3A3A" },
+            { i:"💰", l:"صافي الشهر (الإجمالي)", v: <Money value={totalNetMonth} size={15} weight={800} color={totalNetMonth>=0?SD:"#8B3A3A"}/> },
             { i: attentionCount>0?"🔔":"✅", l:"يحتاج متابعة", v: attentionCount>0?`${attentionCount} شاليه`:"لا شيء، تمام", color: attentionCount>0?"#8B3A3A":SD },
-          ].map((x,i) => (
+          ] as { i: string; l: string; v: React.ReactNode; color?: string }[]).map((x,i) => (
             <div key={i} style={{ display:"flex", alignItems:"center", gap:10 }}>
               <span style={{ fontSize:22 }}>{x.i}</span>
               <div style={{ minWidth:0 }}>
@@ -425,17 +460,47 @@ export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expe
         </div>
       )}
 
-      <div className="cg">
-        {sortedStats.map(c => (
-          <ChaletSummaryCard
-            key={c.id}
-            c={c}
-            fixedExpenses={fixedExpenses}
-            expenses={expenses}
-            onOpen={setSelected}
+      {cStats.length > 3 && (
+        <div style={{ position:"relative", marginBottom:18 }}>
+          <span style={{ position:"absolute", top:"50%", right:14, transform:"translateY(-50%)", fontSize:14, color:T, pointerEvents:"none" }}>🔍</span>
+          <input
+            className="inp"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            placeholder="ابحث باسم الشاليه أو الموقع..."
+            style={{ paddingRight:36 }}
           />
-        ))}
-      </div>
+        </div>
+      )}
+
+      {filtered.length === 0 ? (
+        <div className="card" style={{ padding:"30px 16px", textAlign:"center", color:T, fontSize:13 }}>
+          لا يوجد شاليه مطابق لبحثك
+        </div>
+      ) : (
+        <>
+          {attentionGroup.length > 0 && (
+            <>
+              {restGroup.length > 0 && (
+                <div style={{ fontSize:13, fontWeight:800, color:"#8B3A3A", marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>
+                  🔔 يحتاج متابعة
+                </div>
+              )}
+              {renderGrid(attentionGroup)}
+            </>
+          )}
+          {restGroup.length > 0 && (
+            <>
+              {attentionGroup.length > 0 && (
+                <div style={{ fontSize:13, fontWeight:800, color:B, margin:"20px 0 10px", display:"flex", alignItems:"center", gap:6 }}>
+                  باقي الشاليهات
+                </div>
+              )}
+              {renderGrid(restGroup)}
+            </>
+          )}
+        </>
+      )}
     </div>
   );
 }
