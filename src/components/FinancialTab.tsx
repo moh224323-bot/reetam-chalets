@@ -134,54 +134,79 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
   const plab = PERIOD_LABELS[period];
 
   // ── تقرير المصاريف الاحترافي: تصنيفات + نسبة لكل شاليه + أكبر البنود + توصيات آلية ──
-  function categorizeSpend(expArr: Expense[], maintArr: MaintenanceRequest[]) {
-    const map = new Map<string, number>();
-    expArr.forEach(e => map.set(e.category, (map.get(e.category) || 0) + Number(e.amount)));
-    const maintTotal = maintArr.reduce((s, m) => s + Number(m.cost), 0);
-    if (maintTotal > 0) map.set("صيانة", (map.get("صيانة") || 0) + maintTotal);
-    return map;
-  }
-  const totalSpend = exTotal + mex;
-  const curCatMap = categorizeSpend(fex, fm);
-  const prevCatMap = prev ? categorizeSpend(prev.expenses, prev.maint) : new Map<string, number>();
-  const catReport = Array.from(curCatMap.entries()).map(([cat, amt]) => ({
-    cat, amt,
-    pctOfTotal: totalSpend > 0 ? Math.round(amt / totalSpend * 100) : 0,
-    chg: (prevCatMap.get(cat) || 0) > 0 ? Math.round((amt - (prevCatMap.get(cat) || 0)) / (prevCatMap.get(cat) || 1) * 100) : null,
-  })).sort((a, b) => b.amt - a.amt);
-
-  const chaletSpend = csum.map(c => ({
-    ...c,
-    spend: c.e + c.x,
-    ratio: c.r > 0 ? Math.round((c.e + c.x) / c.r * 100) : null,
-  })).sort((a, b) => (b.ratio ?? 999) - (a.ratio ?? 999));
-
-  const largestItems = [
-    ...fex.map(e => ({ label: e.category + (e.note ? " — " + e.note : ""), chalet: e.chalet, amount: Number(e.amount), date: e.expense_date })),
-    ...fm.map(m => ({ label: "صيانة — " + m.issue, chalet: m.chalet, amount: Number(m.cost), date: m.maint_date })),
-  ].sort((a, b) => b.amount - a.amount).slice(0, 6);
-
-  const spendInsights: { icon: string; text: string; level: "warn" | "good" }[] = [];
-  catReport.forEach(c => {
-    if (c.chg !== null && c.chg >= 30 && c.amt >= 200) {
-      spendInsights.push({ icon: "🔺", level: "warn", text: `تصنيف "${c.cat}" ارتفع ${c.chg}% مقارنة بـ${prevRange?.label || "الفترة السابقة"} (${c.amt.toLocaleString()} ر) — يستحق المراجعة.` });
+  // دالة بدل ثوابت مباشرة: تُحسب فقط عند فتح التقرير فعلياً، لا في كل تصيير للصفحة
+  function buildExpenseReport() {
+    function categorizeSpend(expArr: Expense[], maintArr: MaintenanceRequest[]) {
+      const map = new Map<string, number>();
+      expArr.forEach(e => {
+        // مصروف يدوي بفئة "صيانة" يُميَّز عن إجمالي جدول الصيانة الرسمي — تفادياً لخلط مصدرين مختلفين تحت نفس الاسم
+        const key = e.category === "صيانة" ? "صيانة (مصروف إضافي)" : e.category;
+        map.set(key, (map.get(key) || 0) + Number(e.amount));
+      });
+      const maintTotal = maintArr.reduce((s, m) => s + Number(m.cost), 0);
+      if (maintTotal > 0) map.set("صيانة", (map.get("صيانة") || 0) + maintTotal);
+      return map;
     }
-  });
-  chaletSpend.forEach(c => {
-    if (c.r === 0 && c.spend > 0) {
-      spendInsights.push({ icon: "⚠️", level: "warn", text: `${c.n}: صُرف ${c.spend.toLocaleString()} ر بدون أي إيرادات في ${plab} — تحقق من السبب.` });
-    } else if (c.ratio !== null && c.ratio >= 50) {
-      spendInsights.push({ icon: "🏠", level: "warn", text: `${c.n}: المصاريف تلتهم ${c.ratio}% من إيراداته — راجع التكاليف أو أسعار الحجز لهذا الشاليه.` });
+    const totalSpend = exTotal + mex;
+    const curCatMap = categorizeSpend(fex, fm);
+    const prevCatMap = prev ? categorizeSpend(prev.expenses, prev.maint) : null;
+    const catReport = Array.from(curCatMap.entries()).map(([cat, amt]) => {
+      const prevAmt = prevCatMap?.get(cat) || 0;
+      return {
+        cat, amt,
+        pctOfTotal: totalSpend > 0 ? Math.round(amt / totalSpend * 100) : 0,
+        chg: prevCatMap && prevAmt > 0 ? Math.round((amt - prevAmt) / prevAmt * 100) : null,
+        // تصنيف جديد كلياً هذه الفترة (لا وجود له في الفترة السابقة) — يُفقد لو اعتمدنا على chg فقط لأنه يبقى null
+        isNew: !!prevCatMap && prevAmt === 0 && amt > 0,
+      };
+    }).sort((a, b) => b.amt - a.amt);
+
+    const chaletSpend = csum.map(c => ({
+      ...c,
+      spend: c.e + c.x,
+      ratio: c.r > 0 ? Math.round((c.e + c.x) / c.r * 100) : null,
+    })).sort((a, b) => (b.ratio ?? 999) - (a.ratio ?? 999));
+
+    const largestItems = [
+      ...fex.map(e => ({ label: e.category + (e.note ? " — " + e.note : ""), chalet: e.chalet, amount: Number(e.amount), date: e.expense_date })),
+      ...fm.map(m => ({ label: "صيانة — " + m.issue, chalet: m.chalet, amount: Number(m.cost), date: m.maint_date })),
+    ].sort((a, b) => b.amount - a.amount).slice(0, 6);
+
+    // عدد الأشهر التي تغطيها الفترة المحددة — لمقارنة الالتزامات الثابتة (مبلغ شهري) بإيراد الفترة بشكل صحيح
+    const periodMonths = period === "this_month" || period === "last_month" ? 1
+      : period === "this_year" ? 12
+      : rf && rt ? Math.max(1, Math.round((rt.getTime() - rf.getTime()) / (30 * 86400000)))
+      : null; // "كل الوقت" — لا مدة محددة، يُتجاهل هذا المؤشر
+
+    const spendInsights: { icon: string; text: string; level: "warn" | "good" }[] = [];
+    catReport.forEach(c => {
+      if (c.isNew && c.amt >= 200) {
+        spendInsights.push({ icon: "🆕", level: "warn", text: `تصنيف "${c.cat}" جديد تماماً هذه الفترة (${c.amt.toLocaleString()} ر) ولم يكن موجوداً في ${prevRange?.label || "الفترة السابقة"} — تأكد أنه متوقَّع.` });
+      } else if (c.chg !== null && c.chg >= 30 && c.amt >= 200) {
+        spendInsights.push({ icon: "🔺", level: "warn", text: `تصنيف "${c.cat}" ارتفع ${c.chg}% مقارنة بـ${prevRange?.label || "الفترة السابقة"} (${c.amt.toLocaleString()} ر) — يستحق المراجعة.` });
+      }
+    });
+    chaletSpend.forEach(c => {
+      if (c.r === 0 && c.spend > 0) {
+        spendInsights.push({ icon: "⚠️", level: "warn", text: `${c.n}: صُرف ${c.spend.toLocaleString()} ر بدون أي إيرادات في ${plab} — تحقق من السبب.` });
+      } else if (c.ratio !== null && c.ratio >= 50) {
+        spendInsights.push({ icon: "🏠", level: "warn", text: `${c.n}: المصاريف تلتهم ${c.ratio}% من إيراداته — راجع التكاليف أو أسعار الحجز لهذا الشاليه.` });
+      }
+    });
+    if (periodMonths && rev > 0) {
+      const fixedForPeriod = fixedActiveMonthly * periodMonths;
+      if (fixedForPeriod / rev >= 0.3) {
+        spendInsights.push({ icon: "📌", level: "warn", text: `الالتزامات الثابتة (${fixedForPeriod.toLocaleString()} ر خلال ${plab}) تمثل ${Math.round(fixedForPeriod / rev * 100)}% من الإيرادات — فكر بإعادة التفاوض على العقود الثابتة.` });
+      }
     }
-  });
-  if (rev > 0 && fixedActiveMonthly / rev >= 0.3) {
-    spendInsights.push({ icon: "📌", level: "warn", text: `الالتزامات الثابتة الشهرية (${fixedActiveMonthly.toLocaleString()} ر) تمثل ${Math.round(fixedActiveMonthly / rev * 100)}% من الإيرادات — فكر بإعادة التفاوض على العقود الثابتة.` });
-  }
-  if (rev > 0 && mex / rev >= 0.15) {
-    spendInsights.push({ icon: "🔧", level: "warn", text: `تكاليف الصيانة مرتفعة نسبياً (${Math.round(mex / rev * 100)}% من الإيرادات) — فكر بخطة صيانة وقائية لتقليل الأعطال الطارئة.` });
-  }
-  if (spendInsights.length === 0) {
-    spendInsights.push({ icon: "✅", level: "good", text: "لا توجد مشاكل واضحة في نمط المصاريف الحالي — استمر على نفس المستوى." });
+    if (rev > 0 && mex / rev >= 0.15) {
+      spendInsights.push({ icon: "🔧", level: "warn", text: `تكاليف الصيانة مرتفعة نسبياً (${Math.round(mex / rev * 100)}% من الإيرادات) — فكر بخطة صيانة وقائية لتقليل الأعطال الطارئة.` });
+    }
+    if (spendInsights.length === 0) {
+      spendInsights.push({ icon: "✅", level: "good", text: "لا توجد مشاكل واضحة في نمط المصاريف الحالي — استمر على نفس المستوى." });
+    }
+
+    return { totalSpend, catReport, chaletSpend, largestItems, spendInsights };
   }
 
   function exportCSV() {
@@ -629,7 +654,9 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
       )}
 
       {/* تقرير المصاريف الاحترافي */}
-      {reportOpen && (
+      {reportOpen && (()=>{
+        const { totalSpend, catReport, chaletSpend, largestItems, spendInsights } = buildExpenseReport();
+        return (
         <Modal title={"📋 تقرير المصاريف الاحترافي · " + plab + (effFch !== "الكل" ? " · " + effFch : "")} onClose={()=>setReportOpen(false)}>
           {/* ملخص الإجمالي */}
           <div style={{ background:SL, borderRadius:12, padding:"14px 16px", marginBottom:18, border:"1px solid rgba(197,172,136,.25)" }}>
@@ -675,7 +702,10 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", marginBottom:4 }}>
                         <span style={{ fontSize:12.5, fontWeight:700, color:B }}>
                           {c.cat}
-                          {c.chg !== null && (
+                          {c.isNew && (
+                            <span style={{ fontSize:10.5, fontWeight:800, marginRight:6, color:"#8B3A3A" }}>🆕 جديد</span>
+                          )}
+                          {!c.isNew && c.chg !== null && (
                             <span style={{ fontSize:10.5, fontWeight:800, marginRight:6, color: c.chg>=0?"#8B3A3A":SD }}>
                               {c.chg>=0?"↑":"↓"} {Math.abs(c.chg)}%
                             </span>
@@ -732,7 +762,8 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
             }
           </div>
         </Modal>
-      )}
+        );
+      })()}
     </div>
   );
 }
