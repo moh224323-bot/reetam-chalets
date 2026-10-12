@@ -1706,7 +1706,7 @@ function RoomRequestPage({ chalet, room }: { chalet: string; room: string }) {
   );
 }
 
-function LoginPage({onLogin,onShowSignup}: {onLogin:(u:AppUser)=>void; onShowSignup:()=>void}) {
+function LoginPage({onLogin,onShowSignup,onShowForgot}: {onLogin:(u:AppUser)=>void; onShowSignup:()=>void; onShowForgot:()=>void}) {
   const [login,setLogin] = useState("");
   const [pass,setPass] = useState("");
   const [err,setErr] = useState("");
@@ -1740,9 +1740,12 @@ function LoginPage({onLogin,onShowSignup}: {onLogin:(u:AppUser)=>void; onShowSig
           <label className="lbl">البريد الإلكتروني</label>
           <input className="inp" type="email" value={login} onChange={e=>setLogin(e.target.value)} placeholder="name@example.com" onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
         </div>
-        <div style={{marginBottom:20}}>
+        <div style={{marginBottom:10}}>
           <label className="lbl">كلمة المرور</label>
           <input className="inp" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&doLogin()}/>
+        </div>
+        <div style={{textAlign:"left",marginBottom:20}}>
+          <span onClick={onShowForgot} style={{color:T,fontSize:12.5,cursor:"pointer",textDecoration:"underline"}}>نسيت كلمة المرور؟</span>
         </div>
         <button onClick={doLogin} disabled={loading}
           style={{width:"100%",border:"none",cursor:loading?"not-allowed":"pointer",borderRadius:12,fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,background:"linear-gradient(135deg,#413523,#2A2218)",color:"#C5AC88"}}>
@@ -1751,6 +1754,112 @@ function LoginPage({onLogin,onShowSignup}: {onLogin:(u:AppUser)=>void; onShowSig
         <div style={{textAlign:"center",marginTop:18,fontSize:13,color:T}}>
           صاحب شاليه جديد؟ <span onClick={onShowSignup} style={{color:B,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>سجّل حسابك</span>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ForgotPasswordPage({onBack}: {onBack:()=>void}) {
+  const [email,setEmail] = useState("");
+  const [err,setErr] = useState("");
+  const [sent,setSent] = useState(false);
+  const [loading,setLoading] = useState(false);
+
+  async function doSend() {
+    if(!email){setErr("أدخل بريدك الإلكتروني");return;}
+    setLoading(true); setErr("");
+    const {error} = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname,
+    });
+    if(error){setErr(error.message||"تعذر إرسال الرابط");setLoading(false);return;}
+    setSent(true); setLoading(false);
+  }
+
+  return (
+    <div dir="rtl" style={{fontFamily:"'Tajawal',sans-serif",minHeight:"100vh",background:"#FAF8F5",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <style>{CSS}</style>
+      <div style={{background:"#fff",borderRadius:20,padding:32,maxWidth:400,width:"100%",boxShadow:"0 8px 40px rgba(65,53,35,.12)"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <Logo size={50}/>
+          <div style={{fontWeight:800,color:B,fontSize:20,marginTop:12}}>نسيت كلمة المرور؟</div>
+          <div style={{color:T,fontSize:13,marginTop:4}}>بنرسل لك رابط لإعادة تعيينها على بريدك الإلكتروني</div>
+        </div>
+        {err&&<div style={{background:"#FFF5F5",border:"1px solid rgba(139,58,58,.2)",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#8B3A3A",fontWeight:600}}>{err}</div>}
+        {sent ? (
+          <div style={{background:"#EEF0E9",border:"1px solid rgba(107,114,88,.25)",borderRadius:10,padding:14,marginBottom:16,fontSize:13,color:"#6B7258",fontWeight:600,textAlign:"center",lineHeight:1.8}}>
+            ✅ تم إرسال رابط إعادة التعيين إلى<br/>{email}<br/>افتح بريدك واضغط على الرابط لتعيين كلمة مرور جديدة
+          </div>
+        ) : (
+          <>
+            <div style={{marginBottom:20}}>
+              <label className="lbl">البريد الإلكتروني</label>
+              <input className="inp" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="name@example.com" onKeyDown={e=>e.key==="Enter"&&doSend()}/>
+            </div>
+            <button onClick={doSend} disabled={loading}
+              style={{width:"100%",border:"none",cursor:loading?"not-allowed":"pointer",borderRadius:12,fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,background:"linear-gradient(135deg,#413523,#2A2218)",color:"#C5AC88"}}>
+              {loading?"جاري الإرسال...":"إرسال رابط إعادة التعيين"}
+            </button>
+          </>
+        )}
+        <div style={{textAlign:"center",marginTop:18,fontSize:13,color:T}}>
+          <span onClick={onBack} style={{color:B,fontWeight:700,cursor:"pointer",textDecoration:"underline"}}>→ رجوع لتسجيل الدخول</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResetPasswordPage({onDone}: {onDone:()=>void}) {
+  const [pass,setPass] = useState("");
+  const [pass2,setPass2] = useState("");
+  const [err,setErr] = useState("");
+  const [loading,setLoading] = useState(false);
+  const [done,setDone] = useState(false);
+
+  async function doReset() {
+    if(pass.length<6){setErr("كلمة المرور 6 أحرف على الأقل");return;}
+    if(pass!==pass2){setErr("كلمتا المرور غير متطابقتين");return;}
+    setLoading(true); setErr("");
+    const {error} = await supabase.auth.updateUser({password:pass});
+    if(error){setErr(error.message||"تعذر تحديث كلمة المرور");setLoading(false);return;}
+    setDone(true); setLoading(false);
+  }
+
+  return (
+    <div dir="rtl" style={{fontFamily:"'Tajawal',sans-serif",minHeight:"100vh",background:"#FAF8F5",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <style>{CSS}</style>
+      <div style={{background:"#fff",borderRadius:20,padding:32,maxWidth:400,width:"100%",boxShadow:"0 8px 40px rgba(65,53,35,.12)"}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <Logo size={50}/>
+          <div style={{fontWeight:800,color:B,fontSize:20,marginTop:12}}>تعيين كلمة مرور جديدة</div>
+        </div>
+        {err&&<div style={{background:"#FFF5F5",border:"1px solid rgba(139,58,58,.2)",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#8B3A3A",fontWeight:600}}>{err}</div>}
+        {done ? (
+          <>
+            <div style={{background:"#EEF0E9",border:"1px solid rgba(107,114,88,.25)",borderRadius:10,padding:14,marginBottom:16,fontSize:13,color:"#6B7258",fontWeight:600,textAlign:"center"}}>
+              ✅ تم تحديث كلمة المرور بنجاح
+            </div>
+            <button onClick={onDone}
+              style={{width:"100%",border:"none",cursor:"pointer",borderRadius:12,fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,background:"linear-gradient(135deg,#413523,#2A2218)",color:"#C5AC88"}}>
+              متابعة لتسجيل الدخول
+            </button>
+          </>
+        ) : (
+          <>
+            <div style={{marginBottom:14}}>
+              <label className="lbl">كلمة المرور الجديدة</label>
+              <input className="inp" type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&doReset()}/>
+            </div>
+            <div style={{marginBottom:20}}>
+              <label className="lbl">تأكيد كلمة المرور</label>
+              <input className="inp" type="password" value={pass2} onChange={e=>setPass2(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&doReset()}/>
+            </div>
+            <button onClick={doReset} disabled={loading}
+              style={{width:"100%",border:"none",cursor:loading?"not-allowed":"pointer",borderRadius:12,fontFamily:"'Tajawal',sans-serif",fontWeight:700,fontSize:16,padding:14,background:"linear-gradient(135deg,#413523,#2A2218)",color:"#C5AC88"}}>
+              {loading?"جاري التحديث...":"تحديث كلمة المرور"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -2106,6 +2215,8 @@ function AppWrapper() {
   const [guestParams,setGuestParams] = useState<{bookingId:string|null; mode:string; chalet:string|null; room:string|null}>({bookingId:null,mode:"checkin",chalet:null,room:null});
   const [currentUser,setCurrentUser] = useState<AppUser | null>(null);
   const [showSignup,setShowSignup]   = useState(false);
+  const [showForgot,setShowForgot]   = useState(false);
+  const [isRecovery,setIsRecovery]   = useState(false);
 
   useEffect(()=>{
     const p = new URLSearchParams(window.location.search);
@@ -2115,6 +2226,9 @@ function AppWrapper() {
       setReady(true);
       return;
     }
+    const {data:authListener} = supabase.auth.onAuthStateChange((event)=>{
+      if(event==="PASSWORD_RECOVERY") setIsRecovery(true);
+    });
     (async()=>{
       const {data:{session}} = await supabase.auth.getSession();
       if(session?.user){
@@ -2128,9 +2242,17 @@ function AppWrapper() {
       }
       setReady(true);
     })();
+    return ()=>{authListener.subscription.unsubscribe();};
   },[]);
 
   if(!ready) return null;
+  if(isRecovery){
+    return <ResetPasswordPage onDone={()=>{
+      supabase.auth.signOut();
+      currentOwnerId=null; setCurrentOwnerId(null);
+      setCurrentUser(null); setIsRecovery(false);
+    }}/>;
+  }
   if(isGuest){
     if(guestParams.mode==="chalet"&&guestParams.chalet)
       return <ChaletPublicPage chaletName={guestParams.chalet}/>;
@@ -2150,7 +2272,8 @@ function AppWrapper() {
   }
   if(!currentUser){
     if(showSignup) return <SignupPage onSignedUp={u=>setCurrentUser(u)} onBack={()=>setShowSignup(false)}/>;
-    return <LoginPage onLogin={u=>setCurrentUser(u)} onShowSignup={()=>setShowSignup(true)}/>;
+    if(showForgot) return <ForgotPasswordPage onBack={()=>setShowForgot(false)}/>;
+    return <LoginPage onLogin={u=>setCurrentUser(u)} onShowSignup={()=>setShowSignup(true)} onShowForgot={()=>setShowForgot(true)}/>;
   }
   return <App currentUser={currentUser} onLogout={()=>{supabase.auth.signOut();currentOwnerId=null;setCurrentOwnerId(null);setCurrentUser(null);}}/>;
 }
