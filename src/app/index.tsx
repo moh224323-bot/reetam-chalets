@@ -407,40 +407,27 @@ function UnpaidFixedBanner({unpaid,total,onPay}:{unpaid:FixedExpense[];total:num
     </div>
   );
 }
-function RentDueBanner({items,onPay}:{items:{fx:FixedExpense;info:ReturnType<typeof nextDueInfo>}[];onPay:(fx:FixedExpense)=>Promise<void>}) {
-  const [open,setOpen]=useState(false);
-  const anyOverdue=items.some(x=>x.info!.daysUntil<0);
+/** تذكير إيجار بسيط — ليس مصروفاً ولا يسجّل أي دفعة، فقط قائمة هادئة يتم تأكيد الاطلاع عليها. */
+function RentDueBanner({items,onAcknowledge}:{items:{fx:FixedExpense;info:ReturnType<typeof nextDueInfo>}[];onAcknowledge:(fx:FixedExpense)=>Promise<void>}) {
   return (
-    <div style={{marginBottom:20}}>
-      <button onClick={()=>setOpen(o=>!o)} style={{
-        width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 16px",
-        background:anyOverdue?"linear-gradient(135deg,#7A1F1F,#5C1515)":"linear-gradient(135deg,#8D6B1F,#6B4F13)",
-        border:"none",borderRadius:open?"14px 14px 0 0":14,
-        cursor:"pointer",fontFamily:"'Tajawal',sans-serif",textAlign:"right",
-      }}>
-        <span style={{fontSize:16}}>🏠</span>
-        <span style={{fontWeight:800,color:"#fff",fontSize:14,flex:1}}>{anyOverdue?"إيجارات متأخرة":"إيجارات تستحق قريباً"}</span>
-        <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{items.length}</span>
-        <span style={{color:"rgba(255,255,255,.7)",fontSize:12,marginRight:4}}>{open?"▲":"▼"}</span>
-      </button>
-      {open&&(
-        <div style={{background:anyOverdue?"rgba(122,31,31,.1)":"rgba(141,107,31,.1)",border:`1px solid ${anyOverdue?"rgba(122,31,31,.25)":"rgba(141,107,31,.25)"}`,borderRadius:"0 0 14px 14px",overflow:"hidden"}}>
-          {items.map(({fx,info},i)=>(
-            <div key={fx.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 16px",borderTop:i>0?`1px solid ${anyOverdue?"rgba(122,31,31,.15)":"rgba(141,107,31,.15)"}`:"none"}}>
-              <div style={{flex:1}}>
-                <div style={{fontWeight:700,color:B,fontSize:13}}>{fx.chalet} · {fx.name}</div>
-                <div style={{fontSize:11,color:info!.daysUntil<0?"#8B3A3A":T,marginTop:2,fontWeight:info!.daysUntil<0?700:400}}>
-                  {formatDueDate(info!.nextDue)}
-                  {" · "}
-                  {info!.daysUntil<0?`متأخر ${Math.abs(info!.daysUntil)} يوم`:info!.daysUntil===0?"يستحق اليوم":`باقي ${info!.daysUntil} يوم`}
-                  {" · "}{Number(fx.amount).toLocaleString()+" ر"}
-                </div>
-              </div>
-              <SaveBtn label="تسديد" onClick={()=>onPay(fx)} style={{padding:"6px 14px",fontSize:12}}/>
+    <div className="card" style={{marginBottom:20,padding:"12px 16px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+        <span style={{fontSize:15}}>🏠</span>
+        <span style={{fontWeight:800,color:B,fontSize:13.5}}>تذكير بموعد الإيجار</span>
+      </div>
+      {items.map(({fx,info},i)=>(
+        <div key={fx.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderTop:i>0?"1px solid rgba(197,172,136,.15)":"none"}}>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,color:B,fontSize:13}}>{fx.chalet} · {fx.name}</div>
+            <div style={{fontSize:11,color:info!.daysUntil<0?"#8B3A3A":T,marginTop:2,fontWeight:info!.daysUntil<0?700:400}}>
+              {formatDueDate(info!.nextDue)}
+              {" · "}
+              {info!.daysUntil<0?`متأخر ${Math.abs(info!.daysUntil)} يوم`:info!.daysUntil===0?"يستحق اليوم":`باقي ${info!.daysUntil} يوم`}
             </div>
-          ))}
+          </div>
+          <SaveBtn label="✓ تم" onClick={()=>onAcknowledge(fx)} style={{padding:"6px 14px",fontSize:12}}/>
         </div>
-      )}
+      ))}
     </div>
   );
 }
@@ -2645,6 +2632,8 @@ ${poolLine}
   async function svAC(chalet: string, field: string, value: unknown, roomId: number | null = null): Promise<void> {if(roomId){const room=rooms.find(r=>r.id===roomId);const body={chalet,room_id:roomId,room_name:room?.name||"",ac_on:field==="ac_on"?value:(room?._acOn||false),ac_temp:field==="ac_temp"?value:(room?._acTemp||22),ac_mode:field==="ac_mode"?value:(room?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(room?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(room?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,room._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setRooms(p=>p.map(x=>x.id===roomId?{...x,_sdId:(res[0] as Room).id}:x));}await sendACCommand(roomId,field,value);}else{const ch=chalets.find(x=>x.name===chalet);const body={chalet,ac_on:field==="ac_on"?value:(ch?._acOn||false),ac_temp:field==="ac_temp"?value:(ch?._acTemp||22),ac_mode:field==="ac_mode"?value:(ch?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(ch?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(ch?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,ch._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setChalets(p=>p.map(x=>x.name===chalet?{...x,_sdId:(res[0] as Chalet).id}:x));}}}
   async function svCln(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("cleaning","POST",{trans_date:td(),type:"إيداع",chalet,amount:amt,note:note||"إيداع نظافة"});await loadAll();setClnMdl(false);}
   async function payFixedExpense(fx: FixedExpense): Promise<void> {await db("expenses","POST",{chalet:fx.chalet,category:fx.category||"مصروف ثابت",amount:Number(fx.amount),note:fx.name,expense_date:td()});await loadAll();}
+  // تأكيد الاطلاع على تذكير الإيجار ينقله للشهر القادم فقط — بدون أي تسجيل مالي في جدول المصاريف.
+  async function acknowledgeRent(fx: FixedExpense): Promise<void> {await db("fixed_expenses","PATCH",{last_acknowledged:td()},fx.id);await loadAll();}
   async function svI(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"تأمين",amount:amt,note:note||"إيداع تأمين"});await loadAll();setIMdl(false);}
   async function handleCheckout(booking: Booking, amt: number, pay: string, receivedBy: string): Promise<void> {
     await db("bookings","PATCH",{status:"completed",price:amt,received_by:receivedBy||null},booking.id);
@@ -3108,10 +3097,10 @@ ${poolLine}
                 const doneLogsSet=new Set(clLogs.filter(l=>l.log_date?.startsWith(thisYM2)&&(l.status==="done"||l.supervisor_ok)).map(l=>l.task_id));
                 const hasCleaningDue=clTasks.some(t=>t.active!==false&&!doneLogsSet.has(t.id));
                 const hasCleaningNeedsApproval=clLogs.some(l=>l.status==="done"&&l.done_at&&!l.supervisor_ok&&l.log_date?.startsWith(thisYM2));
-                const activeFixed2=scFixedExpenses.filter(fx=>fx.active);
+                const activeFixed2=scFixedExpenses.filter(fx=>fx.active&&fx.category!=="إيجار");
                 const paidNames2=new Set(scExpenses.filter(e=>e.expense_date?.startsWith(thisYM2)).map(e=>e.note));
                 const hasUnpaidFixed=activeFixed2.some(fx=>!paidNames2.has(fx.name));
-                const rentDueItems2=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx,scExpenses)})).filter(x=>x.info&&x.info.daysUntil<=RENT_REMINDER_DAYS);
+                const rentDueItems2=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx)})).filter(x=>x.info&&x.info.daysUntil<=RENT_REMINDER_DAYS);
                 const hasRentDue=rentDueItems2.length>0;
                 const hasAnyAlerts=hasCheckoutToday||hasArrivingSoon||hasArrivingTomorrow||hasPoolPending||hasRoomReqs||hasCleaningDue||hasCleaningNeedsApproval||hasUnpaidFixed||hasRentDue;
 
@@ -3410,16 +3399,16 @@ ${poolLine}
 
               {/* ── تنبيه استحقاق الإيجار ── */}
               {(()=>{
-                const rentDueItems=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx,scExpenses)})).filter(x=>x.info&&x.info.daysUntil<=RENT_REMINDER_DAYS).sort((a,b)=>a.info!.daysUntil-b.info!.daysUntil);
+                const rentDueItems=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx)})).filter(x=>x.info&&x.info.daysUntil<=RENT_REMINDER_DAYS).sort((a,b)=>a.info!.daysUntil-b.info!.daysUntil);
                 if(!rentDueItems.length) return null;
-                return <RentDueBanner items={rentDueItems} onPay={payFixedExpense}/>;
+                return <RentDueBanner items={rentDueItems} onAcknowledge={acknowledgeRent}/>;
               })()}
 
-              {/* ── تنبيه المصروفات الثابتة غير المدفوعة ── */}
+              {/* ── تنبيه المصروفات الثابتة غير المدفوعة (الإيجار مستثنى، له تذكير مستقل أعلاه) ── */}
               {(()=>{
                 const nowD=new Date();
                 const thisYM=`${nowD.getFullYear()}-${String(nowD.getMonth()+1).padStart(2,"0")}`;
-                const activeFixed=scFixedExpenses.filter(fx=>fx.active);
+                const activeFixed=scFixedExpenses.filter(fx=>fx.active&&fx.category!=="إيجار");
                 if(!activeFixed.length) return null;
                 const paidNames=new Set(scExpenses.filter(e=>e.expense_date?.startsWith(thisYM)).map(e=>e.note));
                 const unpaid=activeFixed.filter(fx=>!paidNames.has(fx.name));
@@ -3536,7 +3525,6 @@ ${poolLine}
               rooms={rooms}
               loading={loading}
               fixedExpenses={scFixedExpenses}
-              expenses={scExpenses}
               onAdd={()=>setCMdl({...eC})}
               onEdit={c=>setCMdl({...c})}
               onDelete={dlC}
@@ -3548,7 +3536,7 @@ ${poolLine}
               }}
               onAddRent={chalet=>setFxMdl({chalet,name:"إيجار",amount:0,frequency:"monthly",category:"إيجار",active:true})}
               onEditRent={fx=>setFxMdl({...fx})}
-              onPayRent={payFixedExpense}
+              onAcknowledgeRent={acknowledgeRent}
             />
           )}
 

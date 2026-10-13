@@ -1,5 +1,5 @@
 import { memo, useState } from "react";
-import { Chalet, Room, FixedExpense, Expense } from "../lib/types";
+import { Chalet, Room, FixedExpense } from "../lib/types";
 import { B, BD, S, SI, T, SL, SD } from "../lib/colors";
 import { Bdg } from "./ui";
 import { nextDueInfo, formatDueDate, RENT_REMINDER_DAYS } from "../lib/dueDate";
@@ -31,7 +31,6 @@ interface Props {
   rooms:         Room[];
   loading:       boolean;
   fixedExpenses: FixedExpense[];
-  expenses:      Expense[];
   onAdd:         () => void;
   onEdit:        (c: ChaletStat) => void;
   onDelete:      (id: number) => void;
@@ -40,14 +39,14 @@ interface Props {
   onImgChange:   (id: number, dataUrl: string) => void;
   onAddRent:     (chalet: string) => void;
   onEditRent:    (fx: FixedExpense) => void;
-  onPayRent:     (fx: FixedExpense) => Promise<void>;
+  onAcknowledgeRent: (fx: FixedExpense) => Promise<void>;
 }
 
-function chaletNeedsAttention(c: ChaletStat, fixedExpenses: FixedExpense[], expenses: Expense[]): boolean {
+function chaletNeedsAttention(c: ChaletStat, fixedExpenses: FixedExpense[]): boolean {
   if (c.mop > 0) return true;
   return fixedExpenses
     .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
-    .map(fx => nextDueInfo(fx, expenses))
+    .map(fx => nextDueInfo(fx))
     .some(info => info && info.daysUntil <= RENT_REMINDER_DAYS);
 }
 
@@ -71,14 +70,14 @@ function compressImage(file: File, maxPx = 600): Promise<string> {
 }
 
 /** بطاقة مختصرة في شبكة الشاليهات — فقط الأرقام المهمة وإشارات الانتباه، والتفاصيل الكاملة في صفحة الإدارة. */
-const ChaletSummaryCard = memo(function ChaletSummaryCard({ c, fixedExpenses, expenses, onOpen }: {
-  c: ChaletStat; fixedExpenses: FixedExpense[]; expenses: Expense[];
+const ChaletSummaryCard = memo(function ChaletSummaryCard({ c, fixedExpenses, onOpen }: {
+  c: ChaletStat; fixedExpenses: FixedExpense[];
   onOpen: (name: string) => void;
 }) {
   const netMonth = c.monthRev - c.monthExp;
   const rentWarn = fixedExpenses
     .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
-    .map(fx => nextDueInfo(fx, expenses))
+    .map(fx => nextDueInfo(fx))
     .some(info => info && info.daysUntil <= RENT_REMINDER_DAYS);
 
   const chips = [
@@ -146,13 +145,13 @@ const ChaletSummaryCard = memo(function ChaletSummaryCard({ c, fixedExpenses, ex
 });
 
 /** صفحة إدارة شاليه واحد — كل التفاصيل والإعدادات والأدوات المتعلقة به. */
-const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expenses, onBack, onEdit, onDelete, onGoal, onQr, onImgChange, onAddRent, onEditRent, onPayRent }: {
-  c: ChaletStat; rooms: Room[]; fixedExpenses: FixedExpense[]; expenses: Expense[];
+const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, onBack, onEdit, onDelete, onGoal, onQr, onImgChange, onAddRent, onEditRent, onAcknowledgeRent }: {
+  c: ChaletStat; rooms: Room[]; fixedExpenses: FixedExpense[];
   onBack: () => void;
   onEdit: Props["onEdit"]; onDelete: Props["onDelete"];
   onGoal: Props["onGoal"]; onQr: Props["onQr"];
   onImgChange: Props["onImgChange"];
-  onAddRent: Props["onAddRent"]; onEditRent: Props["onEditRent"]; onPayRent: Props["onPayRent"];
+  onAddRent: Props["onAddRent"]; onEditRent: Props["onEditRent"]; onAcknowledgeRent: Props["onAcknowledgeRent"];
 }) {
   const netMonth = c.monthRev - c.monthExp;
   const pct      = c.goal > 0 ? Math.min(Math.round(netMonth / c.goal * 100), 100) : 0;
@@ -160,7 +159,7 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
 
   const rentItems = fixedExpenses
     .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
-    .map(fx => ({ fx, info: nextDueInfo(fx, expenses) }));
+    .map(fx => ({ fx, info: nextDueInfo(fx) }));
 
   // بيانات ثابتة عن الشاليه (سعة وأسعار) منفصلة عن الأداء المالي المتغيّر — تجميع أوضح من قائمة واحدة مختلطة.
   const baseStats: { l: string; v: string; i: string; color?: string }[] = [
@@ -306,12 +305,12 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
                   </div>
                 </div>
                 <button onClick={() => onEditRent(fx)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:13, flexShrink:0 }}>✏️</button>
-                <button onClick={() => onPayRent(fx)} style={{
+                <button onClick={() => onAcknowledgeRent(fx)} title="تأكيد الاطلاع والتحويل لتاريخ الشهر القادم" style={{
                   background: urgent ? B : "transparent", color: urgent ? S : T,
                   border: urgent ? "none" : "1px solid rgba(197,172,136,.4)",
                   borderRadius:7, padding:"5px 10px",
                   fontSize:10.5, fontWeight:700, cursor:"pointer", fontFamily:"'Tajawal',sans-serif", flexShrink:0,
-                }}>تسديد</button>
+                }}>✓ تم</button>
               </div>
             );
           })}
@@ -368,7 +367,7 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, expen
   );
 });
 
-export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expenses, onAdd, onEdit, onDelete, onGoal, onQr, onImgChange, onAddRent, onEditRent, onPayRent }: Props) {
+export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, onAdd, onEdit, onDelete, onGoal, onQr, onImgChange, onAddRent, onEditRent, onAcknowledgeRent }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [query, setQuery]       = useState("");
 
@@ -394,7 +393,6 @@ export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expe
         c={openChalet}
         rooms={rooms}
         fixedExpenses={fixedExpenses}
-        expenses={expenses}
         onBack={() => setSelected(null)}
         onEdit={onEdit}
         onDelete={onDelete}
@@ -403,14 +401,14 @@ export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expe
         onImgChange={onImgChange}
         onAddRent={onAddRent}
         onEditRent={onEditRent}
-        onPayRent={onPayRent}
+        onAcknowledgeRent={onAcknowledgeRent}
       />
     );
   }
 
   const activeCount    = cStats.filter(c => c.st==="active").length;
   const totalNetMonth  = cStats.reduce((s,c) => s + (c.monthRev-c.monthExp), 0);
-  const attentionList  = cStats.map(c => chaletNeedsAttention(c, fixedExpenses, expenses));
+  const attentionList  = cStats.map(c => chaletNeedsAttention(c, fixedExpenses));
   const attentionCount = attentionList.filter(Boolean).length;
 
   const q = query.trim();
@@ -418,8 +416,8 @@ export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expe
     ? cStats.filter(c => c.name.includes(q) || c.loc.includes(q))
     : cStats;
   // الشاليهات اللي تحتاج متابعة بمجموعة منفصلة أول، بعنوان واضح — بدل ترتيب صامت يصعب فهمه.
-  const attentionGroup = filtered.filter(c => chaletNeedsAttention(c, fixedExpenses, expenses));
-  const restGroup      = filtered.filter(c => !chaletNeedsAttention(c, fixedExpenses, expenses));
+  const attentionGroup = filtered.filter(c => chaletNeedsAttention(c, fixedExpenses));
+  const restGroup      = filtered.filter(c => !chaletNeedsAttention(c, fixedExpenses));
 
   const renderGrid = (list: ChaletStat[]) => (
     <div className="cg">
@@ -428,7 +426,6 @@ export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, expe
           key={c.id}
           c={c}
           fixedExpenses={fixedExpenses}
-          expenses={expenses}
           onOpen={setSelected}
         />
       ))}
