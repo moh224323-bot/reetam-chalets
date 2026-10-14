@@ -98,6 +98,7 @@ export interface FixedExpense {
   category: string;
   active: boolean;
   due_day?: number | null;
+  last_acknowledged?: string | null;
 }
 
 export interface Investor {
