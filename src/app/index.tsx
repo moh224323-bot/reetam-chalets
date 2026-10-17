@@ -317,64 +317,6 @@ function SendTaskBtn({task,workers,log,onSent}:{task:CleaningTask;workers:Cleani
   );
 }
 
-function CleanTaskBanner({tasks,sentLogs,workers,logs,thisMonth,onSend,onConfirm}:{
-  tasks:CleaningTask[];sentLogs:Set<number>;workers:CleaningWorker[];logs:CleaningLog[];thisMonth:string;
-  onSend:(t:CleaningTask,w:CleaningWorker)=>Promise<void>;onConfirm:(t:CleaningTask)=>Promise<void>;
-}) {
-  const [open,setOpen]=useState(true);
-  const [sel,setSel]=useState<Record<number,number>>({});
-  return (
-    <div style={{marginBottom:20}}>
-      <button onClick={()=>setOpen(o=>!o)} style={{
-        width:"100%",display:"flex",alignItems:"center",gap:10,padding:"12px 16px",
-        background:"linear-gradient(135deg,#065F46,#047857)",border:"none",borderRadius:open?"14px 14px 0 0":14,
-        cursor:"pointer",fontFamily:"'Tajawal',sans-serif",textAlign:"right",
-      }}>
-        <span style={{fontSize:16}}>🧹</span>
-        <span style={{fontWeight:800,color:"#fff",fontSize:14,flex:1}}>مهام النظافة المستحقة هذا الشهر</span>
-        <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{tasks.length}</span>
-        <span style={{color:"rgba(255,255,255,.7)",fontSize:12,marginRight:4}}>{open?"▲":"▼"}</span>
-      </button>
-      {open&&(
-        <div style={{background:"rgba(6,95,70,.07)",border:"1px solid rgba(6,95,70,.2)",borderRadius:"0 0 14px 14px",overflow:"hidden"}}>
-          {tasks.map((t,i)=>{
-            const log=logs.find(l=>l.task_id===t.id&&l.log_date?.startsWith(thisMonth));
-            const isSent=sentLogs.has(t.id)||log?.status==="sent";
-            const isDone=log?.status==="done"||log?.supervisor_ok;
-            return (
-              <div key={t.id} style={{padding:"12px 16px",borderTop:i>0?"1px solid rgba(6,95,70,.12)":"none",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                <div style={{flex:1,minWidth:120}}>
-                  <div style={{fontWeight:700,color:B,fontSize:13}}>{t.title}</div>
-                  <div style={{fontSize:11,color:T,marginTop:2}}>{t.chalet} · {t.category} · {t.frequency}</div>
-                  {isSent&&!isDone&&<div style={{fontSize:10,color:"#059669",fontWeight:600,marginTop:2}}>📤 أُرسلت للعامل</div>}
-                  {isDone&&<div style={{fontSize:10,color:"#166534",fontWeight:600,marginTop:2}}>✅ انتهى العامل</div>}
-                </div>
-                {workers.length>0&&!isDone&&(
-                  <select value={sel[t.id]||""} onChange={e=>setSel(p=>({...p,[t.id]:Number(e.target.value)}))}
-                    style={{borderRadius:8,border:"1.5px solid rgba(6,95,70,.3)",padding:"6px 10px",fontSize:12,background:"#fff",fontFamily:"'Tajawal',sans-serif"}}>
-                    <option value="">اختر عامل</option>
-                    {workers.filter(w=>w.active).map(w=><option key={w.id} value={w.id}>{w.name}</option>)}
-                  </select>
-                )}
-                <div style={{display:"flex",gap:6}}>
-                  {!isDone&&sel[t.id]&&workers.find(w=>w.id===sel[t.id])&&(
-                    <SaveBtn label={isSent?"إعادة إرسال ↗":"إرسال ↗"} style={{background:"#25D366",padding:"6px 12px",fontSize:12}}
-                      onClick={()=>onSend(t,workers.find(w=>w.id===sel[t.id])!)}/>
-                  )}
-                  {!isDone&&(
-                    <SaveBtn label="تأكيد ✓" style={{background:"#059669",padding:"6px 12px",fontSize:12}}
-                      onClick={()=>onConfirm(t)}/>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function UnpaidFixedBanner({unpaid,total,onPay}:{unpaid:FixedExpense[];total:number;onPay:(fx:FixedExpense)=>Promise<void>}) {
   const [open,setOpen]=useState(false);
   return (
@@ -3104,15 +3046,12 @@ ${poolLine}
                 const hasPoolPending=scBookings.some(b=>b.pool_preference&&!b.pool_approved&&b.status==="confirmed");
                 const hasRoomReqs=roomReqs.length>0;
                 const thisYM2=td().slice(0,7);
-                const doneLogsSet=new Set(clLogs.filter(l=>l.log_date?.startsWith(thisYM2)&&(l.status==="done"||l.supervisor_ok)).map(l=>l.task_id));
-                const hasCleaningDue=clTasks.some(t=>t.active!==false&&!doneLogsSet.has(t.id));
-                const hasCleaningNeedsApproval=clLogs.some(l=>l.status==="done"&&l.done_at&&!l.supervisor_ok&&l.log_date?.startsWith(thisYM2));
                 const activeFixed2=scFixedExpenses.filter(fx=>fx.active&&fx.category!=="إيجار");
                 const paidNames2=new Set(scExpenses.filter(e=>e.expense_date?.startsWith(thisYM2)).map(e=>e.note));
                 const hasUnpaidFixed=activeFixed2.some(fx=>!paidNames2.has(fx.name));
                 const rentDueItems2=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx)})).filter(x=>x.info&&x.info.daysUntil<=RENT_REMINDER_DAYS);
                 const hasRentDue=rentDueItems2.length>0;
-                const hasAnyAlerts=hasCheckoutToday||hasArrivingSoon||hasArrivingTomorrow||hasPoolPending||hasRoomReqs||hasCleaningDue||hasCleaningNeedsApproval||hasUnpaidFixed||hasRentDue;
+                const hasAnyAlerts=hasCheckoutToday||hasArrivingSoon||hasArrivingTomorrow||hasPoolPending||hasRoomReqs||hasUnpaidFixed||hasRentDue;
 
                 return (
                   <div style={{marginBottom:20}}>
@@ -3328,84 +3267,6 @@ ${poolLine}
                   </div>
                 </div>
               )}
-
-              {/* ── تنبيه مهام النظافة المستحقة ── */}
-              {(()=>{
-                const todayStr=td();
-                const thisMonth=todayStr.slice(0,7);
-                const doneLogs=new Set(clLogs.filter(l=>l.log_date?.startsWith(thisMonth)&&(l.status==="done"||l.supervisor_ok)).map(l=>l.task_id));
-                const sentLogs=new Set(clLogs.filter(l=>l.log_date?.startsWith(thisMonth)&&l.status==="sent").map(l=>l.task_id));
-                const dueTasks=clTasks.filter(t=>t.active!==false&&!doneLogs.has(t.id));
-                if(!dueTasks.length) return null;
-                return <CleanTaskBanner tasks={dueTasks} sentLogs={sentLogs} workers={cleanWorkers} logs={clLogs} thisMonth={thisMonth} onSend={async(task,worker)=>{
-                  const existing=clLogs.find(l=>l.task_id===task.id&&l.log_date?.startsWith(thisMonth));
-                  let logId:number;
-                  if(existing){logId=existing.id;await db("cleaning_logs","PATCH",{status:"sent",sent_at:new Date().toISOString(),worker_id:worker.id},existing.id);}
-                  else{const r=await db("cleaning_logs","POST",{task_id:task.id,chalet:task.chalet,log_date:todayStr,worker_done:false,supervisor_ok:false,status:"sent",sent_at:new Date().toISOString(),worker_id:worker.id});logId=r?.[0]?.id||0;}
-                  await loadAll();
-                  const lang=worker.language||"hi";
-                  const url=`https://reetam-chalets.vercel.app?guest=1&m=cleantask&log=${logId}&task=${encodeURIComponent(task.title)}&ch=${encodeURIComponent(task.chalet)}&lang=${lang}`;
-                  const msgs:Record<string,string>={
-                    hi:`नमस्ते ${worker.name}! 🧹%0aकाम: *${task.title}*%0aजगह: ${task.chalet}%0a%0aकाम पूरा होने पर यहाँ क्लिक करें:%0a${encodeURIComponent(url)}`,
-                    ar:`مرحباً ${worker.name} 🧹%0aالمهمة: *${task.title}*%0aالشاليه: ${task.chalet}%0a%0aعند الانتهاء اضغط هنا:%0a${encodeURIComponent(url)}`,
-                    en:`Hi ${worker.name}! 🧹%0aTask: *${task.title}*%0aChalet: ${task.chalet}%0a%0aWhen done, click here:%0a${encodeURIComponent(url)}`,
-                  };
-                  const phone=worker.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");
-                  window.open(`https://wa.me/${phone}?text=${msgs[lang]||msgs.hi}`,"_blank");
-                }} onConfirm={async(task)=>{
-                  const existing=clLogs.find(l=>l.task_id===task.id&&l.log_date?.startsWith(thisMonth));
-                  if(existing){await db("cleaning_logs","PATCH",{supervisor_ok:true,status:"done",done_at:new Date().toISOString()},existing.id);}
-                  else{await db("cleaning_logs","POST",{task_id:task.id,chalet:task.chalet,log_date:todayStr,worker_done:true,supervisor_ok:true,status:"done",done_at:new Date().toISOString()});}
-                  if(task.frequency==="مرة واحدة")await db("cleaning_tasks","PATCH",{active:false},task.id);
-                  await loadAll();
-                }}/>;
-              })()}
-
-              {/* ── تنبيه اكتمال مهام النظافة ── */}
-              {(()=>{
-                const thisMonth=td().slice(0,7);
-                const justDone=clLogs.filter(l=>l.status==="done"&&l.done_at&&!l.supervisor_ok&&l.log_date?.startsWith(thisMonth));
-                if(!justDone.length) return null;
-                return (
-                  <div style={{background:"linear-gradient(135deg,#166534,#15803D)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 4px 20px rgba(22,101,52,.3)"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-                      <span style={{fontSize:18}}>🔔</span>
-                      <span style={{fontWeight:800,color:"#fff",fontSize:15}}>مهام أنهاها العمال — تحتاج موافقة</span>
-                      <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{justDone.length}</span>
-                    </div>
-                    {justDone.map(l=>{
-                      const task=clTasks.find(t=>t.id===l.task_id);
-                      const worker=cleanWorkers.find(w=>w.id===l.worker_id);
-                      return (
-                        <div key={l.id} style={{background:"rgba(255,255,255,.1)",borderRadius:10,marginBottom:6,overflow:"hidden"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px"}}>
-                            <div style={{flex:1}}>
-                              <div style={{fontWeight:700,color:"#fff",fontSize:13}}>{task?.title||"مهمة"}</div>
-                              <div style={{fontSize:11,color:"rgba(255,255,255,.75)",marginTop:2}}>
-                                {l.chalet}{worker?" · "+worker.name:""}{l.done_note?" · \""+l.done_note+"\"":""}
-                              </div>
-                            </div>
-                            <button onClick={async()=>{await db("cleaning_logs","PATCH",{supervisor_ok:true},l.id);await loadAll();}} style={{
-                              background:"#fff",color:"#166534",border:"none",borderRadius:8,padding:"8px 14px",
-                              fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"'Tajawal',sans-serif",flexShrink:0,
-                            }}>✓ موافقة</button>
-                          </div>
-                          {(l as any).done_media_url && (
-                            <div style={{padding:"0 14px 12px"}}>
-                              {(l as any).done_media_url.match(/\.(mp4|mov|webm|avi)$/i)
-                                ? <video src={(l as any).done_media_url} controls style={{width:"100%",maxHeight:180,borderRadius:8,background:"#000"}}/>
-                                : <a href={(l as any).done_media_url} target="_blank" rel="noopener noreferrer">
-                                    <img src={(l as any).done_media_url} alt="media" style={{width:"100%",maxHeight:180,borderRadius:8,objectFit:"cover",display:"block"}}/>
-                                  </a>
-                              }
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              })()}
 
               {/* ── تنبيه استحقاق الإيجار ── */}
               {(()=>{
