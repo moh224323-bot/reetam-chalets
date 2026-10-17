@@ -2647,15 +2647,15 @@ ${poolLine}
   async function svI(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"تأمين",amount:amt,note:note||"إيداع تأمين"});await loadAll();setIMdl(false);}
   async function handleCheckout(booking: Booking, amt: number, pay: string, receivedBy: string): Promise<void> {
     await db("bookings","PATCH",{status:"completed",price:amt,received_by:receivedBy||null},booking.id);
-    // مهمة تنظيف تلقائية بعد الخروج
+    // مهمة تنظيف تلقائية بعد الخروج — جدول cleaning_tasks ما فيه عمود note، إرساله كان يفشّل كل عملية الإضافة بصمت
+    // (PostgREST يرفض أي حقل غير موجود في الجدول)، فلا تنشأ مهمة التنظيف أبداً. التاريخ صار جزء من العنوان بدلاً منه.
     await db("cleaning_tasks","POST",{
       chalet: booking.chalet,
-      title: `تنظيف بعد خروج ${booking.guest}`,
+      title: `تنظيف بعد خروج ${booking.guest} · ${td()}`,
       frequency: "مرة واحدة",
       category: "تنظيف عام",
       active: true,
       assigned_to: "",
-      note: `خروج بتاريخ ${td()} · رقم الحجز ${booking.id}`,
     });
     await loadAll();
     setCoMdl(null);
