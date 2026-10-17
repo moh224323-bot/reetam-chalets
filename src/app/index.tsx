@@ -111,15 +111,53 @@ async function db(table: string, method="GET", body: Record<string,unknown> | nu
   return text ? JSON.parse(text) : [];
 }
 
-// رفع صورة شاليه إلى Supabase Storage (أخف من base64)
+// بعض صور معرض الشاليهات مستوردة قديماً بصيغة {url,cat} (مصنّفة حسب القسم: مجلس/مسبح/...)
+// بينما كود الرفع الحالي يخزّن نصوص روابط مباشرة — هذا الفرق هو سبب أيقونة "؟" المكسورة.
+function galleryUrl(g: unknown): string | null {
+  if (typeof g === "string") return g;
+  if (g && typeof g === "object" && typeof (g as { url?: unknown }).url === "string") return (g as { url: string }).url;
+  return null;
+}
+
+/** يضغط الصورة قبل الرفع (أقصى بعد 1600px، جودة JPEG 82%) ليحافظ على وضوح جيد بأقل مساحة تخزين ممكنة. */
+function compressImageFile(file: File, maxPx = 1600, quality = 0.82): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("no canvas context")); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("compress failed")), "image/jpeg", quality);
+      };
+      img.onerror = () => reject(new Error("invalid image"));
+      img.src = ev.target!.result as string;
+    };
+    reader.onerror = () => reject(new Error("read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+// رفع صورة شاليه إلى Supabase Storage (أخف من base64) — تُضغط أولاً لتوفير مساحة التخزين دون خسارة وضوح ملحوظة.
 let lastUploadError: string | null = null;
 async function uploadChaletImage(file: File): Promise<string | null> {
-  const ext = file.name.split(".").pop() || "jpg";
+  let body: Blob = file;
+  let ext = file.name.split(".").pop() || "jpg";
+  let contentType = file.type || "application/octet-stream";
+  if (file.type.startsWith("image/")) {
+    try { body = await compressImageFile(file); ext = "jpg"; contentType = "image/jpeg"; }
+    catch { /* فشل الضغط (مثلاً صيغة غير مدعومة في الـ canvas) — نرفع الملف الأصلي بدلاً من فقدان الصورة بالكامل */ }
+  }
   const path = `chalets/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
   const res = await fetch(`${SUPA_URL}/storage/v1/object/chalet-images/${path}`, {
     method: "POST",
-    headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": file.type },
-    body: file,
+    headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": contentType },
+    body,
   });
   if (!res.ok) { const err = await res.text(); lastUploadError = err; console.error("فشل رفع الصورة:", err); return null; }
   lastUploadError = null;
@@ -647,8 +685,9 @@ function ChaletPublicPage({chaletName}:{chaletName:string}) {
   if(loading) return <div dir="rtl" style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Tajawal',sans-serif"}}><div style={{textAlign:"center",color:T}}><div style={{fontSize:40,marginBottom:8}}>⌛</div>جاري التحميل...</div></div>;
   if(!chalet) return <div dir="rtl" style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Tajawal',sans-serif"}}><div style={{textAlign:"center",color:T}}><div style={{fontSize:40,marginBottom:8}}>🏠</div>الشاليه غير موجود</div></div>;
 
-  let gallery: string[] = [];
-  try { gallery = chalet.gallery ? JSON.parse(chalet.gallery as string) : []; } catch { gallery = []; }
+  let galleryRaw: unknown[] = [];
+  try { galleryRaw = chalet.gallery ? JSON.parse(chalet.gallery as string) : []; } catch { galleryRaw = []; }
+  const gallery = galleryRaw.map(galleryUrl).filter(Boolean) as string[];
   const allImages = [chalet.img, ...gallery].filter(Boolean) as string[];
   const amenitiesList = (chalet.amenities||"").split(/[،,]/).map(a=>a.trim()).filter(Boolean);
 
@@ -4136,11 +4175,11 @@ ${poolLine}
               <label className="lbl">معرض الصور (تظهر للزبون في رابط الشاليه)</label>
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8,marginBottom:8}}>
                 {(()=>{
-                  let gal: string[] = [];
+                  let gal: unknown[] = [];
                   try { gal = cMdl.gallery ? JSON.parse(cMdl.gallery as string) : []; } catch { gal = []; }
                   return gal.map((g,i)=>(
                     <div key={i} style={{position:"relative",height:70}}>
-                      <img src={g} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:7}}/>
+                      <img src={galleryUrl(g)||""} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:7}}/>
                       <button type="button" onClick={()=>{
                         const next = gal.filter((_,gi)=>gi!==i);
                         setCMdl(p=>({...p,gallery:JSON.stringify(next)}));
@@ -4153,7 +4192,7 @@ ${poolLine}
                   <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={async e=>{
                     const files = Array.from(e.target.files||[]) as File[];
                     if(!files.length) return;
-                    let gal: string[] = [];
+                    let gal: unknown[] = [];
                     try { gal = cMdl.gallery ? JSON.parse(cMdl.gallery as string) : []; } catch { gal = []; }
                     setImgUploading(true);
                     for(const file of files){
