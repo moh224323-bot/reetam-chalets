@@ -24,10 +24,10 @@ const MONTHS = ["يناير","فبراير","مارس","أبريل","مايو","
 const DAYS   = ["أح","اث","ثل","أر","خم","جم","سب"];
 
 const ST: Record<string, { label: string; pill: string; pillTxt: string; bar: string; text: string; dot: string; solid: string }> = {
-  confirmed: { label:"مؤكد",  pill:"#DCFCE7", pillTxt:"#166534", bar:"rgba(34,197,94,.14)",  text:"#15803D", dot:"#22C55E", solid:"linear-gradient(180deg,#4ADE80,#16A34A)" },
-  pending:   { label:"معلق",  pill:"#FEF9C3", pillTxt:"#854D0E", bar:"rgba(234,179,8,.13)",   text:"#A16207", dot:"#EAB308", solid:"linear-gradient(180deg,#FDE047,#CA8A04)" },
-  completed: { label:"مكتمل", pill:"#F1F5F9", pillTxt:"#475569", bar:"rgba(100,116,139,.12)", text:"#64748B", dot:"#94A3B8", solid:"linear-gradient(180deg,#CBD5E1,#64748B)" },
-  cancelled: { label:"ملغي",  pill:"#FEE2E2", pillTxt:"#991B1B", bar:"rgba(239,68,68,.1)",   text:"#DC2626", dot:"#EF4444", solid:"linear-gradient(180deg,#FCA5A5,#DC2626)" },
+  confirmed: { label:"مؤكد",  pill:"var(--ok-bg)",   pillTxt:"var(--ok)",   bar:"var(--ok-bg)",   text:"var(--ok)",   dot:"var(--ok)",   solid:"#1E6B45" },
+  pending:   { label:"معلق",  pill:"var(--warn-bg)", pillTxt:"var(--warn)", bar:"var(--warn-bg)", text:"var(--warn)", dot:"var(--gold)", solid:"#B08A4A" },
+  completed: { label:"مكتمل", pill:"var(--surface-2)", pillTxt:"var(--text2)", bar:"var(--surface-2)", text:"var(--text2)", dot:"var(--text3)", solid:"#8F8172" },
+  cancelled: { label:"ملغي",  pill:"var(--bad-bg)",  pillTxt:"var(--bad)",  bar:"var(--bad-bg)",  text:"var(--bad)",  dot:"var(--bad)",  solid:"#A63A2A" },
 };
 
 function sameDay(a: Date, b: Date) {
@@ -100,7 +100,7 @@ export default function BookingCalendar({ bookings, names, onSelectBooking, onAd
                 <div key={i} style={{
                   width:CELL_W, flexShrink:0, textAlign:"center", padding:"6px 2px",
                   borderBottom:"2px solid var(--border2)",
-                  background: isToday ? "var(--text)" : isWknd ? "rgba(197,172,136,.06)" : "transparent",
+                  background: isToday ? "var(--text)" : isWknd ? "rgba(201,163,106,.06)" : "transparent",
                   borderInlineStart: i>0 ? "1px solid var(--border)" : undefined,
                 }}>
                   <div style={{ fontSize:9, fontWeight:600, color: isToday?"var(--bg)":"var(--text3)" }}>{DAYS[d.getDay()]}</div>
@@ -141,7 +141,7 @@ export default function BookingCalendar({ bookings, names, onSelectBooking, onAd
                           width:CELL_W, flexShrink:0, minHeight: mobile?46:52,
                           background: ri%2 ? "var(--surface)" : "var(--bg)",
                           borderInlineStart: i>0 ? "1px solid var(--border)" : undefined,
-                          boxShadow: isToday ? "inset 0 0 0 1.5px rgba(197,172,136,.5)" : undefined,
+                          boxShadow: isToday ? "inset 0 0 0 1.5px rgba(201,163,106,.5)" : undefined,
                           opacity: isWknd ? .97 : 1,
                           cursor: onAddAt ? "cell" : "default",
                         }}
@@ -163,7 +163,7 @@ export default function BookingCalendar({ bookings, names, onSelectBooking, onAd
                     return (
                       <div key={bi}
                         onClick={(e) => { e.stopPropagation(); onSelectBooking?.(b); }}
-                        title={`${b.guest} · ${b.chalet}\n${b.date_from} → ${b.date_to}\n${Number(b.price).toLocaleString()} ر`}
+                        title={`${b.guest} · ${b.chalet}\n${b.date_from} → ${b.date_to}\n${Number(b.price).toLocaleString("en-US")} ر`}
                         style={{
                           position:"absolute", top:5, bottom:5,
                           right: startIdx * CELL_W, width: (endIdx-startIdx) * CELL_W - 3,
@@ -222,9 +222,9 @@ export default function BookingCalendar({ bookings, names, onSelectBooking, onAd
                 style={{
                   minHeight:mobile?48:100, padding: mobile?"6px 2px":"6px 5px 5px", borderRadius:8,
                   display: mobile?"flex":undefined, flexDirection: mobile?"column":undefined, alignItems: mobile?"center":undefined,
-                  background: isSel   ? "rgba(87,109,111,.12)"
-                            : isToday ? "rgba(197,172,136,.15)"
-                            : isWknd  ? "rgba(197,172,136,.04)"
+                  background: isSel   ? "rgba(107,95,82,.12)"
+                            : isToday ? "rgba(201,163,106,.15)"
+                            : isWknd  ? "rgba(201,163,106,.04)"
                             : "var(--surface)",
                   border: isSel   ? "2px solid var(--text2)"
                         : isToday ? "2px solid var(--text)"
@@ -276,7 +276,7 @@ export default function BookingCalendar({ bookings, names, onSelectBooking, onAd
                       const isStart = sameDay(new Date(b.date_from), date);
                       const isEnd   = sameDay(new Date(b.date_to),   date);
                       return (
-                        <div key={j} title={`${b.guest} · ${b.chalet}\n${Number(b.price).toLocaleString()} ر`} style={{
+                        <div key={j} title={`${b.guest} · ${b.chalet}\n${Number(b.price).toLocaleString("en-US")} ر`} style={{
                           display:"flex", alignItems:"center", gap:3,
                           background: cfg.bar,
                           borderRight: `3px solid ${cfg.dot}`,
@@ -346,7 +346,7 @@ export default function BookingCalendar({ bookings, names, onSelectBooking, onAd
                 color:      view===v ? "var(--bg)"   : "var(--text2)",
                 border:"none", padding:"6px 14px", fontSize:12, borderRadius:0,
               }}>
-                {v === "timeline" ? "📊 جدول زمني" : "شهري"}
+                {v === "timeline" ? "جدول زمني" : "شهري"}
               </button>
             ))}
           </div>
@@ -363,7 +363,7 @@ export default function BookingCalendar({ bookings, names, onSelectBooking, onAd
         <div style={{ margin:"0 14px 14px", borderRadius:12, padding:"14px 16px", background:"var(--th-bg)", border:"1px solid var(--border2)" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:12 }}>
             <span style={{ fontWeight:800, color:"var(--text)", fontSize:14 }}>
-              {selDay.toLocaleDateString("ar-SA-u-ca-gregory", { weekday:"long", day:"numeric", month:"long" })}
+              {selDay.toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { weekday:"long", day:"numeric", month:"long" })}
             </span>
             <button onClick={() => setSelDay(null)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:18, color:"var(--text3)" }}>×</button>
           </div>
@@ -383,7 +383,7 @@ export default function BookingCalendar({ bookings, names, onSelectBooking, onAd
                   <div style={{ fontSize:12, color:"var(--text2)", marginBottom:4 }}>{b.chalet}</div>
                   <div style={{ display:"flex", justifyContent:"space-between", fontSize:11, color:"var(--text3)" }}>
                     <span>{b.date_from} → {b.date_to}</span>
-                    <span style={{ fontWeight:700, color:cfg.text }}>{Number(b.price).toLocaleString()} ر</span>
+                    <span style={{ fontWeight:700, color:cfg.text }}>{Number(b.price).toLocaleString("en-US")} ر</span>
                   </div>
                 </div>
               );
