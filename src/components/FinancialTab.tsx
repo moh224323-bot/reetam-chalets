@@ -5,6 +5,7 @@ import { B, S, T, TD, W, SA, SD, SI, SL, BD } from "../lib/colors";
 import { BOOKING_STATUS } from "../lib/constants";
 import { Bdg, SectionTitle, DataTable, Modal } from "./ui";
 import MonthlyChart from "./MonthlyChart";
+import { Icon, Pill, SAR, PageHead, Kpi, Seg, CardHead, Track, toneFor } from "./ds";
 
 const FREQ_LABEL: Record<string,string> = { monthly:"شهري", quarterly:"ربع سنوي", yearly:"سنوي" };
 
@@ -181,14 +182,14 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
     const spendInsights: { icon: string; text: string; level: "warn" | "good" }[] = [];
     catReport.forEach(c => {
       if (c.isNew && c.amt >= 200) {
-        spendInsights.push({ icon: "🆕", level: "warn", text: `تصنيف "${c.cat}" جديد تماماً هذه الفترة (${c.amt.toLocaleString()} ر) ولم يكن موجوداً في ${prevRange?.label || "الفترة السابقة"} — تأكد أنه متوقَّع.` });
+        spendInsights.push({ icon: "🆕", level: "warn", text: `تصنيف "${c.cat}" جديد تماماً هذه الفترة (${c.amt.toLocaleString("en-US")} ر) ولم يكن موجوداً في ${prevRange?.label || "الفترة السابقة"} — تأكد أنه متوقَّع.` });
       } else if (c.chg !== null && c.chg >= 30 && c.amt >= 200) {
-        spendInsights.push({ icon: "🔺", level: "warn", text: `تصنيف "${c.cat}" ارتفع ${c.chg}% مقارنة بـ${prevRange?.label || "الفترة السابقة"} (${c.amt.toLocaleString()} ر) — يستحق المراجعة.` });
+        spendInsights.push({ icon: "🔺", level: "warn", text: `تصنيف "${c.cat}" ارتفع ${c.chg}% مقارنة بـ${prevRange?.label || "الفترة السابقة"} (${c.amt.toLocaleString("en-US")} ر) — يستحق المراجعة.` });
       }
     });
     chaletSpend.forEach(c => {
       if (c.r === 0 && c.spend > 0) {
-        spendInsights.push({ icon: "⚠️", level: "warn", text: `${c.n}: صُرف ${c.spend.toLocaleString()} ر بدون أي إيرادات في ${plab} — تحقق من السبب.` });
+        spendInsights.push({ icon: "⚠️", level: "warn", text: `${c.n}: صُرف ${c.spend.toLocaleString("en-US")} ر بدون أي إيرادات في ${plab} — تحقق من السبب.` });
       } else if (c.ratio !== null && c.ratio >= 50) {
         spendInsights.push({ icon: "🏠", level: "warn", text: `${c.n}: المصاريف تلتهم ${c.ratio}% من إيراداته — راجع التكاليف أو أسعار الحجز لهذا الشاليه.` });
       }
@@ -196,7 +197,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
     if (periodMonths && rev > 0) {
       const fixedForPeriod = fixedActiveMonthly * periodMonths;
       if (fixedForPeriod / rev >= 0.3) {
-        spendInsights.push({ icon: "📌", level: "warn", text: `الالتزامات الثابتة (${fixedForPeriod.toLocaleString()} ر خلال ${plab}) تمثل ${Math.round(fixedForPeriod / rev * 100)}% من الإيرادات — فكر بإعادة التفاوض على العقود الثابتة.` });
+        spendInsights.push({ icon: "📌", level: "warn", text: `الالتزامات الثابتة (${fixedForPeriod.toLocaleString("en-US")} ر خلال ${plab}) تمثل ${Math.round(fixedForPeriod / rev * 100)}% من الإيرادات — فكر بإعادة التفاوض على العقود الثابتة.` });
       }
     }
     if (rev > 0 && mex / rev >= 0.15) {
@@ -260,14 +261,14 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
       ``,
       `🏠 *تفصيل حسب الشاليه:*`,
       ...csum.map(c =>
-        `• ${c.n}: إيرادات ${c.r.toLocaleString()} ر — صيانة ${c.e.toLocaleString()} ر — *صافي ${c.net.toLocaleString()} ر*`
+        `• ${c.n}: إيرادات ${c.r.toLocaleString("en-US")} ر — صيانة ${c.e.toLocaleString("en-US")} ر — *صافي ${c.net.toLocaleString("en-US")} ر*`
       ),
       ``,
       `────────────`,
-      `💵 إجمالي الإيرادات: ${rev.toLocaleString()} ر`,
-      `🔧 تكاليف الصيانة: ${mex.toLocaleString()} ر`,
-      `💸 مصاريف أخرى: ${exTotal.toLocaleString()} ر`,
-      `📈 *صافي الربح الإجمالي: ${trueNet.toLocaleString()} ر*`,
+      `💵 إجمالي الإيرادات: ${rev.toLocaleString("en-US")} ر`,
+      `🔧 تكاليف الصيانة: ${mex.toLocaleString("en-US")} ر`,
+      `💸 مصاريف أخرى: ${exTotal.toLocaleString("en-US")} ر`,
+      `📈 *صافي الربح الإجمالي: ${trueNet.toLocaleString("en-US")} ر*`,
       ``,
       `_تقرير آلي من نظام إدارة ريتام_`,
     ];
@@ -277,7 +278,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
   // أرقام سالبة داخل صفحة RTL تحتاج اتجاه LTR صريح، وإلا تنعكس إشارة السالب بصرياً
   const Money = ({ value, size, color }: { value: number; size?: number; color?: string }) => (
     <span dir="ltr" style={{ fontSize:size, color, whiteSpace:"nowrap" }}>
-      {value<0?"−":""}{Math.abs(value).toLocaleString()} <span style={{fontSize: size?size*0.7:11, opacity:.6}}>ر</span>
+      {value<0?"−":""}{Math.abs(value).toLocaleString("en-US")} <span style={{fontSize: size?size*0.7:11, opacity:.6}}>ر</span>
     </span>
   );
 
@@ -306,196 +307,145 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
     </div>
   );
 
+  // الليالي المتاحة في الفترة (لحساب الإشغال والعائد لكل ليلة متاحة)
+  const scopeCount = effFch === "الكل" ? names.length : 1;
+  const rangeDays = rf && rt ? Math.max(1, Math.round((rt.getTime() - rf.getTime()) / 86400000) + 1) : 0;
+  const availNights = scopeCount * rangeDays;
+  const occPct = availNights > 0 ? Math.round(nts / availNights * 100) : null;
+  const revpar = availNights > 0 ? Math.round(rev / availNights) : null;
+  const expRatio = rev > 0 ? Math.round((mex + exTotal) / rev * 100) : null;
+  const unassigned = receiverBreakdown.find(r => r.name === "غير محدد");
+
+  const actions = [
+    { l:"تقرير المصاريف", i:"receipt", fn:()=>setReportOpen(true) },
+    { l:"تصدير Excel", i:"download", fn:exportCSV },
+    { l:"تقرير المستثمرين", i:"send", fn:sendInvestorReport },
+    ...(onAddFixedExpense?[{ l:"مصروف ثابت", i:"plus", fn:onAddFixedExpense }]:[]),
+  ];
+
   return (
-    <div>
-      {/* ── الرأس ── */}
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
-        <SectionTitle title={lockedChalet ? "المالية — "+lockedChalet : "المالية"}/>
-        <div style={{ position:"relative" }}>
-          <button onClick={()=>setMenuOpen(o=>!o)} aria-label="خيارات إضافية"
-            style={{ background:SL, color:B, border:"1px solid rgba(201,163,106,.35)", borderRadius:10, width:38, height:38, fontSize:18, fontWeight:900, cursor:"pointer" }}>
-            ⋯
-          </button>
-          {menuOpen && (
-            <>
-              <div style={{ position:"fixed", inset:0, zIndex:299 }} onClick={()=>setMenuOpen(false)}/>
-              <div style={{ position:"absolute", top:"110%", left:0, zIndex:300, background:"#fff", borderRadius:12, boxShadow:"0 8px 24px rgba(0,0,0,.18)", border:"1px solid rgba(201,163,106,.2)", minWidth:210, overflow:"hidden" }}>
-                {[
-                  { l:"📋 تقرير المصاريف الاحترافي", fn:()=>setReportOpen(true) },
-                  { l:"⬇ تصدير Excel", fn:exportCSV },
-                  { l:"📤 إرسال تقرير للمستثمرين", fn:sendInvestorReport },
-                  ...(onAddExpense?[{ l:"+ إضافة مصروف", fn:onAddExpense }]:[]),
-                  ...(onAddFixedExpense?[{ l:"📌 مصروف ثابت", fn:onAddFixedExpense }]:[]),
-                ].map((a,i,arr)=>(
-                  <button key={i} onClick={()=>{setMenuOpen(false);a.fn();}}
-                    style={{ display:"block", width:"100%", textAlign:"right", padding:"12px 16px", background:"none", border:"none", borderBottom:i<arr.length-1?"1px solid rgba(201,163,106,.12)":"none", cursor:"pointer", fontFamily:"'IBM Plex Sans Arabic',sans-serif", fontSize:13, fontWeight:600, color:B }}>
-                    {a.l}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-      </div>
+    <div className="x-page">
+      <PageHead title={lockedChalet ? "المالية · " + lockedChalet : "المالية"} sub="قائمة الدخل والمؤشرات الأساسية">
+        {actions.map((a,i)=><button key={i} className="btn bo" onClick={a.fn}><Icon n={a.i}/>{a.l}</button>)}
+        {onAddExpense && <button className="btn bp" onClick={onAddExpense}><Icon n="plus"/>إضافة مصروف</button>}
+      </PageHead>
 
-      {/* ── بطاقة صافي الربح + القائمة المالية ── */}
-      <div className="card" style={{ padding:"18px 18px 16px", marginBottom:14 }}>
-        {/* شريط الفترة — سطر واحد قابل للتمرير */}
-        <div style={{ display:"flex", gap:7, overflowX:"auto", paddingBottom:4, marginBottom:16, WebkitOverflowScrolling:"touch" }}>
-          {(Object.entries(PERIOD_LABELS) as [Period, string][]).map(([v, l]) => (
-            <button key={v} className="btn" onClick={() => setPeriod(v)}
-              style={{ background:period===v?B:W, color:period===v?S:B, border:"1.5px solid "+(period===v?B:"rgba(201,163,106,.4)"), padding:"7px 14px", fontSize:12, flexShrink:0, whiteSpace:"nowrap" }}>
-              {l}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ fontSize:11.5, color:SI, fontWeight:700, marginBottom:6 }}>
-          {"صافي الربح · " + plab + (effFch !== "الكل" ? " · " + effFch : "")}
-        </div>
-        <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
-          <div style={{ fontSize:34, fontWeight:900, color: trueNet>=0?SD:"#A63A2A", lineHeight:1 }}>
-            <Money value={trueNet} size={34}/>
-          </div>
-          {compareMode==="periods" && prev && <DeltaChip v={delta(trueNet, prev.trueNet)}/>}
-        </div>
-        <div style={{ fontSize:12, color:T, marginTop:4 }}>
-          هامش الربح {margin}%
-          {compareMode==="periods" && prev && prevRange && (" · مقابل "+prevRange.label+": "+prev.trueNet.toLocaleString()+" ر")}
-        </div>
-
-        <div style={{ height:1, background:"rgba(201,163,106,.18)", margin:"16px 0 10px" }}/>
-
-        <StatementRow label="إيرادات الحجوزات" value={rev} sub={fb.length+" حجز"}/>
-        <StatementRow label="تكاليف الصيانة" value={-mex}/>
-        <StatementRow label="مصاريف عامة" value={-exTotal}/>
-        <StatementRow label="صافي الربح" value={trueNet} bold/>
-      </div>
-
-      {/* ── مؤشرات ثانوية ── */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))", gap:10, marginBottom:14 }}>
-        {[
-          { l:"عدد الحجوزات",       v:String(fb.length),              i:"📅" },
-          { l:"ليالي محجوزة",       v:String(nts),                    i:"🌙" },
-          { l:"متوسط سعر الليلة",   v:adr.toLocaleString()+" ر",      i:"💳" },
-          { l:"إيداعات التأمين",    v:insIn.toLocaleString()+" ر",    i:"🛡️" },
-        ].map((s,i)=>(
-          <div key={i} style={{ background:SL, borderRadius:12, padding:"12px 14px", border:"1px solid rgba(201,163,106,.18)" }}>
-            <div style={{ fontSize:16, marginBottom:4 }}>{s.i}</div>
-            <div style={{ fontSize:14.5, fontWeight:800, color:B }}>{s.v}</div>
-            <div style={{ fontSize:10, color:T, marginTop:2 }}>{s.l}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── فلاتر إضافية: الشاليه + وضع المقارنة ── */}
-      <div style={{ display:"flex", flexWrap:"wrap", gap:8, alignItems:"center", marginBottom:18 }}>
+      <div className="x-toolbar">
+        <Seg label="الفترة" value={period} onChange={v => setPeriod(v)} options={(Object.entries(PERIOD_LABELS) as [Period, string][]).map(([v,l])=>({v,l}))}/>
         {!lockedChalet && (
-          <select className="inp" style={{ width:"auto", minWidth:150 }} value={fch} onChange={e => setFch(e.target.value)}>
+          <select className="x-select" aria-label="الشاليه" value={fch} onChange={e => setFch(e.target.value)}>
             <option value="الكل">كل الشاليهات</option>
             {names.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         )}
         {period === "custom" && (
           <>
-            <input className="inp" type="date" style={{ width:"auto" }} value={cf} onChange={e => setCf(e.target.value)} placeholder="من"/>
-            <input className="inp" type="date" style={{ width:"auto" }} value={ct} onChange={e => setCt(e.target.value)} placeholder="إلى"/>
+            <input className="x-select" type="date" aria-label="من" value={cf} onChange={e => setCf(e.target.value)}/>
+            <input className="x-select" type="date" aria-label="إلى" value={ct} onChange={e => setCt(e.target.value)}/>
           </>
         )}
-        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-          {([
-            ["none","نظرة عامة"],
-            ...(prevRange?[["periods","↔ مقارنة الفترات"]]:[]),
-            ...(canCompareChalets?[["chalets","🏠 مقارنة الشاليهات"]]:[]),
-          ] as [CompareMode,string][]).map(([v,l]) => (
-            <button key={v} className="btn bsm" onClick={()=>setCompareMode(v)}
-              style={{ background:compareMode===v?"#7C3AED":"#F3F4F6", color:compareMode===v?"#fff":"#374151", padding:"6px 12px", fontSize:12, fontWeight:700 }}>
-              {l}
-            </button>
-          ))}
+      </div>
+
+      <div className="x-grid2">
+        <div className="x-card x-pad">
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, marginBottom:4, flexWrap:"wrap" }}>
+            <h2 style={{ fontFamily:"var(--f-body)", fontSize:16, fontWeight:700, display:"flex", alignItems:"center", gap:10 }}><Icon n="receipt" style={{ color:"var(--link)" }}/>{"قائمة الدخل · " + plab}</h2>
+            {rev > 0 && <Pill tone={margin >= 40 ? "ok" : margin >= 0 ? "warn" : "bad"}>{"هامش " + margin + "%"}</Pill>}
+          </div>
+          <div className="x-stmt">
+            <div className="r"><span className="lab">إيرادات الحجوزات<small>{nts.toLocaleString("en-US") + " ليلة · " + fb.length + " حجز"}</small></span><b><SAR v={rev} unit={false}/></b></div>
+            <div className="r"><span className="lab">تكاليف الصيانة<small>{fm.length + " عملية"}</small></span><b className="x-neg"><SAR v={-mex} unit={false}/></b></div>
+            <div className="r"><span className="lab">المصاريف التشغيلية<small>{fex.length + " مصروف (ثابتة مدفوعة ومتنوعة)"}</small></span><b className="x-neg"><SAR v={-exTotal} unit={false}/></b></div>
+            <div className="r total"><span>صافي الربح</span><span className={trueNet < 0 ? "x-neg" : "x-pos"}><SAR v={trueNet}/></span></div>
+          </div>
+          {prev && prevRange && prev.rev > 0 && (
+            <p className="x-muted" style={{ fontSize:13, marginTop:12 }}>
+              {"مقارنة بـ" + prevRange.label + ": الإيرادات "}<DeltaChip v={delta(rev, prev.rev)}/>{" · الصافي "}<DeltaChip v={delta(trueNet, prev.trueNet)}/>
+            </p>
+          )}
+        </div>
+        <div className="x-kpis" style={{ gridTemplateColumns:"repeat(2,minmax(0,1fr))", alignContent:"start" }}>
+          <Kpi label="متوسط سعر الليلة" value={<SAR v={adr}/>}/>
+          <Kpi label="العائد لكل ليلة متاحة" value={revpar === null ? "—" : <SAR v={revpar}/>}/>
+          <Kpi label="نسبة الإشغال" value={occPct === null ? "—" : <>{occPct}<small>%</small></>}>{occPct !== null && <Track pct={occPct} tone={toneFor(occPct)}/>}</Kpi>
+          <Kpi label="المصاريف ÷ الإيرادات" value={expRatio === null ? "—" : <>{expRatio}<small>%</small></>} tone={expRatio !== null && expRatio > 60 ? "neg" : undefined}/>
         </div>
       </div>
 
-      {/* ── مقارنة الفترات ── */}
-      {compareMode==="periods" && prev && prevRange && (
-        <div className="card" style={{ overflow:"hidden", marginBottom:16 }}>
-          <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(201,163,106,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>
-            {"↔ مقارنة: " + plab + " مقابل " + prevRange.label}
-          </div>
-          <DataTable heads={["البند", plab, prevRange.label, "التغيّر"]}
-            rows={[
-              { l:"الإيرادات", c:rev, p:prev.rev },
-              { l:"تكاليف الصيانة", c:mex, p:prev.mex },
-              { l:"مصاريف عامة", c:exTotal, p:prev.exTotal },
-              { l:"صافي الربح", c:trueNet, p:prev.trueNet, bold:true },
-            ].map((row,i)=>(
-              <tr key={i}>
-                <td data-label="البند" style={{ fontWeight:row.bold?800:600, color:row.bold?B:T }}>{row.l}</td>
-                <td data-label={plab} style={{ fontWeight:row.bold?800:700, color:B }}><Money value={row.c}/></td>
-                <td data-label={prevRange.label} style={{ color:SI }}><Money value={row.p}/></td>
-                <td data-label="التغيّر"><DeltaChip v={delta(row.c,row.p)}/></td>
-              </tr>
-            ))}
-          />
-        </div>
-      )}
-
-      {/* ── مقارنة الشاليهات ── */}
-      {compareMode==="chalets" && csum.length > 0 && (
-        <div className="card" style={{ overflow:"hidden", marginBottom:16 }}>
-          <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(201,163,106,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>{"🏠 مقارنة الشاليهات — " + plab}</div>
-          <DataTable heads={["الشاليه","الإيرادات","المصروفات","صافي الربح","نسبة الربح"]}
-            rows={[...csum].sort((a,b)=>b.net-a.net).map((c, i) => {
-              const pct = c.r > 0 ? Math.min(100, Math.max(0, (c.net / c.r) * 100)) : 0;
-              return (
+      {prev && prevRange && (prev.rev > 0 || prev.mex > 0 || prev.exTotal > 0) && (
+        <div className="x-card">
+          <CardHead icon="trend" title={plab + " مقابل " + prevRange.label}/>
+          <div className="tbl-wrap"><table className="x-tbl">
+            <thead><tr><th>البند</th><th>{plab}</th><th>{prevRange.label}</th><th>التغيّر</th></tr></thead>
+            <tbody>
+              {[
+                { l:"الإيرادات", c:rev, p:prev.rev },
+                { l:"تكاليف الصيانة", c:mex, p:prev.mex },
+                { l:"المصاريف التشغيلية", c:exTotal, p:prev.exTotal },
+                { l:"صافي الربح", c:trueNet, p:prev.trueNet, bold:true },
+              ].map((row,i)=>(
                 <tr key={i}>
-                  <td data-label="الشاليه" style={{ fontWeight:700 }}>{"🏠 " + c.n}</td>
-                  <td data-label="الإيرادات" style={{ fontWeight:700, color:T }}>{c.r.toLocaleString() + " ر"}</td>
-                  <td data-label="المصروفات" style={{ fontWeight:700, color:"#A63A2A" }}>{(c.e+c.x).toLocaleString() + " ر"}</td>
-                  <td data-label="صافي الربح" style={{ fontWeight:800, color:c.net>=0?SD:"#A63A2A" }}><Money value={c.net}/></td>
-                  <td data-label="نسبة الربح">
-                    <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                      <div style={{ flex:1, background:"#f1f5f9", borderRadius:99, height:7, overflow:"hidden", minWidth:60 }}>
-                        <div style={{ width:pct+"%", height:"100%", background:c.net>=0?SA:"#A63A2A", borderRadius:99 }}/>
-                      </div>
-                      <span style={{ fontSize:11, fontWeight:700, color:c.net>=0?SD:"#A63A2A", minWidth:32 }}>{Math.round(pct) + "%"}</span>
-                    </div>
-                  </td>
+                  <td className={row.bold ? "strong" : ""}>{row.l}</td>
+                  <td className={row.bold ? "strong" : ""}><SAR v={row.c} unit={false}/></td>
+                  <td className="x-muted"><SAR v={row.p} unit={false}/></td>
+                  <td><DeltaChip v={delta(row.c,row.p)}/></td>
                 </tr>
-              );
-            })}
-          />
+              ))}
+            </tbody>
+          </table></div>
         </div>
       )}
 
-      {/* ── اتجاه الإيرادات خلال العام ── */}
-      <MonthlyChart
-        bookings={bookings.filter(byCh)}
-        expenses={expenses.filter(byCh)}
-        maint={maintenance.filter(byCh)}
-        B={B} T={T} SI={SI} SL={SL}
-      />
+      {canCompareChalets && csum.length > 0 && (
+        <div className="x-card">
+          <CardHead icon="home" title="ربحية كل شاليه" sub="مرتبة من الأعلى صافياً"/>
+          <div className="tbl-wrap"><table className="x-tbl">
+            <thead><tr><th>الشاليه</th><th>الإيرادات</th><th>المصاريف</th><th>الصافي</th><th>هامش الربح</th></tr></thead>
+            <tbody>
+              {[...csum].sort((a,b)=>b.net-a.net).map((c, i) => {
+                const m = c.r > 0 ? Math.round(c.net / c.r * 100) : null;
+                return (
+                  <tr key={i}>
+                    <td className="strong">{c.n}</td>
+                    <td><SAR v={c.r} unit={false}/></td>
+                    <td><SAR v={c.e + c.x} unit={false}/></td>
+                    <td className={"strong " + (c.net < 0 ? "x-neg" : "x-pos")}><SAR v={c.net} unit={false}/></td>
+                    <td>{m === null ? <Pill tone="bad">بدون إيراد</Pill> : <Pill tone={m >= 50 ? "ok" : m >= 0 ? "warn" : "bad"}>{m + "%"}</Pill>}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+            <tfoot><tr><td>الإجمالي</td><td><SAR v={rev} unit={false}/></td><td><SAR v={mex + exTotal} unit={false}/></td><td className={trueNet < 0 ? "x-neg" : "x-pos"}><SAR v={trueNet} unit={false}/></td><td>{margin + "%"}</td></tr></tfoot>
+          </table></div>
+        </div>
+      )}
 
-      {/* ── تفاصيل الإيرادات والمصاريف — أرقام مختصرة، والتفاصيل في نافذة منبثقة ── */}
-      <div className="card" style={{ overflow:"hidden" }}>
-        <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(201,163,106,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>📋 التفاصيل</div>
-        <div style={{ padding:"2px 14px" }}>
-          {[
-            { key:"bookings" as const, icon:"💵", label:"إيرادات الحجوزات", sub:fb.length+" حجز", value:rev, valueColor:T, badge:null as React.ReactNode, show:true },
-            { key:"receivers" as const, icon:"👥", label:"حسب المستلم", sub:receiverBreakdown.length+" شخص", value:rev, valueColor:T,
-              badge: (()=>{ const unassigned = receiverBreakdown.find(r=>r.name==="غير محدد"); return (unassigned ? <span style={{color:"#A63A2A",fontWeight:700}}>{" · ⚠ "+unassigned.count+" بدون مستلم"}</span> : null) as React.ReactNode; })(),
-              show:fb.length>0 },
-            { key:"fixed" as const, icon:"📌", label:"المصروفات الثابتة", sub:fixedList.length+" بند", value:fixedActiveMonthly, valueColor:"#7C3AED",
-              badge: (unpaidFixedCount>0 ? <span style={{color:"#92400E",fontWeight:700}}>{" · ⚠ "+unpaidFixedCount+" لم يُسدَّد"}</span> : null) as React.ReactNode,
-              show:fixedList.length>0 },
-            { key:"maint" as const, icon:"🔧", label:"تكاليف الصيانة", sub:fm.length+" عملية", value:mex, valueColor:"#A63A2A", badge:null as React.ReactNode, show:fm.length>0 },
-            { key:"expenses" as const, icon:"💸", label:"المصاريف", sub:fex.length+" مصروف", value:exTotal, valueColor:"#A63A2A", badge:null as React.ReactNode, show:fex.length>0 },
-            { key:"insurance" as const, icon:"🛡️", label:"معاملات التأمين", sub:ft.length+" معاملة", value:insIn, valueColor:T, badge:null as React.ReactNode, show:ft.length>0 },
-          ].filter(r=>r.show).map((r,i,arr)=>(
-            <div key={r.key} style={{ borderBottom: i<arr.length-1?"1px solid rgba(201,163,106,.12)":"none" }}>
-              <DetailRow icon={r.icon} label={r.label} sub={r.sub} badge={r.badge} value={r.value} valueColor={r.valueColor} onClick={()=>setDetailModal(r.key)}/>
-            </div>
-          ))}
+      <div className="x-grid2">
+        <MonthlyChart
+          bookings={bookings.filter(byCh)}
+          expenses={expenses.filter(byCh)}
+          maint={maintenance.filter(byCh)}
+          B={B} T={T} SI={SI} SL={SL}
+        />
+        <div className="x-card">
+          <CardHead icon="receipt" title="التفاصيل" sub="اضغط على أي بند لعرض سجله"/>
+          <div className="x-list">
+            {[
+              { key:"bookings" as const, icon:"cal", tone:"ok", label:"إيرادات الحجوزات", sub:fb.length+" حجز", value:rev, show:true },
+              { key:"receivers" as const, icon:"users", tone:unassigned?"bad":"muted", label:"حسب المستلم", sub:receiverBreakdown.length+" شخص"+(unassigned?" · "+unassigned.count+" بدون مستلم":""), value:rev, show:fb.length>0 },
+              { key:"fixed" as const, icon:"receipt", tone:unpaidFixedCount>0?"warn":"muted", label:"المصروفات الثابتة (شهرياً)", sub:fixedList.length+" بند"+(unpaidFixedCount>0?" · "+unpaidFixedCount+" لم يُسدَّد":""), value:fixedActiveMonthly, show:fixedList.length>0 },
+              { key:"maint" as const, icon:"wrench", tone:"muted", label:"تكاليف الصيانة", sub:fm.length+" عملية", value:mex, show:fm.length>0 },
+              { key:"expenses" as const, icon:"money", tone:"muted", label:"المصاريف", sub:fex.length+" مصروف", value:exTotal, show:fex.length>0 },
+              { key:"insurance" as const, icon:"shield", tone:"muted", label:"معاملات التأمين", sub:ft.length+" معاملة", value:insIn, show:ft.length>0 },
+            ].filter(r=>r.show).map(r=>(
+              <button key={r.key} type="button" className="x-li click" style={{ background:"none", border:0, borderBottom:"1px solid var(--line)", width:"100%", textAlign:"right", fontFamily:"var(--f-body)" }} onClick={()=>setDetailModal(r.key)}>
+                <div className={"x-ic " + r.tone}><Icon n={r.icon}/></div>
+                <div className="meta"><b>{r.label}</b><span>{r.sub}</span></div>
+                <span className="amt"><SAR v={r.value}/></span>
+                <Icon n="chev" s={16} style={{ color:"var(--text3)" }}/>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -511,14 +461,14 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                     <td data-label="الشاليه">{b.chalet}</td>
                     <td data-label="الفترة" style={{ fontSize:12 }}>{formatDate(b.date_from) + " - " + formatDate(b.date_to)}</td>
                     <td data-label="الليالي" style={{ textAlign:"center" }}>{nightsBetween(b.date_from, b.date_to)}</td>
-                    <td data-label="المبلغ" style={{ fontWeight:700, color:T }}>{Number(b.price).toLocaleString() + " ر"}</td>
+                    <td data-label="المبلغ" style={{ fontWeight:700, color:T }}>{Number(b.price).toLocaleString("en-US") + " ر"}</td>
                     <td data-label="استلم المبلغ" style={{ fontSize:12, color:b.received_by?B:SI }}>{b.received_by || "-"}</td>
                     <td data-label="الحالة"><Bdg bg={BOOKING_STATUS[b.status]?.bg||"#eee"} color={BOOKING_STATUS[b.status]?.color||"#333"}>{BOOKING_STATUS[b.status]?.label||b.status}</Bdg></td>
                   </tr>
                 ))}
                 footer={[
                   <td key={0} colSpan={4} style={{ fontWeight:800, color:B }}>الإجمالي</td>,
-                  <td key={1} style={{ fontWeight:800, color:T, fontSize:15 }}>{rev.toLocaleString() + " ر"}</td>,
+                  <td key={1} style={{ fontWeight:800, color:T, fontSize:15 }}>{rev.toLocaleString("en-US") + " ر"}</td>,
                   <td key={2}/>, <td key={3}/>,
                 ]}
               />
@@ -534,13 +484,13 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
               <tr key={i}>
                 <td data-label="المستلم" style={{ fontWeight:700, color: r.name==="غير محدد"?"#A63A2A":B }}>{r.name}</td>
                 <td data-label="عدد الحجوزات" style={{ textAlign:"center" }}>{r.count}</td>
-                <td data-label="المبلغ" style={{ fontWeight:700, color:T }}>{r.total.toLocaleString() + " ر"}</td>
+                <td data-label="المبلغ" style={{ fontWeight:700, color:T }}>{r.total.toLocaleString("en-US") + " ر"}</td>
               </tr>
             ))}
             footer={[
               <td key={0} style={{ fontWeight:800, color:B }}>الإجمالي</td>,
               <td key={1} style={{ textAlign:"center", fontWeight:800, color:B }}>{fb.length}</td>,
-              <td key={2} style={{ fontWeight:800, color:T, fontSize:15 }}>{rev.toLocaleString() + " ر"}</td>,
+              <td key={2} style={{ fontWeight:800, color:T, fontSize:15 }}>{rev.toLocaleString("en-US") + " ر"}</td>,
             ]}
           />
         </Modal>
@@ -548,7 +498,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
 
       {/* المصروفات الثابتة */}
       {detailModal==="fixed" && (
-        <Modal title={"📌 المصروفات الثابتة · شهري " + fixedActiveMonthly.toLocaleString() + " ر"} onClose={()=>setDetailModal(null)}>
+        <Modal title={"📌 المصروفات الثابتة · شهري " + fixedActiveMonthly.toLocaleString("en-US") + " ر"} onClose={()=>setDetailModal(null)}>
           <DataTable heads={["الشاليه","المصروف","الفئة","التكرار","المبلغ","الحالة","إجراءات"]}
             rows={fixedList.map(fx => {
               const paid = paidThisMonth.has(fx.name);
@@ -558,7 +508,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                   <td data-label="المصروف" style={{ fontWeight:700 }}>{fx.name}</td>
                   <td data-label="الفئة"><Bdg bg="#EDE9FE" color="#5B21B6">{fx.category}</Bdg></td>
                   <td data-label="التكرار"><Bdg bg="#F3F4F6" color="#374151">{FREQ_LABEL[fx.frequency]||fx.frequency}</Bdg></td>
-                  <td data-label="المبلغ" style={{ fontWeight:800, color:"#7C3AED" }}>{Number(fx.amount).toLocaleString() + " ر"}</td>
+                  <td data-label="المبلغ" style={{ fontWeight:800, color:"#7C3AED" }}>{Number(fx.amount).toLocaleString("en-US") + " ر"}</td>
                   <td data-label="الحالة">
                     {!fx.active
                       ? <Bdg bg="#F3F4F6" color="#6B7280">موقف</Bdg>
@@ -596,12 +546,12 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                 <td data-label="الشاليه" style={{ fontWeight:600 }}>{m.chalet}</td>
                 <td data-label="المشكلة">{m.issue}</td>
                 <td data-label="التاريخ">{formatDate(m.maint_date)}</td>
-                <td data-label="التكلفة" style={{ fontWeight:700, color:"#A63A2A" }}>{Number(m.cost).toLocaleString() + " ر"}</td>
+                <td data-label="التكلفة" style={{ fontWeight:700, color:"#A63A2A" }}>{Number(m.cost).toLocaleString("en-US") + " ر"}</td>
               </tr>
             ))}
             footer={[
               <td key={0} colSpan={3} style={{ fontWeight:800, color:B }}>الإجمالي</td>,
-              <td key={1} style={{ fontWeight:800, color:"#A63A2A", fontSize:15 }}>{mex.toLocaleString() + " ر"}</td>,
+              <td key={1} style={{ fontWeight:800, color:"#A63A2A", fontSize:15 }}>{mex.toLocaleString("en-US") + " ر"}</td>,
             ]}
           />
         </Modal>
@@ -609,21 +559,21 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
 
       {/* المصاريف */}
       {detailModal==="expenses" && (
-        <Modal title={"💸 المصاريف (" + fex.length + ") · " + exTotal.toLocaleString() + " ر"} onClose={()=>setDetailModal(null)}>
+        <Modal title={"💸 المصاريف (" + fex.length + ") · " + exTotal.toLocaleString("en-US") + " ر"} onClose={()=>setDetailModal(null)}>
           <DataTable heads={["التاريخ","الشاليه","الفئة","المبلغ","ملاحظة","حذف"]}
             rows={[...fex].reverse().map((e, i) => (
               <tr key={i}>
                 <td data-label="التاريخ" style={{ fontSize:12 }}>{formatDate(e.expense_date)}</td>
                 <td data-label="الشاليه" style={{ fontWeight:600 }}>{e.chalet}</td>
                 <td data-label="الفئة"><Bdg bg="#FEF3C7" color="#92400E">{e.category}</Bdg></td>
-                <td data-label="المبلغ" style={{ fontWeight:700, color:"#A63A2A" }}>{Number(e.amount).toLocaleString() + " ر"}</td>
+                <td data-label="المبلغ" style={{ fontWeight:700, color:"#A63A2A" }}>{Number(e.amount).toLocaleString("en-US") + " ر"}</td>
                 <td data-label="ملاحظة" style={{ color:T, fontSize:12 }}>{e.note || "-"}</td>
                 <td data-label=""><button className="btn bd bsm" onClick={async () => { await db("expenses","DELETE",null,e.id); onReload?.(); }}>🗑️</button></td>
               </tr>
             ))}
             footer={[
               <td key={0} colSpan={3} style={{ fontWeight:800, color:B }}>الإجمالي</td>,
-              <td key={1} style={{ fontWeight:800, color:"#A63A2A", fontSize:15 }}>{exTotal.toLocaleString() + " ر"}</td>,
+              <td key={1} style={{ fontWeight:800, color:"#A63A2A", fontSize:15 }}>{exTotal.toLocaleString("en-US") + " ر"}</td>,
               <td key={2}/>, <td key={3}/>,
             ]}
           />
@@ -639,7 +589,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                 <td data-label="التاريخ">{formatDate(t.trans_date)}</td>
                 <td data-label="الشاليه" style={{ fontWeight:600 }}>{t.chalet}</td>
                 <td data-label="النوع"><Bdg bg={t.type==="إيداع"?"#E6F1EA":"#FBEDEA"} color={t.type==="إيداع"?SD:"#A63A2A"}>{t.type}</Bdg></td>
-                <td data-label="المبلغ" style={{ fontWeight:700, color:t.type==="إيداع"?T:"#A63A2A" }}><span dir="ltr" style={{whiteSpace:"nowrap"}}>{t.type==="إيداع"?"+":"−"}{t.amount.toLocaleString()} ر</span></td>
+                <td data-label="المبلغ" style={{ fontWeight:700, color:t.type==="إيداع"?T:"#A63A2A" }}><span dir="ltr" style={{whiteSpace:"nowrap"}}>{t.type==="إيداع"?"+":"−"}{t.amount.toLocaleString("en-US")} ر</span></td>
                 <td data-label="ملاحظة" style={{ color:T, fontSize:12 }}>{t.note || "-"}</td>
                 <td data-label="">
                   <div style={{ display:"flex", gap:4 }}>
@@ -664,7 +614,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
             <div style={{ fontSize:26, fontWeight:900, color:"#A63A2A" }}><Money value={totalSpend} size={26}/></div>
             {prev && prevRange && (
               <div style={{ fontSize:11, color:T, marginTop:4 }}>
-                مقابل {prevRange.label}: {(prev.exTotal+prev.mex).toLocaleString()} ر
+                مقابل {prevRange.label}: {(prev.exTotal+prev.mex).toLocaleString("en-US")} ر
                 {(prev.exTotal+prev.mex) > 0 && (
                   <span style={{ marginRight:6, fontWeight:800, color: totalSpend > (prev.exTotal+prev.mex) ? "#A63A2A" : SD }}>
                     {totalSpend > (prev.exTotal+prev.mex) ? "↑" : "↓"} {Math.abs(Math.round((totalSpend-(prev.exTotal+prev.mex))/(prev.exTotal+prev.mex)*100))}%
@@ -711,7 +661,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                             </span>
                           )}
                         </span>
-                        <span style={{ fontSize:12.5, fontWeight:800, color:"#A63A2A" }}>{c.amt.toLocaleString()} ر <span style={{ color:SI, fontWeight:600 }}>({c.pctOfTotal}%)</span></span>
+                        <span style={{ fontSize:12.5, fontWeight:800, color:"#A63A2A" }}>{c.amt.toLocaleString("en-US")} ر <span style={{ color:SI, fontWeight:600 }}>({c.pctOfTotal}%)</span></span>
                       </div>
                       <div style={{ background:"#f1f5f9", borderRadius:99, height:6, overflow:"hidden" }}>
                         <div style={{ width:c.pctOfTotal+"%", height:"100%", background:"#C97B63", borderRadius:99 }}/>
@@ -730,8 +680,8 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                 rows={chaletSpend.map((c,i) => (
                   <tr key={i}>
                     <td data-label="الشاليه" style={{ fontWeight:700 }}>{c.n}</td>
-                    <td data-label="الإيرادات" style={{ color:T }}>{c.r.toLocaleString()+" ر"}</td>
-                    <td data-label="المصاريف" style={{ color:"#A63A2A" }}>{c.spend.toLocaleString()+" ر"}</td>
+                    <td data-label="الإيرادات" style={{ color:T }}>{c.r.toLocaleString("en-US")+" ر"}</td>
+                    <td data-label="المصاريف" style={{ color:"#A63A2A" }}>{c.spend.toLocaleString("en-US")+" ر"}</td>
                     <td data-label="النسبة">
                       {c.ratio===null
                         ? <span style={{ fontSize:11, fontWeight:700, color:"#A63A2A" }}>بدون إيراد ⚠️</span>
@@ -755,7 +705,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                       <td data-label="البند" style={{ fontWeight:600, fontSize:12 }}>{it.label}</td>
                       <td data-label="الشاليه">{it.chalet}</td>
                       <td data-label="التاريخ" style={{ fontSize:12 }}>{formatDate(it.date)}</td>
-                      <td data-label="المبلغ" style={{ fontWeight:800, color:"#A63A2A" }}>{it.amount.toLocaleString()+" ر"}</td>
+                      <td data-label="المبلغ" style={{ fontWeight:800, color:"#A63A2A" }}>{it.amount.toLocaleString("en-US")+" ر"}</td>
                     </tr>
                   ))}
                 />

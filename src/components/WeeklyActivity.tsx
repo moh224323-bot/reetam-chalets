@@ -84,7 +84,7 @@ export default function WeeklyActivity({ bookings, onSelectBooking }: Props) {
         <div style={{ margin: "0 14px 14px", borderRadius: 12, padding: "12px 14px", background: SL, border: "1px solid rgba(201,163,106,.25)" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
             <span style={{ fontWeight: 800, color: B, fontSize: 13 }}>
-              {selected.d.toLocaleDateString("ar-SA-u-ca-gregory", { weekday: "long", day: "numeric", month: "long" })}
+              {selected.d.toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { weekday: "long", day: "numeric", month: "long" })}
             </span>
             <button onClick={() => setSelDay(null)} style={{ background: "none", border: "none", cursor: "pointer", fontSize: 16, color: SI }}>×</button>
           </div>
@@ -99,7 +99,7 @@ export default function WeeklyActivity({ bookings, onSelectBooking }: Props) {
                   <div style={{ fontWeight: 700, color: B, fontSize: 12.5, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{b.guest}</div>
                   <div style={{ fontSize: 11, color: T }}>{b.chalet} · دخول</div>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: T, flexShrink: 0 }}>{Number(b.price).toLocaleString() + " ر"}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T, flexShrink: 0 }}>{Number(b.price).toLocaleString("en-US") + " ر"}</div>
               </div>
             ))}
             {selected.checkouts.map(b => (
@@ -112,7 +112,7 @@ export default function WeeklyActivity({ bookings, onSelectBooking }: Props) {
                   <div style={{ fontWeight: 700, color: B, fontSize: 12.5, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{b.guest}</div>
                   <div style={{ fontSize: 11, color: T }}>{b.chalet} · خروج</div>
                 </div>
-                <div style={{ fontSize: 12, fontWeight: 700, color: T, flexShrink: 0 }}>{Number(b.price).toLocaleString() + " ر"}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: T, flexShrink: 0 }}>{Number(b.price).toLocaleString("en-US") + " ر"}</div>
               </div>
             ))}
           </div>

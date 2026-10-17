@@ -63,6 +63,6 @@ export async function db(
 
 export const today = () => new Date().toISOString().slice(0, 10);
 export const formatDate = (d?: string) =>
-  d ? new Date(d).toLocaleDateString("ar-SA-u-ca-gregory") : "-";
+  d ? new Date(d).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn") : "-";
 export const nightsBetween = (from?: string, to?: string) =>
   !from || !to ? 0 : Math.max(0, Math.round((new Date(to).getTime() - new Date(from).getTime()) / 86400000));

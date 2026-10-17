@@ -1,14 +1,14 @@
 import { memo, useState } from "react";
 import { Chalet, Room, FixedExpense } from "../lib/types";
 import { B, BD, S, SI, T, SL, SD } from "../lib/colors";
-import { Bdg } from "./ui";
+import { Icon, Pill, SAR, PageHead, Kpi, Track, toneFor, Empty } from "./ds";
 import { nextDueInfo, formatDueDate, RENT_REMINDER_DAYS } from "../lib/dueDate";
 
 // أرقام سالبة داخل صفحة RTL تحتاج اتجاه LTR صريح، وإلا تنعكس إشارة السالب بصرياً (نفس نمط Money في FinancialTab).
 function Money({ value, size, weight, color }: { value: number; size?: number; weight?: number; color?: string }) {
   return (
     <span dir="ltr" style={{ fontSize:size, fontWeight:weight, color, whiteSpace:"nowrap" }}>
-      {value<0?"−":""}{Math.abs(value).toLocaleString()} <span style={{ fontSize:size?size*0.6:"0.5em", fontWeight:500, opacity:.7 }}>ر.س</span>
+      {value<0?"−":""}{Math.abs(value).toLocaleString("en-US")} <span style={{ fontSize:size?size*0.6:"0.5em", fontWeight:500, opacity:.7 }}>ر.س</span>
     </span>
   );
 }
@@ -24,6 +24,8 @@ export interface ChaletStat extends Chalet {
   mdn: number;
   ins: number;
   goal: number;
+  nights: number;
+  occ: number;
 }
 
 interface Props {
@@ -69,78 +71,46 @@ function compressImage(file: File, maxPx = 600): Promise<string> {
   });
 }
 
-/** بطاقة مختصرة في شبكة الشاليهات — فقط الأرقام المهمة وإشارات الانتباه، والتفاصيل الكاملة في صفحة الإدارة. */
+/** بطاقة مختصرة في شبكة الشاليهات — الأرقام المهمة وإشارات الانتباه، والتفاصيل في صفحة الإدارة. */
 const ChaletSummaryCard = memo(function ChaletSummaryCard({ c, fixedExpenses, onOpen }: {
   c: ChaletStat; fixedExpenses: FixedExpense[];
   onOpen: (name: string) => void;
 }) {
   const netMonth = c.monthRev - c.monthExp;
-  const rentWarn = fixedExpenses
+  const rent = fixedExpenses
     .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
     .map(fx => nextDueInfo(fx))
-    .some(info => info && info.daysUntil <= RENT_REMINDER_DAYS);
-
-  const chips = [
-    { l:"السعة",        v: c.cap + " شخص", i:"👥" },
-    { l:"سعر الليلة",   v: c.price + " ر",  i:"🌙" },
-  ];
-
+    .filter(info => info && info.daysUntil <= RENT_REMINDER_DAYS);
+  const rentLate = rent.some(info => info && info.daysUntil < 0);
   return (
-    <div className="cc" onClick={() => onOpen(c.name)} style={{ cursor:"pointer" }}>
-      <div style={{ position:"relative", height:140, overflow:"hidden", background:`linear-gradient(135deg,${B},${BD})` }}>
-        {c.img
-          ? <img src={c.img} alt={c.name} style={{ width:"100%", height:"100%", objectFit:"cover" }} loading="lazy"/>
-          : <div style={{ width:"100%", height:"100%", display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <span style={{ fontSize:36, opacity:.25 }}>🏠</span>
-            </div>
-        }
-        <div style={{ position:"absolute", bottom:0, left:0, right:0, background:"linear-gradient(transparent,rgba(23,19,15,.9))", padding:"16px 14px 10px" }}>
-          <div style={{ color:S, fontWeight:800, fontSize:15 }}>{c.name}</div>
-          <div style={{ color:SI, fontSize:11, marginTop:2 }}>{"📍 " + c.loc}</div>
-        </div>
-        <div style={{ position:"absolute", top:8, left:8 }}>
-          <Bdg bg={c.st==="active" ? "rgba(30,107,69,.85)" : "rgba(166,58,42,.85)"} color="#fff">
-            {c.st==="active" ? "نشط" : "موقف"}
-          </Bdg>
-        </div>
+    <button type="button" className="x-ch-card" onClick={() => onOpen(c.name)}>
+      <div className="x-ch-img">
+        {c.img ? <img src={c.img} alt="" loading="lazy"/> : <Icon n="home" s={44}/>}
+        <Pill tone={c.st==="active" ? "ok" : "bad"} dot>{c.st==="active" ? "نشط" : "موقف"}</Pill>
       </div>
-
-      <div style={{ padding:"12px 14px 14px" }}>
-        {/* الرقم الأهم (صافي الشهر) بارز وحده فوق، بدل ما يكون مساوي بالحجم للسعة والسعر */}
-        <div style={{ display:"flex", alignItems:"baseline", justifyContent:"space-between", marginBottom:10 }}>
-          <span style={{ fontSize:11, color:T }}>💰 صافي الشهر</span>
-          <Money value={netMonth} size={19} weight={900} color={netMonth >= 0 ? SD : "#A63A2A"}/>
-        </div>
-
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:7, marginBottom: (c.mop > 0 || rentWarn) ? 10 : 12 }}>
-          {chips.map((item, i) => (
-            <div key={i} style={{ background:SL, borderRadius:8, padding:"7px 9px", border:"1px solid rgba(201,163,106,.2)" }}>
-              <div style={{ fontSize:10, color:T }}>{item.i + " " + item.l}</div>
-              <div style={{ fontWeight:700, color:B, fontSize:12, marginTop:2 }}>{item.v}</div>
-            </div>
-          ))}
-        </div>
-
-        {(c.mop > 0 || rentWarn) && (
-          <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginBottom:12 }}>
-            {c.mop > 0 && (
-              <span style={{ fontSize:10.5, fontWeight:700, color:"#A63A2A", background:"#FBEDEA", borderRadius:7, padding:"4px 9px" }}>
-                🔧 {c.mop} صيانة مفتوحة
-              </span>
-            )}
-            {rentWarn && (
-              <span style={{ fontSize:10.5, fontWeight:700, color:"#7A5A0E", background:"#FBF3DF", borderRadius:7, padding:"4px 9px" }}>
-                🏠 الإيجار يحتاج متابعة
-              </span>
-            )}
+      <div className="x-ch-body">
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", gap:8 }}>
+          <div style={{ minWidth:0 }}>
+            <b style={{ fontSize:17 }}>{c.name}</b>
+            <div className="x-muted" style={{ fontSize:13 }}>{c.loc + (c.cap ? " · " + c.cap + " شخص" : "")}</div>
           </div>
-        )}
-
-        <button onClick={e => { e.stopPropagation(); onOpen(c.name); }} className="btn bp" style={{ width:"100%", padding:"9px", fontSize:13 }}>
-          إدارة الشاليه ←
-        </button>
+          <div style={{ textAlign:"left" }}>
+            <div className="x-muted" style={{ fontSize:12 }}>صافي الشهر</div>
+            <b className={netMonth < 0 ? "x-neg" : "x-pos"} style={{ fontSize:16 }}><SAR v={netMonth}/></b>
+          </div>
+        </div>
+        <div className="x-ch-stats">
+          <div><small>الإشغال</small><b>{c.occ}%</b></div>
+          <div><small>سعر الليلة</small><b>{c.price || "-"}</b></div>
+          <div><small>الويكند</small><b>{c.wprice || "-"}</b></div>
+        </div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", minHeight:24 }}>
+          {c.mop > 0 && <Pill tone="bad">{c.mop + " صيانة مفتوحة"}</Pill>}
+          {rent.length > 0 && <Pill tone={rentLate ? "bad" : "warn"}>{rentLate ? "إيجار متأخر" : "إيجار قريب"}</Pill>}
+          {c.mop === 0 && rent.length === 0 && <Pill tone="ok">كل شيء سليم</Pill>}
+        </div>
       </div>
-    </div>
+    </button>
   );
 });
 
@@ -180,7 +150,7 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, onBac
   const netMonth = c.monthRev - c.monthExp;
   const pct      = c.goal > 0 ? Math.min(Math.round(netMonth / c.goal * 100), 100) : 0;
   const goalColor = pct >= 100 ? "var(--ok)" : pct >= 60 ? "var(--gold)" : "var(--bad)";
-  const monthName = new Date().toLocaleDateString("ar-SA-u-ca-gregory", { month:"long" });
+  const monthName = new Date().toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { month:"long" });
 
   const rentItems = fixedExpenses
     .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
@@ -272,6 +242,11 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, onBac
             <span className={"cd-kpi-v " + (netMonth >= 0 ? "cd-pos" : "cd-neg")}><Money value={netMonth}/></span>
           </div>
           <div className="cd-kpi">
+            <span className="cd-kpi-k">الإشغال</span>
+            <span className="cd-kpi-v">{c.occ}<span className="cd-unit"> %</span></span>
+            <span className="cd-unit">{c.nights + " ليلة هذا الشهر"}</span>
+          </div>
+          <div className="cd-kpi">
             <span className="cd-kpi-k">إيرادات النظام</span>
             <span className="cd-kpi-v"><Money value={c.rev}/></span>
           </div>
@@ -299,7 +274,7 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, onBac
             </div>
             <div className="cd-goal-foot">
               <span>الصافي: <strong className={netMonth < 0 ? "cd-neg" : ""}><Money value={netMonth}/></strong></span>
-              <span>الهدف: <strong>{c.goal.toLocaleString()}</strong> ر.س</span>
+              <span>الهدف: <strong>{c.goal.toLocaleString("en-US")}</strong> ر.س</span>
             </div>
           </div>
         )}
@@ -337,7 +312,7 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, onBac
             return (
               <div key={fx.id} className="cd-rent">
                 <div className="cd-rent-info">
-                  <span className="cd-rent-amt">{fx.name} · <b>{Number(fx.amount).toLocaleString()}</b> ر.س</span>
+                  <span className="cd-rent-amt">{fx.name} · <b>{Number(fx.amount).toLocaleString("en-US")}</b> ر.س</span>
                   <span className={"cd-pill " + tone}><Ic n="clock" s={13}/>{badgeText}</span>
                 </div>
                 <div className="cd-rent-acts">
@@ -395,95 +370,43 @@ export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, onAd
 
   const activeCount    = cStats.filter(c => c.st==="active").length;
   const totalNetMonth  = cStats.reduce((s,c) => s + (c.monthRev-c.monthExp), 0);
-  const attentionList  = cStats.map(c => chaletNeedsAttention(c, fixedExpenses));
-  const attentionCount = attentionList.filter(Boolean).length;
+  const avgOcc         = cStats.length ? Math.round(cStats.reduce((s,c) => s + c.occ, 0) / cStats.length) : 0;
+  const attentionCount = cStats.filter(c => chaletNeedsAttention(c, fixedExpenses)).length;
 
   const q = query.trim();
-  const filtered = q
-    ? cStats.filter(c => c.name.includes(q) || c.loc.includes(q))
-    : cStats;
-  // الشاليهات اللي تحتاج متابعة بمجموعة منفصلة أول، بعنوان واضح — بدل ترتيب صامت يصعب فهمه.
-  const attentionGroup = filtered.filter(c => chaletNeedsAttention(c, fixedExpenses));
-  const restGroup      = filtered.filter(c => !chaletNeedsAttention(c, fixedExpenses));
-
-  const renderGrid = (list: ChaletStat[]) => (
-    <div className="cg">
-      {list.map(c => (
-        <ChaletSummaryCard
-          key={c.id}
-          c={c}
-          fixedExpenses={fixedExpenses}
-          onOpen={setSelected}
-        />
-      ))}
-    </div>
-  );
+  const filtered = q ? cStats.filter(c => c.name.includes(q) || c.loc.includes(q)) : cStats;
+  // الشاليهات اللي تحتاج متابعة تظهر أولاً
+  const ordered = [...filtered].sort((a, b) => Number(chaletNeedsAttention(b, fixedExpenses)) - Number(chaletNeedsAttention(a, fixedExpenses)));
 
   return (
-    <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, flexWrap:"wrap", gap:10 }}>
-        <div style={{ fontWeight:800, color:B, fontSize:18 }}>إدارة الشاليهات</div>
-        <button className="btn bp" onClick={onAdd}>+ إضافة شاليه</button>
-      </div>
+    <div className="x-page">
+      <PageHead title="الشاليهات" sub={cStats.length ? activeCount + " من " + cStats.length + " نشطة · اضغط على أي شاليه لإدارته" : undefined}>
+        <button className="btn bp" onClick={onAdd}><Icon n="plus"/>إضافة شاليه</button>
+      </PageHead>
 
       {cStats.length > 0 && (
-        <div className="card" style={{ padding:"14px 16px", marginBottom:18, display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))", gap:14 }}>
-          {([
-            { i:"🏠", l:"الشاليهات النشطة",   v:`${activeCount} من ${cStats.length}` },
-            { i:"💰", l:"صافي الشهر (الإجمالي)", v: <Money value={totalNetMonth} size={15} weight={800} color={totalNetMonth>=0?SD:"#A63A2A"}/> },
-            { i: attentionCount>0?"🔔":"✅", l:"يحتاج متابعة", v: attentionCount>0?`${attentionCount} شاليه`:"لا شيء، تمام", color: attentionCount>0?"#A63A2A":SD },
-          ] as { i: string; l: string; v: React.ReactNode; color?: string }[]).map((x,i) => (
-            <div key={i} style={{ display:"flex", alignItems:"center", gap:10 }}>
-              <span style={{ fontSize:22 }}>{x.i}</span>
-              <div style={{ minWidth:0 }}>
-                <div style={{ fontSize:10.5, color:T }}>{x.l}</div>
-                <div style={{ fontSize:15, fontWeight:800, color:x.color||B }}>{x.v}</div>
-              </div>
-            </div>
-          ))}
+        <div className="x-kpis">
+          <Kpi label="صافي الشهر لكل الشاليهات" value={<SAR v={totalNetMonth}/>} tone={totalNetMonth < 0 ? "neg" : undefined}/>
+          <Kpi label="متوسط الإشغال" value={<>{avgOcc}<small>%</small></>}><Track pct={avgOcc} tone={toneFor(avgOcc)}/></Kpi>
+          <Kpi label="تحتاج متابعة" value={<>{attentionCount}<small> شاليه</small></>} tone={attentionCount ? "neg" : "pos"} sub="صيانة مفتوحة أو إيجار مستحق"/>
         </div>
       )}
 
       {cStats.length > 3 && (
-        <div style={{ position:"relative", marginBottom:18 }}>
-          <span style={{ position:"absolute", top:"50%", right:14, transform:"translateY(-50%)", fontSize:14, color:T, pointerEvents:"none" }}>🔍</span>
-          <input
-            className="inp"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="ابحث باسم الشاليه أو الموقع..."
-            style={{ paddingRight:36 }}
-          />
+        <div style={{ position:"relative" }}>
+          <span style={{ position:"absolute", top:12, right:12, color:"var(--text2)", pointerEvents:"none" }}><Icon n="search"/></span>
+          <input className="x-input" value={query} onChange={e => setQuery(e.target.value)} placeholder="ابحث باسم الشاليه أو الموقع" aria-label="بحث في الشاليهات" style={{ paddingRight:40 }}/>
         </div>
       )}
 
-      {filtered.length === 0 ? (
-        <div className="card" style={{ padding:"30px 16px", textAlign:"center", color:T, fontSize:13 }}>
-          لا يوجد شاليه مطابق لبحثك
-        </div>
+      {cStats.length === 0 ? (
+        <div className="x-card"><Empty>لا توجد شاليهات بعد، أضف أول شاليه للبدء</Empty></div>
+      ) : filtered.length === 0 ? (
+        <div className="x-card"><Empty>لا يوجد شاليه مطابق لبحثك</Empty></div>
       ) : (
-        <>
-          {attentionGroup.length > 0 && (
-            <>
-              {restGroup.length > 0 && (
-                <div style={{ fontSize:13, fontWeight:800, color:"#A63A2A", marginBottom:10, display:"flex", alignItems:"center", gap:6 }}>
-                  🔔 يحتاج متابعة
-                </div>
-              )}
-              {renderGrid(attentionGroup)}
-            </>
-          )}
-          {restGroup.length > 0 && (
-            <>
-              {attentionGroup.length > 0 && (
-                <div style={{ fontSize:13, fontWeight:800, color:B, margin:"20px 0 10px", display:"flex", alignItems:"center", gap:6 }}>
-                  باقي الشاليهات
-                </div>
-              )}
-              {renderGrid(restGroup)}
-            </>
-          )}
-        </>
+        <div className="cg">
+          {ordered.map(c => <ChaletSummaryCard key={c.id} c={c} fixedExpenses={fixedExpenses} onOpen={setSelected}/>)}
+        </div>
       )}
     </div>
   );

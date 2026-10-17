@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { setCurrentOwnerId } from "../lib/db";
 import { supabase } from "../lib/supabase";
 import useRealtimeSync   from "../hooks/useRealtimeSync";
@@ -15,6 +15,7 @@ import type {
 import FinancialTab   from "../components/FinancialTab";
 import ChaletsTab     from "../components/ChaletsTab";
 import SettingsTab    from "../components/SettingsTab";
+import { Icon, Pill, SAR, PageHead, Kpi, Seg, CardHead, Track, toneFor, Empty } from "../components/ds";
 import { nextDueInfo, formatDueDate, RENT_REMINDER_DAYS } from "../lib/dueDate";
 
 const SUPA_URL = process.env.EXPO_PUBLIC_SUPA_URL!;
@@ -180,7 +181,7 @@ const MS = {
   done:        {label:"منتهي",       color:SD,        bg:"#E6F1EA"},
 };
 
-const fd = (d?: string | null): string => d ? new Date(d).toLocaleDateString("ar-SA-u-ca-gregory") : "-";
+const fd = (d?: string | null): string => d ? new Date(d).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn") : "-";
 const fn = (f?: string, t?: string): number => (!f||!t) ? 0 : Math.max(0, Math.round((new Date(t).getTime()-new Date(f).getTime())/86400000));
 const td = (): string => new Date().toISOString().slice(0,10);
 const monthStart = (): string => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-01`; };
@@ -261,7 +262,7 @@ const CSS = `
     --brand:#3B2A1C; --brand-fg:#FFFFFF; --primary:#3B2A1C; --link:#6B4A2B; --gold:#C9A36A;
     --inp-bg:#FFFFFF; --row-hov:#FAF6F0; --th-bg:#FAF6F0; --mdl-bg:rgba(23,19,15,.55);
     --bad:#A63A2A; --bad-bg:#FBEDEA; --bad-line:#EFC9C1;
-    --warn:#7A5A0E; --warn-bg:#FBF3DF; --ok:#1E6B45; --ok-bg:#E6F1EA;
+    --warn:#7A5A0E; --warn-bg:#FBF3DF; --ok:#1E6B45; --ok-bg:#E6F1EA; --info:#2F5D7C; --info-bg:#E8F0F6;
     --share:#1F8A4C;
     --side:#17130F; --side-2:#2A231C; --side-line:#2E2720; --side-fg:#D9CFC2; --side-strong:#F3EADC; --side-muted:#A8998A;
     --f-body:'IBM Plex Sans Arabic',system-ui,'Segoe UI',Tahoma,sans-serif;
@@ -275,7 +276,7 @@ const CSS = `
     --brand:#C9A36A; --brand-fg:#17130F; --primary:#C9A36A; --link:#D9B57E;
     --inp-bg:#221E19; --row-hov:#25201A; --th-bg:#25201A; --mdl-bg:rgba(0,0,0,.7);
     --bad:#F08A78; --bad-bg:#3A1F1A; --bad-line:#5A2C24;
-    --warn:#E8C46A; --warn-bg:#33291A; --ok:#7FD0A2; --ok-bg:#183024;
+    --warn:#E8C46A; --warn-bg:#33291A; --ok:#7FD0A2; --ok-bg:#183024; --info:#8DBBDB; --info-bg:#1A2833;
     --side:#0E0C0A; --side-2:#221C16; --side-line:#2A231C;
     color-scheme:dark;
   }
@@ -413,6 +414,121 @@ const CSS = `
   .cd-rent-acts{display:flex;gap:8px}
   .cd-empty{font-size:14px;color:var(--text2)}
 
+  /* ── نظام التصميم (x-) ── */
+  .x-page{display:flex;flex-direction:column;gap:22px}
+  .x-num{font-variant-numeric:tabular-nums}
+  .x-unit{font-size:.55em;font-weight:500;color:var(--text2)}
+  .x-neg{color:var(--bad)!important}
+  .x-pos{color:var(--ok)!important}
+  .x-muted{color:var(--text2)}
+  .x-mono{font-family:ui-monospace,Menlo,Consolas,monospace;direction:ltr;unicode-bidi:isolate}
+  .x-back{display:inline-flex;align-items:center;gap:6px;color:var(--link);background:none;border:0;font-size:14px;min-height:34px;padding:0;align-self:flex-start;cursor:pointer;font-family:var(--f-body)}
+  .x-ph{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px}
+  .x-ph h1{font-family:var(--f-display);font-size:clamp(22px,3.4vw,28px);font-weight:700;color:var(--text)}
+  .x-ph p{margin-top:4px;color:var(--text2);font-size:14px}
+  .x-ph-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .x-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .x-select{min-height:42px;border-radius:10px;border:1px solid var(--border2);background:var(--inp-bg);color:var(--text);padding:0 12px;font:inherit;font-size:14px}
+  .x-seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);border-radius:11px;padding:3px;gap:2px;flex-wrap:wrap}
+  .x-seg button{border:0;background:transparent;min-height:34px;padding:0 12px;border-radius:8px;font-size:13px;color:var(--text2);display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-family:var(--f-body)}
+  .x-seg button[aria-pressed="true"]{background:var(--surface);color:var(--text);font-weight:600;box-shadow:0 1px 2px rgba(23,19,15,.08)}
+  .x-seg button:disabled{opacity:.5;cursor:not-allowed}
+  .x-seg .c{font-size:12px;color:var(--text3)}
+  .x-card{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+  .x-pad{padding:20px}
+  .x-card-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+  .x-card-h h2{font-family:var(--f-body);font-size:16px!important;font-weight:700;display:flex;align-items:center;gap:10px;color:var(--text);flex-wrap:wrap}
+  .x-card-h h2 > svg{color:var(--link)}
+  .x-sub{font-size:13px;color:var(--text2);font-weight:400}
+  .x-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:20px}
+  .x-grid2 > *{min-width:0}
+  .x-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:14px}
+  .x-kpi{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:18px 20px;display:flex;flex-direction:column;gap:6px;min-width:0}
+  .x-kpi .k{display:flex;align-items:center;justify-content:space-between;gap:8px;color:var(--text2);font-size:14px;min-height:24px;flex-wrap:wrap}
+  .x-kpi .v{font-size:28px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.2;color:var(--text)}
+  .x-kpi .v small{font-size:14px;font-weight:500;color:var(--text2)}
+  .x-kpi .s{font-size:13px;color:var(--text2)}
+  .x-kpi.hero{background:#3B2A1C;border-color:#3B2A1C}
+  .x-kpi.hero .k,.x-kpi.hero .s,.x-kpi.hero .v,.x-kpi.hero .x-unit,.x-kpi.hero .v small{color:#F3EADC}
+  .x-kpi.hero .k,.x-kpi.hero .s{opacity:.8}
+  .x-kpi.hero .x-pill{background:rgba(255,255,255,.14);color:#F3EADC}
+  [data-theme="dark"] .x-kpi.hero{background:#2A2016;border-color:#3A2E22}
+  .x-pill{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:12px;font-size:12px;font-weight:600;white-space:nowrap}
+  .x-pill.ok{background:var(--ok-bg);color:var(--ok)}
+  .x-pill.bad{background:var(--bad-bg);color:var(--bad)}
+  .x-pill.warn{background:var(--warn-bg);color:var(--warn)}
+  .x-pill.info{background:var(--info-bg);color:var(--info)}
+  .x-pill.muted{background:var(--surface-2);color:var(--text2);border:1px solid var(--line)}
+  .x-dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+  .x-list{display:flex;flex-direction:column}
+  .x-li{display:flex;align-items:center;gap:14px;padding:14px 20px;border-bottom:1px solid var(--line)}
+  .x-li:last-child{border-bottom:0}
+  .x-li.click{cursor:pointer}
+  .x-li.click:hover{background:var(--surface-2)}
+  .x-li .meta{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+  .x-li .meta b{font-weight:600;color:var(--text)}
+  .x-li .meta span{font-size:13px;color:var(--text2)}
+  .x-li .amt{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--text)}
+  .x-li .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+  .x-ic{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex:none}
+  .x-ic.bad{background:var(--bad-bg);color:var(--bad)}
+  .x-ic.warn{background:var(--warn-bg);color:var(--warn)}
+  .x-ic.ok{background:var(--ok-bg);color:var(--ok)}
+  .x-ic.info{background:var(--info-bg);color:var(--info)}
+  .x-ic.muted{background:var(--surface-2);color:var(--text2)}
+  .x-tbl{width:100%;border-collapse:collapse;font-size:14px}
+  .x-tbl th{text-align:right;font-weight:600;color:var(--text2);font-size:13px;padding:11px 16px;background:var(--surface-2);border-bottom:1px solid var(--border);white-space:nowrap}
+  .x-tbl td{padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:middle;font-variant-numeric:tabular-nums;color:var(--text)}
+  .x-tbl tr:last-child td{border-bottom:0}
+  .x-tbl tbody tr:hover td{background:var(--surface-2)}
+  .x-tbl td.strong{font-weight:600}
+  .x-tbl .end{text-align:left}
+  .x-tbl tfoot td{font-weight:700;background:var(--surface-2);border-top:1px solid var(--border)}
+  .x-empty{padding:28px 20px;text-align:center;color:var(--text2);font-size:14px}
+  .x-track{height:8px;border-radius:4px;background:var(--line);overflow:hidden;min-width:60px;flex:1}
+  .x-fill{height:100%;border-radius:4px;background:var(--brand);transition:width .4s}
+  .x-fill.ok{background:var(--ok)} .x-fill.warn{background:var(--gold)} .x-fill.bad{background:var(--bad)}
+  .x-barrow{display:flex;align-items:center;gap:8px;min-width:120px}
+  .x-stmt .r{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 0;border-bottom:1px dashed var(--line);font-size:15px;color:var(--text)}
+  .x-stmt .r .lab{display:flex;flex-direction:column}
+  .x-stmt .r .lab small{color:var(--text2);font-size:12px}
+  .x-stmt .r.total{border-top:2px solid var(--border);border-bottom:0;margin-top:4px;padding-top:14px;font-weight:700;font-size:17px}
+  .x-ins{display:flex;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);align-items:flex-start;font-size:14px;color:var(--text)}
+  .x-ins:last-child{border-bottom:0}
+  .x-status3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .x-avatar{width:36px;height:36px;border-radius:50%;background:var(--surface-2);color:var(--link);display:flex;align-items:center;justify-content:center;font-weight:700;flex:none}
+  .x-rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,270px),1fr));gap:16px}
+  .x-room{padding:18px;display:flex;flex-direction:column;gap:14px}
+  .x-temp{display:flex;align-items:center;justify-content:center;gap:18px;direction:ltr}
+  .x-temp .deg{font-size:44px;font-weight:700;font-variant-numeric:tabular-nums;min-width:90px;text-align:center;color:var(--text)}
+  .x-room.off .deg{color:var(--text3)}
+  .x-room .x-seg{display:flex;width:100%}
+  .x-room .x-seg button{flex:1;justify-content:center;padding:0 6px}
+  .x-lbl{font-size:13px;color:var(--text2);font-weight:500;margin-bottom:6px}
+  .x-stars{display:inline-flex;gap:2px;color:var(--gold)}
+  .x-ch-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden;display:flex;flex-direction:column;text-align:right;padding:0;color:var(--text);cursor:pointer;font-family:var(--f-body);transition:border-color .15s,box-shadow .15s}
+  .x-ch-card:hover{border-color:var(--border2);box-shadow:0 10px 28px rgba(23,19,15,.08)}
+  .x-ch-img{position:relative;height:150px;background:linear-gradient(135deg,#3B2A1C,#241A11);color:rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center}
+  .x-ch-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  .x-ch-img .x-pill{position:absolute;top:12px;left:12px}
+  .x-ch-body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:12px}
+  .x-ch-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .x-ch-stats div{background:var(--surface-2);border-radius:10px;padding:8px 10px}
+  .x-ch-stats small{display:block;font-size:12px;color:var(--text2)}
+  .x-ch-stats b{font-size:15px;font-variant-numeric:tabular-nums}
+  .x-nav-group{font-size:12px;color:var(--side-muted);padding:14px 12px 6px;font-weight:600}
+  .x-input{min-height:42px;border-radius:10px;border:1px solid var(--border2);background:var(--inp-bg);color:var(--text);padding:0 12px;font:inherit;font-size:14px;width:100%}
+  @media(max-width:640px){
+    .x-kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+    .x-kpi{padding:14px}
+    .x-kpi .v{font-size:22px}
+    .x-li{padding:14px 16px;flex-wrap:wrap}
+    .x-li .acts{width:100%;justify-content:flex-start}
+    .x-card-h{padding:14px 16px}
+    .x-pad{padding:16px}
+    .x-hide-sm{display:none}
+    .x-tbl th,.x-tbl td{padding:10px 12px}
+  }
   @media(max-width:640px){
     .mbox{padding:16px;border-radius:14px}
     h2{font-size:18px!important}
@@ -496,7 +612,7 @@ function UnpaidFixedBanner({unpaid,total,onPay}:{unpaid:FixedExpense[];total:num
         <span style={{fontSize:16}}>📌</span>
         <span style={{fontWeight:800,color:"#fff",fontSize:14,flex:1}}>مصروفات ثابتة لم تُسدَّد</span>
         <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{unpaid.length}</span>
-        <span style={{fontWeight:800,color:"#FDE68A",fontSize:13}}>{total.toLocaleString()+" ر"}</span>
+        <span style={{fontWeight:800,color:"#FDE68A",fontSize:13}}>{total.toLocaleString("en-US")+" ر"}</span>
         <span style={{color:"rgba(255,255,255,.7)",fontSize:12,marginRight:4}}>{open?"▲":"▼"}</span>
       </button>
       {open&&(
@@ -507,7 +623,7 @@ function UnpaidFixedBanner({unpaid,total,onPay}:{unpaid:FixedExpense[];total:num
                 <div style={{fontWeight:700,color:B,fontSize:13}}>{fx.name}</div>
                 <div style={{fontSize:11,color:T,marginTop:2}}>{fx.chalet} · {fx.category}</div>
               </div>
-              <div style={{fontWeight:800,color:"#92400E",fontSize:14}}>{Number(fx.amount).toLocaleString()+" ر"}</div>
+              <div style={{fontWeight:800,color:"#92400E",fontSize:14}}>{Number(fx.amount).toLocaleString("en-US")+" ر"}</div>
               <SaveBtn label="تسديد" onClick={()=>onPay(fx)} style={{padding:"6px 14px",fontSize:12}}/>
             </div>
           ))}
@@ -572,6 +688,16 @@ function BlockedGuestsBanner({guests,onUnblock}:{guests:BlockedGuest[];onUnblock
     </div>
   );
 }
+/** زر إجراء صغير يعرض حالة التحميل أثناء تنفيذ عملية غير متزامنة */
+function ActBtn({onClick,primary,children}:{onClick:()=>void|Promise<void>;primary?:boolean;children:React.ReactNode}) {
+  const [busy,setBusy]=useState(false);
+  return (
+    <button type="button" className={"btn bsm "+(primary?"bp":"bo")} disabled={busy}
+      onClick={async()=>{if(busy)return;setBusy(true);try{await onClick();}finally{setBusy(false);}}}>
+      {busy?"جاري...":children}
+    </button>
+  );
+}
 function SaveBtn({onClick,label="حفظ",disabled=false,style={}}: {onClick:()=>Promise<void>;label?:string;disabled?:boolean;style?:React.CSSProperties}) {
   const [saving,setSaving] = useState(false);
   async function handle(){if(saving||disabled)return;setSaving(true);try{await onClick();}finally{setSaving(false);}}
@@ -605,29 +731,10 @@ function Logo({size}) {
   return <img src={logoImg} width={s} height={s} style={{objectFit:"contain"}}/>;
 }
 
-// أيقونات خطية موحّدة للقائمة الجانبية وصفحة الشاليه (بدل الإيموجي)
-const ICON_PATHS: Record<string, React.ReactNode> = {
-  dashboard:   <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
-  chalets:     <><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></>,
-  bookings:    <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></>,
-  finance:     <><rect x="2" y="6" width="20" height="13" rx="2"/><circle cx="12" cy="12.5" r="2.5"/><path d="M6 9.5v6M18 9.5v6"/></>,
-  investors:   <><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.8c1.6.8 2.6 2.6 3 5.2"/></>,
-  maintenance: <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>,
-  insurance:   <path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/>,
-  cleaning:    <><path d="M19 3l-7 7"/><path d="M12 10c-3 0-6 2-7 5l-2 6 6-2c3-1 5-4 5-7z"/></>,
-  smart:       <path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/>,
-  loyalty:     <><path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4M12 14v4M8 21h8"/></>,
-  settings:    <><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></>,
-  sun:         <><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M5 19l1.4-1.4M17.6 6.4L19 5"/></>,
-  moon:        <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>,
-  menu:        <path d="M4 7h16M4 12h16M4 17h16"/>,
-};
+// أيقونات القائمة الجانبية — من نظام التصميم الموحّد
+const NAV_ICON: Record<string,string> = { dashboard:"dashboard", chalets:"home", bookings:"cal", finance:"money", investors:"users", maintenance:"wrench", wallets:"wallet", cleaning:"broom", smart:"temp", loyalty:"trophy", settings:"gear", sun:"sun", moon:"moon", menu:"menu" };
 function NavIcon({id,size=18}:{id:string;size?:number}) {
-  const p = ICON_PATHS[id];
-  if(!p) return null;
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{p}</svg>
-  );
+  return <Icon n={NAV_ICON[id]||id} s={size}/>;
 }
 function AvailabilityCalendar({bookings,from,to,onPick}:{bookings:Booking[];from:string;to:string;onPick:(from:string,to:string)=>void}) {
   const B="#3B2A1C", S="#C9A36A", T="#6B5F52", SL="#FAF6F0";
@@ -965,7 +1072,7 @@ function ChaletPublicPage({chaletName}:{chaletName:string}) {
                     ? <div style={{background:"#FFF5F5",color:"#A63A2A",borderRadius:10,padding:"10px 12px",fontSize:12.5,fontWeight:700,marginBottom:10}}>⚠️ هذي التواريخ محجوزة مسبقاً</div>
                     : <div style={{background:SL,borderRadius:10,padding:"10px 12px",marginBottom:10,display:"flex",justifyContent:"space-between",fontSize:13}}>
                         <span style={{color:T}}>{nightsCount(bkFrom,bkTo)} ليالي</span>
-                        <span style={{fontWeight:900,color:B}}>{calcPrice(bkFrom,bkTo,chalet).toLocaleString()} ريال</span>
+                        <span style={{fontWeight:900,color:B}}>{calcPrice(bkFrom,bkTo,chalet).toLocaleString("en-US")} ريال</span>
                       </div>
                 )}
               </>
@@ -1132,199 +1239,83 @@ function LoyaltyAdminPage({ cards, reviews, onReload }: { cards: LoyaltyCard[]; 
     onReload();
   }
 
-  const statBox = (icon: string, label: string, value: number, color: string) => (
-    <div style={{ background:"var(--card)", borderRadius:16, padding:"18px 20px", border:"1px solid var(--border)", display:"flex", alignItems:"center", gap:14 }}>
-      <div style={{ fontSize:32 }}>{icon}</div>
-      <div>
-        <div style={{ fontSize:24, fontWeight:800, color }}>{value}</div>
-        <div style={{ fontSize:12, opacity:.6, marginTop:2 }}>{label}</div>
-      </div>
-    </div>
+  const avgRating = reviews.length ? reviews.reduce((s,r)=>s+r.rating,0)/reviews.length : 0;
+  const stars = (r: number) => (
+    <span className="x-stars" aria-label={r + " من 5"}>
+      {[1,2,3,4,5].map(i => <svg key={i} width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style={{ color: i <= r ? "var(--gold)" : "var(--line)" }} aria-hidden="true"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6-5.4-3-5.4 3 1.2-6-4.5-4.1 6.1-.7z"/></svg>)}
+    </span>
   );
 
   return (
-    <div>
-      {/* Header */}
-      <div style={{ background:"linear-gradient(135deg,#2C1810,#3D2B1A)", borderRadius:18, padding:"24px 28px", marginBottom:24, border:"1px solid rgba(201,163,106,.25)" }}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:12 }}>
-          <div>
-            <div style={{ fontSize:22, fontWeight:800, color:"#C8B89A" }}>🏆 برنامج ولاء ريتام</div>
-            <div style={{ fontSize:13, color:"rgba(201,163,106,.6)", marginTop:4 }}>اجمع 3 تذاكر واحصل على ليلة مجانية في أي شاليه</div>
-          </div>
-          <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-            <button onClick={() => { setNewCard({name:"",phone:"",tickets:0,free_nights:0}); setAddMdl(true); }} style={{
-              background:"linear-gradient(135deg,#B8960C,#C8B89A)", color:"#1a1a2e", border:"none",
-              borderRadius:10, padding:"9px 16px", fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"'IBM Plex Sans Arabic',sans-serif",
-            }}>+ إضافة عميل</button>
-          </div>
-        </div>
+    <div className="x-page">
+      <PageHead title="الولاء والتقييمات" sub="كل 3 تذاكر تساوي ليلة مجانية في أي شاليه">
+        <button className="btn bp" onClick={() => { setNewCard({name:"",phone:"",tickets:0,free_nights:0}); setAddMdl(true); }}><Icon n="plus"/>إضافة عميل</button>
+      </PageHead>
+
+      <div className="x-kpis">
+        <Kpi hero label="متوسط التقييم" value={<>{avgRating ? avgRating.toFixed(1) : "—"}<small> من 5</small></>} sub={reviews.length + " تقييم · " + reviews.filter(r=>r.rating===5).length + " بخمس نجوم"}/>
+        <Kpi label="أعضاء البرنامج" value={totalMembers}/>
+        <Kpi label="على وشك الجائزة" value={nearlyThere} sub="لديهم تذكرتان"/>
+        <Kpi label="ليالٍ مجانية معلقة" value={cards.reduce((s,c)=>s+c.free_nights,0)} sub={totalPending + " عميل لم يستخدمها"}/>
       </div>
 
-      {/* Stats */}
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12, marginBottom:24 }}>
-        {statBox("👥", "إجمالي الأعضاء",    totalMembers,  "var(--text)")}
-        {statBox("🎁", "ليالٍ مجانية معلقة", totalPending,  "#4ADE80")}
-        {statBox("🔥", "على وشك الجائزة",   nearlyThere,   "#F59E0B")}
-        {statBox("⭐", "إجمالي التقييمات",   totalReviews,  "#C8B89A")}
-      </div>
-
-      {/* Search + Filter */}
-      <div style={{ display:"flex", gap:10, marginBottom:16, flexWrap:"wrap" }}>
-        <input
-          value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="🔍 بحث بالاسم أو الجوال..."
-          style={{ flex:1, minWidth:180, padding:"9px 14px", borderRadius:10, border:"1px solid var(--border)", background:"var(--card)", color:"var(--text)", fontSize:13, fontFamily:"'IBM Plex Sans Arabic',sans-serif" }}
-        />
-        {(["all","pending","active"] as const).map(f => (
-          <button key={f} onClick={() => setFilter(f)} style={{
-            padding:"9px 16px", borderRadius:10, border:"1px solid var(--border)", fontFamily:"'IBM Plex Sans Arabic',sans-serif",
-            fontWeight:700, fontSize:13, cursor:"pointer",
-            background: filter === f ? "var(--primary)" : "var(--card)",
-            color: filter === f ? "#fff" : "var(--text)",
-          }}>
-            {f === "all" ? "الكل" : f === "pending" ? "🎁 ليالٍ معلقة" : "🎫 لديهم تذاكر"}
-          </button>
-        ))}
-      </div>
-
-      {/* Cards Grid */}
-      {filtered.length === 0 && (
-        <div style={{ textAlign:"center", padding:60, opacity:.4 }}>
-          <div style={{ fontSize:48, marginBottom:12 }}>🏆</div>
-          <div>لا يوجد عملاء</div>
-        </div>
-      )}
-
-      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))", gap:14 }}>
-        {filtered.map(c => {
-          const loyaltyUrl = `${BASE_URL}?guest=1&m=loyalty&phone=${c.phone}`;
-          return (
-            <div key={c.id} style={{
-              background:"var(--card)", borderRadius:16, border:"1px solid var(--border)",
-              overflow:"hidden", transition:"box-shadow .2s",
-              boxShadow: c.free_nights > 0 ? "0 0 0 2px #4ADE80" : c.tickets === 2 ? "0 0 0 2px #F59E0B" : "none",
-            }}>
-              {/* Card Header */}
-              <div style={{ background:"linear-gradient(135deg,#2C1810,#3D2B1A)", padding:"14px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-                <div>
-                  <div style={{ fontWeight:800, color:"#C8B89A", fontSize:14 }}>{c.name}</div>
-                  <div style={{ fontSize:11, color:"rgba(201,163,106,.6)", marginTop:2, direction:"ltr", textAlign:"right" }}>{c.phone}</div>
-                </div>
-                <div style={{ display:"flex", gap:4 }}>
-                  {[0,1,2].map(i => (
-                    <div key={i} style={{
-                      width:28, height:28, borderRadius:8, fontSize:14,
-                      background: i < c.tickets ? "linear-gradient(135deg,#B8960C,#C8B89A)" : "rgba(201,163,106,.12)",
-                      border: i < c.tickets ? "none" : "1.5px dashed rgba(201,163,106,.3)",
-                      display:"flex", alignItems:"center", justifyContent:"center",
-                    }}>{i < c.tickets ? "🎫" : ""}</div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Card Body */}
-              <div style={{ padding:"12px 16px" }}>
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8, marginBottom:12 }}>
-                  <div style={{ textAlign:"center", background:"var(--surface)", borderRadius:10, padding:"8px 4px" }}>
-                    <div style={{ fontWeight:800, fontSize:18, color:"#C8B89A" }}>{c.tickets}/3</div>
-                    <div style={{ fontSize:10, opacity:.6 }}>تذاكر</div>
-                  </div>
-                  <div style={{ textAlign:"center", background:"var(--surface)", borderRadius:10, padding:"8px 4px" }}>
-                    <div style={{ fontWeight:800, fontSize:18, color: c.free_nights > 0 ? "#4ADE80" : "var(--text)" }}>{c.free_nights}</div>
-                    <div style={{ fontSize:10, opacity:.6 }}>ليالٍ مجانية</div>
-                  </div>
-                  <div style={{ textAlign:"center", background:"var(--surface)", borderRadius:10, padding:"8px 4px" }}>
-                    <div style={{ fontWeight:800, fontSize:18 }}>{c.total_reviews}</div>
-                    <div style={{ fontSize:10, opacity:.6 }}>تقييمات</div>
-                  </div>
-                </div>
-
-                {/* Progress Bar */}
-                <div style={{ background:"rgba(201,163,106,.15)", borderRadius:99, height:5, marginBottom:12 }}>
-                  <div style={{ width:`${(c.tickets/3)*100}%`, height:"100%", borderRadius:99, transition:"width .4s", background: c.tickets === 3 ? "#4ADE80" : "linear-gradient(90deg,#B8960C,#C8B89A)" }}/>
-                </div>
-
-                {c.free_nights > 0 && (
-                  <button onClick={() => useNight(c)} style={{
-                    width:"100%", marginBottom:8, padding:"9px", borderRadius:10, border:"none",
-                    background:"linear-gradient(135deg,#14532D,#166534)", color:"#4ADE80",
-                    fontWeight:800, fontSize:13, cursor:"pointer", fontFamily:"'IBM Plex Sans Arabic',sans-serif",
-                  }}>✓ استخدام ليلة مجانية ({c.free_nights})</button>
-                )}
-
-                <div style={{ display:"flex", gap:6 }}>
-                  <button onClick={() => window.open(loyaltyUrl, "_blank")} style={{
-                    flex:1, padding:"8px", borderRadius:10, border:"1px solid rgba(201,163,106,.3)",
-                    background:"linear-gradient(135deg,#B8960C,#C8B89A)", color:"#1a1a2e",
-                    fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"'IBM Plex Sans Arabic',sans-serif",
-                  }}>🏆 بطاقة الضيف</button>
-                  <button onClick={() => {
-                    const ph = c.phone.replace(/^0/, "966");
-                    const msg = `مرحباً ${c.name}! 🌟%0aلديك ${c.tickets}/3 تذاكر في برنامج ولاء ريتام%0aشاهد بطاقتك: ${loyaltyUrl}`;
-                    window.open(`https://wa.me/${ph}?text=${msg}`, "_blank");
-                  }} style={{
-                    padding:"8px 12px", borderRadius:10, border:"1px solid rgba(37,211,102,.3)",
-                    background:"rgba(37,211,102,.1)", color:"#1F8A4C",
-                    fontWeight:800, fontSize:12, cursor:"pointer", fontFamily:"'IBM Plex Sans Arabic',sans-serif",
-                  }}>📲</button>
-                  <button onClick={() => setEditMdl({...c})} style={{
-                    padding:"8px 12px", borderRadius:10, border:"1px solid var(--border)",
-                    background:"var(--surface)", color:"var(--text)",
-                    fontSize:12, cursor:"pointer", fontFamily:"'IBM Plex Sans Arabic',sans-serif",
-                  }}>✏️</button>
-                  <button onClick={() => deleteCard(c)} style={{
-                    padding:"8px 12px", borderRadius:10, border:"none",
-                    background:"rgba(239,68,68,.1)", color:"#EF4444",
-                    fontSize:12, cursor:"pointer", fontFamily:"'IBM Plex Sans Arabic',sans-serif",
-                  }}>🗑️</button>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Reviews Section */}
-      <div style={{ marginTop:32, marginBottom:8 }}>
-        <div style={{ fontWeight:800, fontSize:17, marginBottom:16 }}>⭐ تقييمات الضيوف</div>
-        {reviews.length > 0 && (
-          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))", gap:12, marginBottom:20 }}>
-            {[
-              { l:"إجمالي التقييمات", v:String(reviews.length), i:"📝", col:"var(--text)" },
-              { l:"متوسط التقييم",    v:(reviews.reduce((s,r)=>s+r.rating,0)/reviews.length).toFixed(1)+" ⭐", i:"⭐", col:"#F59E0B" },
-              { l:"تقييم 5 نجوم",    v:String(reviews.filter(r=>r.rating===5).length), i:"🌟", col:"#10b981" },
-            ].map((s,i) => (
-              <div key={i} style={{ background:"var(--card)", borderRadius:12, padding:16, border:"1px solid var(--border)" }}>
-                <div style={{ fontSize:20, marginBottom:5 }}>{s.i}</div>
-                <div style={{ fontSize:20, fontWeight:800, color:s.col }}>{s.v}</div>
-                <div style={{ fontSize:11, opacity:.6, marginTop:2 }}>{s.l}</div>
-              </div>
-            ))}
-          </div>
-        )}
-        {reviews.length === 0
-          ? <div style={{ textAlign:"center", padding:40, opacity:.4 }}>
-              <div style={{ fontSize:40, marginBottom:8 }}>⭐</div>
-              <div>لا توجد تقييمات بعد</div>
-            </div>
-          : <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(290px,1fr))", gap:12 }}>
+      <div className="x-page">
+        <div className="x-card">
+          <CardHead icon="star" title="تقييمات الضيوف" sub={reviews.length ? "الأحدث أولاً" : undefined}/>
+          {reviews.length === 0 ? <Empty>لا توجد تقييمات بعد</Empty> : (
+            <div className="x-list">
               {[...reviews].reverse().map((r,i) => (
-                <div key={i} style={{ background:"var(--card)", borderRadius:14, padding:16, border:"1px solid var(--border)" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:10 }}>
-                    <div>
-                      <div style={{ fontWeight:700, fontSize:14 }}>{r.guest}</div>
-                      <div style={{ fontSize:12, opacity:.6 }}>{r.chalet}</div>
-                    </div>
-                    <div style={{ display:"flex", gap:2 }}>
-                      {[1,2,3,4,5].map(s=><span key={s} style={{ fontSize:16, color:r.rating>=s?"#F59E0B":"#E5E7EB" }}>★</span>)}
-                    </div>
+                <div key={i} className="x-li" style={{ alignItems:"flex-start" }}>
+                  <div className="meta">
+                    <div style={{ display:"flex", justifyContent:"space-between", gap:8, alignItems:"center", flexWrap:"wrap" }}><b>{r.guest}</b>{stars(r.rating)}</div>
+                    <span>{r.chalet + " · " + new Date(r.created_at).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn")}</span>
+                    {r.comment && <p style={{ marginTop:6, fontSize:14, color:"var(--text)", lineHeight:1.7 }}>{r.comment}</p>}
                   </div>
-                  {r.comment && <div style={{ fontSize:13, opacity:.8, background:"var(--surface)", borderRadius:8, padding:"8px 12px", lineHeight:1.7, marginBottom:8 }}>{r.comment}</div>}
-                  <div style={{ fontSize:11, opacity:.5 }}>{new Date(r.created_at).toLocaleDateString("ar-SA-u-ca-gregory")}</div>
                 </div>
               ))}
             </div>
-        }
+          )}
+        </div>
+
+        <div className="x-card">
+          <div className="x-card-h">
+            <h2><Icon n="trophy"/>الأعضاء</h2>
+            <Seg label="تصفية" value={filter} onChange={v=>setFilter(v)} options={[{v:"all",l:"الكل",c:cards.length},{v:"pending",l:"ليالٍ معلقة",c:totalPending},{v:"active",l:"لديهم تذاكر",c:cards.filter(c=>c.tickets>0).length}]}/>
+          </div>
+          <div style={{ padding:"12px 20px 0" }}>
+            <input className="x-input" value={search} onChange={e => setSearch(e.target.value)} placeholder="بحث بالاسم أو الجوال" aria-label="بحث في الأعضاء"/>
+          </div>
+          {filtered.length === 0 ? <Empty>لا يوجد عملاء</Empty> : (
+            <div className="x-list" style={{ marginTop:8 }}>
+              {filtered.map(c => {
+                const loyaltyUrl = `${BASE_URL}?guest=1&m=loyalty&phone=${c.phone}`;
+                return (
+                  <div key={c.id} className="x-li" style={{ flexWrap:"wrap" }}>
+                    <div className="meta" style={{ minWidth:160 }}>
+                      <b>{c.name}</b>
+                      <span className="x-mono" style={{ textAlign:"right" }}>{c.phone}</span>
+                    </div>
+                    <div style={{ display:"flex", gap:4 }} aria-label={c.tickets + " من 3 تذاكر"}>
+                      {[0,1,2].map(i => <span key={i} style={{ width:16, height:16, borderRadius:4, background: i < c.tickets ? "var(--gold)" : "var(--line)" }}/>)}
+                    </div>
+                    {c.free_nights > 0 && <Pill tone="warn">{c.free_nights + " ليلة مجانية"}</Pill>}
+                    <div className="acts">
+                      {c.free_nights > 0 && <button className="btn bp bsm" onClick={() => useNight(c)}><Icon n="gift" s={15}/>استخدام ليلة</button>}
+                      <button className="btn bo bsm" onClick={() => window.open(loyaltyUrl, "_blank")}><Icon n="ticket" s={15}/>البطاقة</button>
+                      <button className="btn bshare bsm" aria-label="إرسال واتساب" onClick={() => {
+                        const ph = c.phone.replace(/^0/, "966");
+                        const msg = `مرحباً ${c.name}! 🌟%0aلديك ${c.tickets}/3 تذاكر في برنامج ولاء ريتام%0aشاهد بطاقتك: ${loyaltyUrl}`;
+                        window.open(`https://wa.me/${ph}?text=${msg}`, "_blank");
+                      }}><Icon n="send" s={15}/></button>
+                      <button className="btn bo bsm" aria-label="تعديل" onClick={() => setEditMdl({...c})}><Icon n="edit" s={15}/></button>
+                      <button className="btn bd bsm" aria-label="حذف" onClick={() => deleteCard(c)}><Icon n="trash" s={15}/></button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Edit Modal */}
@@ -2444,6 +2435,8 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [refreshing,setRefreshing] = useState(false);
   const [fch,setFch]           = useState("الكل");
   const [bkStatus,setBkStatus] = useState("الكل");
+  const [mStatus,setMStatus]   = useState<string>("open");
+  const [walletTab,setWalletTab] = useState<"ins"|"cln"|"obl">("ins");
   const [bkFrom,setBkFrom]     = useState(monthStart());
   const [bkTo,setBkTo]         = useState(monthEnd());
   const [bkLang,setBkLang]     = useState<"ar"|"hi">(()=>{ try{ return (localStorage.getItem("bk_lang") as "ar"|"hi") || "ar"; }catch{ return "ar"; } });
@@ -2577,7 +2570,11 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
       const monthMaint=cm.filter(m=>Number(m.cost)>0&&m.maint_date&&new Date(m.maint_date).getFullYear()===y&&new Date(m.maint_date).getMonth()===mo).reduce((s,m)=>s+Number(m.cost),0);
       const monthMisc=ce.filter(e=>e.expense_date&&new Date(e.expense_date).getFullYear()===y&&new Date(e.expense_date).getMonth()===mo).reduce((s,e)=>s+Number(e.amount),0);
       const monthExp=monthMaint+monthMisc;
+      // ليالٍ محجوزة هذا الشهر (مقصوصة على حدود الشهر) ونسبة الإشغال
+      const mStart=new Date(y,mo,1), mEnd=new Date(y,mo+1,1), dim=new Date(y,mo+1,0).getDate();
+      const nights=earned.filter(b=>b.date_from&&b.date_to).reduce((s,b)=>{const f=new Date(b.date_from),t=new Date(b.date_to);const a=f>mStart?f:mStart,e=t<mEnd?t:mEnd;return s+Math.max(0,Math.round((e.getTime()-a.getTime())/86400000));},0);
       return {
+        nights, occ: dim>0?Math.round(nights/dim*100):0,
         ...c,
         rev,
         totalRev:(Number(c.prev_revenue)||0)+rev,
@@ -2819,17 +2816,17 @@ ${poolLine}
   }
 
   const TABS = [
-    {id:"dashboard",  l:"الرئيسية",    i:"⊞"},
-    {id:"chalets",    l:"الشاليهات",   i:"🏠"},
-    {id:"bookings",   l:"الحجوزات",    i:"📅"},
-    {id:"finance",    l:"المالية",     i:"💰"},
-    {id:"investors",  l:"إدارة المستثمرين", i:"🤝"},
-    {id:"maintenance",l:"الصيانة",     i:"🔧"},
-    {id:"insurance",  l:"التأمين",     i:"🛡️"},
-    {id:"cleaning",   l:"النظافة",     i:"🧹"},
-    {id:"smart",      l:"التحكم الذكي",i:"🌡️"},
-    {id:"loyalty",    l:"الولاء والتقييمات", i:"🏆"},
-    {id:"settings",   l:"الإعدادات",   i:"⚙️"},
+    {id:"dashboard",  l:"الرئيسية",          g:"التشغيل"},
+    {id:"bookings",   l:"الحجوزات",          g:"التشغيل"},
+    {id:"chalets",    l:"الشاليهات",         g:"التشغيل"},
+    {id:"maintenance",l:"الصيانة",           g:"التشغيل"},
+    {id:"cleaning",   l:"النظافة",           g:"التشغيل"},
+    {id:"smart",      l:"التحكم الذكي",      g:"التشغيل"},
+    {id:"finance",    l:"المالية",           g:"المال"},
+    {id:"wallets",    l:"المحافظ",           g:"المال"},
+    {id:"investors",  l:"المستثمرون",        g:"المال"},
+    {id:"loyalty",    l:"الولاء والتقييمات", g:"العملاء"},
+    {id:"settings",   l:"الإعدادات",         g:"النظام"},
   ];
 
   function allowedTabs(t) {
@@ -2892,7 +2889,7 @@ ${poolLine}
         <div style={{background:SL,borderRadius:12,padding:14,marginBottom:16}}>
           <div style={{fontWeight:800,color:B,fontSize:15,marginBottom:4}}>{booking.guest}</div>
           <div style={{fontSize:13,color:T}}>{booking.chalet} · خروج: {fd(booking.date_to)}</div>
-          <div style={{fontSize:12,color:T,marginTop:4}}>{fn(booking.date_from,booking.date_to)+" ليلة · "+Number(booking.price).toLocaleString()+" ر"}</div>
+          <div style={{fontSize:12,color:T,marginTop:4}}>{fn(booking.date_from,booking.date_to)+" ليلة · "+Number(booking.price).toLocaleString("en-US")+" ر"}</div>
         </div>
         <div style={{marginBottom:12}}><label className="lbl">💰 المبلغ المدفوع (ريال)</label><input className="inp" type="number" value={amt} onChange={e=>setAmt(e.target.value)}/></div>
         <div style={{marginBottom:12}}>
@@ -2927,7 +2924,7 @@ ${poolLine}
           {!recv.trim() && <div style={{fontSize:11,color:"#A63A2A",marginTop:4}}>لازم تحدد من استلم المبلغ</div>}
         </div>
         <div style={{background:"#FEF3C7",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:13,color:"#92400E",fontWeight:600}}>
-          سيتم تسجيل {Number(amt||0).toLocaleString()} ريال في الإيرادات
+          سيتم تسجيل {Number(amt||0).toLocaleString("en-US")} ريال في الإيرادات
         </div>
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
           <button className="btn bo" onClick={()=>setCoMdl(null)}>إلغاء</button>
@@ -2968,13 +2965,17 @@ ${poolLine}
   );
   const sideNav = (count:number, afterPick?:()=>void) => (
     <nav className="rs-nav" aria-label="القائمة الرئيسية">
-      {TABS.filter(allowedTabs).map(t=>(
-        <button key={t.id} type="button" onClick={()=>{setTab(t.id);afterPick?.();}}
-          className={"rs-item"+(tab===t.id?" active":"")} aria-current={tab===t.id?"page":undefined}>
-          <NavIcon id={t.id}/>
-          <span>{t.l}</span>
-          {t.id==="bookings"&&count>0&&<span className="rs-count">{count}</span>}
-        </button>
+      {TABS.filter(allowedTabs).map((t,i,arr)=>(
+        <React.Fragment key={t.id}>
+          {(i===0||arr[i-1].g!==t.g)&&<div className="x-nav-group">{t.g}</div>}
+          <button type="button" onClick={()=>{setTab(t.id);afterPick?.();}}
+            className={"rs-item"+(tab===t.id?" active":"")} aria-current={tab===t.id?"page":undefined}>
+            <NavIcon id={t.id}/>
+            <span>{t.l}</span>
+            {t.id==="bookings"&&count>0&&<span className="rs-count">{count}</span>}
+            {t.id==="maintenance"&&opM>0&&<span className="rs-count">{opM}</span>}
+          </button>
+        </React.Fragment>
       ))}
     </nav>
   );
@@ -3047,521 +3048,165 @@ ${poolLine}
         <main style={{maxWidth:1100,margin:"0 auto",padding:isMobile?"14px 12px":"24px 20px",paddingBottom:isMobile?80:60}}>
 
           {/* ── Dashboard ── */}
-          {tab==="dashboard"&&(
-            <div className="stagger">
-              {/* ── الترويسة ── */}
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
-                <div>
-                  <div style={{fontSize:22,fontWeight:900,color:"var(--text)"}}>لوحة التحكم</div>
-                  <div style={{fontSize:12,color:"var(--text2)",marginTop:2}}>{new Date().toLocaleDateString("ar-SA-u-ca-gregory",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</div>
+          {tab==="dashboard"&&(()=>{
+            const now=new Date();
+            const y=now.getFullYear(), mo=now.getMonth();
+            const activeStatuses=["completed","confirmed"];
+            const inMonth=(d:string|undefined,yy:number,mm:number)=>!!d&&new Date(d).getFullYear()===yy&&new Date(d).getMonth()===mm;
+            const monthBks=scBookings.filter(b=>activeStatuses.includes(b.status)&&inMonth(b.date_from,y,mo));
+            const monthRev=monthBks.reduce((s,b)=>s+Number(b.price),0);
+            const lastMo=mo===0?11:mo-1; const lastY=mo===0?y-1:y;
+            const lastMonthRev=scBookings.filter(b=>activeStatuses.includes(b.status)&&inMonth(b.date_from,lastY,lastMo)).reduce((s,b)=>s+Number(b.price),0);
+            const diff=lastMonthRev>0?Math.round((monthRev-lastMonthRev)/lastMonthRev*100):null;
+            const yearRev=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===y).reduce((s,b)=>s+Number(b.price),0);
+            const monthExp=scExpenses.filter(e=>inMonth(e.expense_date,y,mo)).reduce((s,e)=>s+Number(e.amount),0)
+              + scMaint.filter(m=>m.cost&&inMonth(m.maint_date,y,mo)).reduce((s,m)=>s+Number(m.cost),0);
+            const netProfit=monthRev-monthExp;
+            const margin=monthRev>0?Math.round(netProfit/monthRev*100):0;
+            const daysInMonth=new Date(y,mo+1,0).getDate();
+            const activeChaletsCount=scChalets.filter(c=>c.st!=="inactive").length||scChalets.length;
+            const monthStartD=new Date(y,mo,1), monthEndD=new Date(y,mo+1,1);
+            const bookedNights=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&b.date_to).reduce((s,b)=>{
+              const from=new Date(b.date_from), to=new Date(b.date_to);
+              const start=from>monthStartD?from:monthStartD, end=to<monthEndD?to:monthEndD;
+              return s+Math.max(0,Math.round((end.getTime()-start.getTime())/86400000));
+            },0);
+            const availableNights=activeChaletsCount*daysInMonth;
+            const occupancyPct=availableNights>0?Math.round(bookedNights/availableNights*100):0;
+            const adr=bookedNights>0?Math.round(monthRev/bookedNights):0;
+            const revpar=availableNights>0?Math.round(monthRev/availableNights):0;
+            const monthName=now.toLocaleDateString("ar-SA-u-ca-gregory-nu-latn",{month:"long"});
+
+            // ── قائمة موحّدة لكل ما يحتاج تصرّفاً اليوم، مرتبة حسب الأولوية ──
+            type Act={label:string;primary?:boolean;onClick:()=>void|Promise<void>};
+            type Item={key:string;tone:"bad"|"warn"|"info"|"muted";icon:string;title:string;desc:React.ReactNode;acts:Act[]};
+            const items:Item[]=[];
+            const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+            const yesterday=new Date(today); yesterday.setDate(today.getDate()-1);
+            scBookings.filter(b=>{
+              if(b.status!=="confirmed"&&b.status!=="pending") return false;
+              if(!b.date_to) return false;
+              const to=new Date(b.date_to); const toD=new Date(to.getFullYear(),to.getMonth(),to.getDate());
+              return toD<=today&&toD>=yesterday;
+            }).forEach(b=>items.push({key:"co"+b.id,tone:"bad",icon:"door",title:"تسجيل خروج: "+b.guest,desc:b.chalet+" · "+fd(b.date_to)+" · "+Number(b.price).toLocaleString("en-US")+" ر.س",acts:[{label:"تسجيل خروج",primary:true,onClick:()=>setCoMdl(b)}]}));
+            soonArrivals.forEach(b=>{
+              const dt=checkinDateTime(b); const mins=dt?Math.max(0,Math.round((dt.getTime()-nowTick)/60000)):0;
+              items.push({key:"sa"+b.id,tone:"warn",icon:"clock",title:"وصول خلال "+mins+" دقيقة: "+b.guest,desc:<>{b.chalet+" · دخول "+(b.checkin_time||"")}{b.pre_arrival_sent&&<> · <span className="x-pos">أُرسلت الرسالة</span></>}{!b.phone&&<> · <span className="x-neg">لا يوجد جوال</span></>}</>,acts:[{label:b.pre_arrival_sent?"إعادة إرسال":"إرسال رسالة الوصول",primary:!b.pre_arrival_sent,onClick:()=>setPreArrMdl({booking:b})}]});
+            });
+            const tomStr=new Date(Date.now()+86400000).toISOString().slice(0,10);
+            scBookings.filter(b=>b.status==="confirmed"&&b.date_from===tomStr).forEach(b=>{
+              items.push({key:"tm"+b.id,tone:b.pre_arrival_sent?"muted":"info",icon:"msg",title:"وصول غداً: "+b.guest,desc:<>{b.chalet}{b.checkin_time&&" · دخول "+b.checkin_time}{b.pre_arrival_sent?<> · <span className="x-pos">أُرسلت الرسالة</span></>:" · لم تُرسل رسالة الوصول"}{!b.phone&&<> · <span className="x-neg">لا يوجد جوال</span></>}</>,acts:[{label:b.pre_arrival_sent?"إعادة إرسال":"إرسال",primary:!b.pre_arrival_sent,onClick:()=>setPreArrMdl({booking:b})}]});
+            });
+            const poolLabel=(pref:string)=>{if(!pref)return "-";if(pref==="on_arrival")return "تعبئة عند الوصول";if(pref.startsWith("ready")){const t=pref.split(":").slice(1).join(":");return t?"جاهز عند الوصول · الساعة "+t:"جاهز عند الوصول";}return pref;};
+            scBookings.filter(b=>b.pool_preference&&!b.pool_approved&&b.status==="confirmed").forEach(b=>{
+              items.push({key:"pl"+b.id,tone:"info",icon:"pool",title:"طلب تجهيز المسبح: "+b.guest,desc:b.chalet+" · "+poolLabel(b.pool_preference||"")+" · دخول "+fd(b.date_from),acts:[
+                {label:"موافقة وإرسال",primary:true,onClick:async()=>{await db("bookings","PATCH",{pool_approved:true},b.id);await loadAll();const msg=encodeURIComponent(buildPoolApprovalMsg(b));const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966")||"";if(phone)window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
+                {label:"رفض",onClick:async()=>{await db("bookings","PATCH",{pool_preference:null,pool_approved:false},b.id);await loadAll();}},
+              ]});
+            });
+            roomReqs.forEach((r:any)=>{
+              const rt=ROOM_REQUEST_TYPES.find(x=>x.val===r.type)||{label:r.type};
+              const ago=Math.round((Date.now()-new Date(r.created_at).getTime())/60000);
+              const agoStr=ago<1?"الآن":ago<60?`منذ ${ago} د`:`منذ ${Math.round(ago/60)} س`;
+              items.push({key:"rr"+r.id,tone:"muted",icon:"bell",title:"طلب غرفة: "+rt.label,desc:<>{r.chalet+" · "+r.room+" · "+agoStr}{r.note&&<> · «{r.note}»</>}</>,acts:[{label:"تم",onClick:async()=>{await db("room_requests","PATCH",{resolved:true},r.id);await loadAll();}}]});
+            });
+            scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx)})).filter(x=>x.info&&x.info.daysUntil<=RENT_REMINDER_DAYS).sort((a,b)=>a.info!.daysUntil-b.info!.daysUntil).forEach(({fx,info})=>{
+              const d=info!.daysUntil;
+              items.push({key:"rn"+fx.id,tone:d<0?"bad":"warn",icon:"home",title:d<0?"إيجار متأخر "+Math.abs(d)+" يوم":d===0?"الإيجار يستحق اليوم":"الإيجار يستحق بعد "+d+" يوم",desc:fx.chalet+" · "+fx.name+" · "+Number(fx.amount).toLocaleString("en-US")+" ر.س · "+formatDueDate(info!.nextDue),acts:[{label:"تم",onClick:()=>acknowledgeRent(fx)}]});
+            });
+            {
+              const thisYM=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+              const paidNames=new Set(scExpenses.filter(e=>e.expense_date?.startsWith(thisYM)).map(e=>e.note));
+              scFixedExpenses.filter(fx=>fx.active&&fx.category!=="إيجار"&&!paidNames.has(fx.name)).forEach(fx=>{
+                items.push({key:"fx"+fx.id,tone:"warn",icon:"receipt",title:"مصروف ثابت لم يُسدَّد: "+fx.name,desc:fx.chalet+" · "+(fx.category||"")+" · "+Number(fx.amount).toLocaleString("en-US")+" ر.س",acts:[{label:"تسديد",onClick:()=>payFixedExpense(fx)}]});
+              });
+            }
+            const rank={bad:0,warn:1,info:2,muted:3};
+            items.sort((a,b)=>rank[a.tone]-rank[b.tone]);
+
+            const upcoming=scBookings.filter(b=>b.status!=="cancelled"&&b.status!=="completed").map(b=>{const from=new Date(b.date_from);return{...b,daysLeft:Math.round((new Date(from.getFullYear(),from.getMonth(),from.getDate()).getTime()-today.getTime())/86400000)};}).filter(b=>b.daysLeft>=-1).sort((a,b)=>a.daysLeft-b.daysLeft).slice(0,6);
+            const hour=now.getHours();
+            const greet=hour<12?"صباح الخير":"مساء الخير";
+            const firstName=(currentUser.name||currentUser.username||"").trim().split(" ")[0];
+
+            return (
+            <div className="x-page">
+              <PageHead title={greet+(firstName?"، "+firstName:"")}
+                sub={now.toLocaleDateString("ar-SA-u-ca-gregory-nu-latn",{weekday:"long",year:"numeric",month:"long",day:"numeric"})+(items.length?" · "+items.length+" أمور تحتاجك":" · لا شيء عاجل")}>
+                <button className="btn bo" onClick={()=>setTab("bookings")}><Icon n="cal"/>التقويم</button>
+                <button className="btn bp" onClick={()=>setBMdl({...eB})}><Icon n="plus"/>حجز جديد</button>
+              </PageHead>
+
+              <div className="x-kpis">
+                <Kpi hero label={"إيرادات "+monthName} badge={diff!==null?<Pill tone="">{(diff>0?"+":"")+diff+"% عن الشهر الماضي"}</Pill>:undefined}
+                  value={<SAR v={monthRev}/>} sub={monthBks.length+" حجز · إيرادات العام "+yearRev.toLocaleString("en-US")+" ر.س"}/>
+                <Kpi label="صافي الربح" badge={monthRev>0?<Pill tone={margin>=40?"ok":margin>=0?"warn":"bad"}>{"هامش "+margin+"%"}</Pill>:undefined}
+                  value={<SAR v={netProfit}/>} tone={netProfit<0?"neg":undefined} sub={"مصاريف "+monthExp.toLocaleString("en-US")+" ر.س"}/>
+                <Kpi label="نسبة الإشغال" value={<>{occupancyPct}<small>%</small></>} sub={bookedNights.toLocaleString("en-US")+" من "+availableNights.toLocaleString("en-US")+" ليلة متاحة"}>
+                  <Track pct={occupancyPct} tone={toneFor(occupancyPct)}/>
+                </Kpi>
+                <Kpi label="متوسط سعر الليلة" value={<SAR v={adr}/>} sub={"العائد لكل ليلة متاحة "+revpar.toLocaleString("en-US")+" ر.س"}/>
+              </div>
+
+              <div className="x-card">
+                <CardHead icon="bell" title="يحتاج تصرّفك اليوم" sub={items.length?"مرتبة حسب الأولوية":undefined}/>
+                {items.length===0
+                  ? <Empty>كل شيء تحت السيطرة، لا توجد مهام عاجلة الآن</Empty>
+                  : <div className="x-list">{items.map(it=>(
+                      <div key={it.key} className="x-li">
+                        <div className={"x-ic "+it.tone}><Icon n={it.icon}/></div>
+                        <div className="meta"><b>{it.title}</b><span>{it.desc}</span></div>
+                        <div className="acts">{it.acts.map((a,i)=><ActBtn key={i} primary={a.primary} onClick={a.onClick}>{a.label}</ActBtn>)}</div>
+                      </div>
+                    ))}</div>}
+              </div>
+
+              <div className="x-grid2">
+                <MonthlyChart bookings={scBookings} expenses={scExpenses} maint={scMaint} B={B} T={T} SI={SI} SL={SL}/>
+                <div className="x-card">
+                  <CardHead icon="cal" title="الحجوزات القادمة"><button className="btn bo bsm" onClick={()=>setTab("bookings")}>الكل</button></CardHead>
+                  {upcoming.length===0 ? <Empty>لا توجد حجوزات قادمة</Empty> : (
+                    <div className="x-list">{upcoming.map(b=>{
+                      const isIn=b.daysLeft<0, isToday=b.daysLeft===0;
+                      const tone=isIn?"warn":isToday?"bad":b.daysLeft<=3?"ok":"muted";
+                      return (
+                        <div key={b.id} className="x-li click" onClick={()=>setBkDetail(b)}>
+                          <span style={{minWidth:64,display:"inline-flex",justifyContent:"center"}}><Pill tone={tone}>{isIn?"داخل الآن":isToday?"اليوم":b.daysLeft===1?"غداً":"بعد "+b.daysLeft+" يوم"}</Pill></span>
+                          <div className="meta"><b>{b.guest}</b><span>{b.chalet+" · "+fn(b.date_from,b.date_to)+" ليلة"}</span></div>
+                          <span className="amt"><SAR v={Number(b.price)}/></span>
+                        </div>
+                      );
+                    })}</div>
+                  )}
                 </div>
               </div>
 
-              {/* ── ملخص يومي ── */}
-              {(()=>{
-                const todayStr=new Date().toISOString().slice(0,10);
-                const tomStr=new Date(Date.now()+86400000).toISOString().slice(0,10);
-                const checkoutsToday=scBookings.filter(b=>(b.status==="confirmed"||b.status==="pending")&&b.date_to===todayStr).length;
-                const checkinsToday=scBookings.filter(b=>b.status==="confirmed"&&b.date_from===todayStr).length;
-                const arrivingTomorrow=scBookings.filter(b=>b.status==="confirmed"&&b.date_from===tomStr).length;
-                const poolPending=scBookings.filter(b=>b.pool_preference&&!b.pool_approved&&b.status==="confirmed").length;
-                const openMaint=scMaint.filter(m=>m.status==="open").length;
-                const items=[
-                  checkoutsToday&&{icon:"🚪",label:"خروج اليوم",val:checkoutsToday,color:"#DC2626",bg:"rgba(220,38,38,.08)"},
-                  checkinsToday&&{icon:"🏡",label:"دخول اليوم",val:checkinsToday,color:"#059669",bg:"rgba(5,150,105,.08)"},
-                  arrivingTomorrow&&{icon:"🌅",label:"وصول غداً",val:arrivingTomorrow,color:"#4338CA",bg:"rgba(67,56,202,.08)"},
-                  poolPending&&{icon:"🏊",label:"طلبات مسبح",val:poolPending,color:"#0284C7",bg:"rgba(2,132,199,.08)"},
-                  openMaint&&{icon:"🔧",label:"صيانة مفتوحة",val:openMaint,color:"#B45309",bg:"rgba(180,83,9,.08)"},
-                  roomReqs.length&&{icon:"🛎️",label:"طلبات غرف",val:roomReqs.length,color:"#7C3AED",bg:"rgba(124,58,237,.08)"},
-                ].filter(Boolean);
-                if(!items.length) return null;
-                return (
-                  <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-                    {items.map((item:any,i)=>(
-                      <div key={i} style={{display:"flex",alignItems:"center",gap:8,borderRadius:12,padding:"10px 16px",background:item.bg,border:`1px solid ${item.color}22`,flex:1,minWidth:120}}>
-                        <span style={{fontSize:20}}>{item.icon}</span>
-                        <div>
-                          <div style={{fontSize:20,fontWeight:900,color:item.color,lineHeight:1}}>{item.val}</div>
-                          <div style={{fontSize:10,color:"var(--text2)",fontWeight:600,marginTop:2}}>{item.label}</div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-
-              {/* ── الأرقام الكبيرة ── */}
-              {(()=>{
-                const now=new Date();
-                const y=now.getFullYear(), mo=now.getMonth();
-
-                // حجوزات مكتملة أو مؤكدة (confirmed تُحسب إيراداً فعلياً)
-                const activeStatuses=["completed","confirmed"];
-
-                // هذا الشهر: date_from يقع في الشهر الحالي (نفس منطق صفحة المالية)
-                const monthBks=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&
-                  new Date(b.date_from).getFullYear()===y&&new Date(b.date_from).getMonth()===mo
-                );
-                const monthRev=monthBks.reduce((s,b)=>s+Number(b.price),0);
-                const monthCount=monthBks.length;
-
-                // الشهر الماضي
-                const lastMo=mo===0?11:mo-1; const lastY=mo===0?y-1:y;
-                const lastMonthRev=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&
-                  new Date(b.date_from).getFullYear()===lastY&&new Date(b.date_from).getMonth()===lastMo
-                ).reduce((s,b)=>s+Number(b.price),0);
-
-                const diff=lastMonthRev>0?Math.round((monthRev-lastMonthRev)/lastMonthRev*100):0;
-
-                // هذا العام
-                const yearRev=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===y).reduce((s,b)=>s+Number(b.price),0);
-                const yearCount=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&new Date(b.date_from).getFullYear()===y).length;
-
-                // المصاريف الشهرية
-                const monthExp=scExpenses.filter(e=>e.expense_date&&new Date(e.expense_date).getFullYear()===y&&new Date(e.expense_date).getMonth()===mo).reduce((s,e)=>s+Number(e.amount),0)
-                  + scMaint.filter(m=>m.cost&&m.maint_date&&new Date(m.maint_date).getFullYear()===y&&new Date(m.maint_date).getMonth()===mo).reduce((s,m)=>s+Number(m.cost),0);
-                const netProfit=monthRev-monthExp;
-                const margin=monthRev>0?Math.round(netProfit/monthRev*100):0;
-
-                // نسبة الإشغال: ليالٍ محجوزة هذا الشهر (مقصوصة على حدود الشهر) ÷ (عدد الشاليهات النشطة × أيام الشهر)
-                const daysInMonth=new Date(y,mo+1,0).getDate();
-                const activeChaletsCount=scChalets.filter(c=>c.st!=="inactive").length||scChalets.length;
-                const monthStart=new Date(y,mo,1), monthEnd=new Date(y,mo+1,1);
-                const bookedNights=scBookings.filter(b=>activeStatuses.includes(b.status)&&b.date_from&&b.date_to).reduce((s,b)=>{
-                  const from=new Date(b.date_from), to=new Date(b.date_to);
-                  const start=from>monthStart?from:monthStart, end=to<monthEnd?to:monthEnd;
-                  return s+Math.max(0,Math.round((end.getTime()-start.getTime())/86400000));
-                },0);
-                const availableNights=activeChaletsCount*daysInMonth;
-                const occupancyPct=availableNights>0?Math.round(bookedNights/availableNights*100):0;
-                const occColor=occupancyPct>=70?"#4CAF50":occupancyPct>=40?"#EAB308":"#EF4444";
-
-                return (
-                  <div style={{marginBottom:20}}>
-                    {/* الصف الأول: 3 بطاقات كبيرة */}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:12}}>
-                      {/* إيرادات الشهر */}
-                      <div className="stat-card" style={{background:"linear-gradient(135deg,#1C3A3A,#0F2525)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
-                        <div style={{position:"absolute",top:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(201,163,106,.06)"}}/>
-                        <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4,fontWeight:700,letterSpacing:".5px"}}>💰 إيرادات {now.toLocaleDateString("ar-SA-u-ca-gregory",{month:"long"})}</div>
-                        <div style={{fontSize:32,fontWeight:900,color:"#fff",letterSpacing:"-1px",lineHeight:1}}>{monthRev.toLocaleString()}<span style={{fontSize:15,marginRight:5,opacity:.7}}>ر</span></div>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,flexWrap:"wrap"}}>
-                          {diff!==0&&(
-                            <span style={{fontSize:11,color:diff>0?"#4CAF50":"#FF6B6B",fontWeight:800,background:diff>0?"rgba(76,175,80,.15)":"rgba(255,107,107,.15)",borderRadius:6,padding:"2px 8px"}}>
-                              {diff>0?"↑":"↓"} {Math.abs(diff)}% الشهر الماضي
-                            </span>
-                          )}
-                          <span style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>{monthCount} حجز</span>
-                        </div>
-                      </div>
-
-                      {/* نسبة الإشغال */}
-                      <div className="stat-card" style={{background:"linear-gradient(135deg,#1E2A4A,#141D33)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
-                        <div style={{position:"absolute",top:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(201,163,106,.06)"}}/>
-                        <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4,fontWeight:700,letterSpacing:".5px"}}>🛏️ نسبة الإشغال هذا الشهر</div>
-                        <div style={{fontSize:32,fontWeight:900,color:occColor,letterSpacing:"-1px",lineHeight:1}}>{occupancyPct}<span style={{fontSize:15,marginRight:3,opacity:.7}}>%</span></div>
-                        <div style={{background:"rgba(255,255,255,.12)",borderRadius:99,height:6,overflow:"hidden",marginTop:10}}>
-                          <div style={{width:Math.min(occupancyPct,100)+"%",height:"100%",background:occColor,borderRadius:99,transition:"width .4s"}}/>
-                        </div>
-                        <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginTop:8}}>{bookedNights.toLocaleString()+" من "+availableNights.toLocaleString()+" ليلة متاحة"}</div>
-                      </div>
-
-                      {/* صافي الربح */}
-                      <div className="stat-card" style={{background:netProfit>=0?"linear-gradient(135deg,#0F3320,#0A2018)":"linear-gradient(135deg,#3A1515,#250F0F)",borderRadius:16,padding:"20px 18px",boxShadow:"0 6px 24px rgba(0,0,0,.25)",position:"relative",overflow:"hidden"}}>
-                        <div style={{position:"absolute",top:-20,left:-20,width:80,height:80,borderRadius:"50%",background:"rgba(201,163,106,.06)"}}/>
-                        <div style={{fontSize:11,color:"rgba(255,255,255,.5)",marginBottom:4,fontWeight:700,letterSpacing:".5px"}}>📊 صافي الربح الشهري</div>
-                        <div style={{fontSize:32,fontWeight:900,color:netProfit>=0?"#4CAF50":"#FF6B6B",letterSpacing:"-1px",lineHeight:1}}>{netProfit.toLocaleString()}<span style={{fontSize:15,marginRight:5,opacity:.7}}>ر</span></div>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8}}>
-                          <span style={{fontSize:11,color:"rgba(255,255,255,.5)"}}>هامش {margin}%</span>
-                          <span style={{fontSize:11,color:"rgba(255,255,255,.35)"}}>· مصاريف {monthExp.toLocaleString()} ر</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* الصف الثاني: 4 بطاقات صغيرة */}
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10}}>
-                      {[
-                        {l:"إيرادات العام", v:yearRev.toLocaleString()+" ر", i:"📈", c:"#4A9BAF", bg:"rgba(74,155,175,.08)", sub:yearCount+" حجز"},
-                        {l:"محفظة التأمين", v:walletBal.toLocaleString()+" ر", i:"🛡️", c:"#7B8FA6", bg:"rgba(123,143,166,.08)", sub:"الرصيد الكلي"},
-                        {l:"تكاليف الصيانة",v:mCost.toLocaleString()+" ر", i:"🔧", c:"#C97B63", bg:"rgba(201,123,99,.08)", sub:"منذ البداية"},
-                        {l:"حجوزات نشطة",  v:String(actB), i:"📅", c:B, bg:SL, sub:"مؤكد + معلق"},
-                      ].map((s,i)=>(
-                        <div key={i} style={{background:s.bg,borderRadius:12,padding:"12px 10px",border:"1px solid rgba(201,163,106,.18)"}}>
-                          <div style={{fontSize:16,marginBottom:4}}>{s.i}</div>
-                          <div style={{fontSize:15,fontWeight:900,color:s.c,lineHeight:1.2}}>{s.v}</div>
-                          <div style={{fontSize:9,color:T,marginTop:4,fontWeight:600}}>{s.l}</div>
-                          <div style={{fontSize:9,color:SI,marginTop:1}}>{s.sub}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* ── نشاط الأسبوع ── */}
-              <WeeklyActivity bookings={scBookings} onSelectBooking={b=>setBkDetail(b)}/>
-
-              {/* ── يحتاج انتباهك: مركز التنبيهات الموحّد ── */}
-              {(()=>{
-                const now=new Date();
-                const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-                const yesterday=new Date(today); yesterday.setDate(today.getDate()-1);
-                const hasCheckoutToday=scBookings.some(b=>{
-                  if(b.status!=="confirmed"&&b.status!=="pending") return false;
-                  if(!b.date_to) return false;
-                  const to=new Date(b.date_to);
-                  const toD=new Date(to.getFullYear(),to.getMonth(),to.getDate());
-                  return toD<=today&&toD>=yesterday;
-                });
-                const hasArrivingSoon=soonArrivals.length>0;
-                const tom=new Date(); tom.setDate(tom.getDate()+1);
-                const tomStr=tom.toISOString().slice(0,10);
-                const hasArrivingTomorrow=scBookings.some(b=>b.status==="confirmed"&&b.date_from===tomStr);
-                const hasPoolPending=scBookings.some(b=>b.pool_preference&&!b.pool_approved&&b.status==="confirmed");
-                const hasRoomReqs=roomReqs.length>0;
-                const thisYM2=td().slice(0,7);
-                const activeFixed2=scFixedExpenses.filter(fx=>fx.active&&fx.category!=="إيجار");
-                const paidNames2=new Set(scExpenses.filter(e=>e.expense_date?.startsWith(thisYM2)).map(e=>e.note));
-                const hasUnpaidFixed=activeFixed2.some(fx=>!paidNames2.has(fx.name));
-                const rentDueItems2=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx)})).filter(x=>x.info&&x.info.daysUntil<=RENT_REMINDER_DAYS);
-                const hasRentDue=rentDueItems2.length>0;
-                const hasAnyAlerts=hasCheckoutToday||hasArrivingSoon||hasArrivingTomorrow||hasPoolPending||hasRoomReqs||hasUnpaidFixed||hasRentDue;
-
-                return (
-                  <div style={{marginBottom:20}}>
-                    <div style={{fontWeight:800,color:B,fontSize:15,marginBottom:10,display:"flex",alignItems:"center",gap:8}}>
-                      <span>🔔 يحتاج انتباهك</span>
-                    </div>
-                    {!hasAnyAlerts && (
-                      <div className="card" style={{padding:"20px 16px",textAlign:"center",color:T,fontSize:13,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-                        <span style={{fontSize:18}}>✅</span> كل شيء تحت السيطرة، لا توجد مهام عاجلة الآن
-                      </div>
-                    )}
-
-              {/* ── تسجيل الخروج اليوم (أولوية قصوى) ── */}
-              {(()=>{
-                const now=new Date();
-                const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-                const yesterday=new Date(today); yesterday.setDate(today.getDate()-1);
-                const checkouts=scBookings.filter(b=>{
-                  if(b.status!=="confirmed"&&b.status!=="pending") return false;
-                  if(!b.date_to) return false;
-                  const to=new Date(b.date_to);
-                  return new Date(to.getFullYear(),to.getMonth(),to.getDate())<=today&&new Date(to.getFullYear(),to.getMonth(),to.getDate())>=yesterday;
-                });
-                if(!checkouts.length) return null;
-                return (
-                  <div style={{background:"linear-gradient(135deg,#7A1F1F,#5C1515)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 4px 20px rgba(166,58,42,.35)"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-                      <span style={{fontSize:18}}>🚪</span>
-                      <span style={{fontWeight:800,color:"#fff",fontSize:15}}>تسجيل الخروج اليوم</span>
-                      <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{checkouts.length}</span>
-                    </div>
-                    {checkouts.map((b,i)=>(
-                      <div key={b.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"rgba(255,255,255,.08)",borderRadius:10,marginBottom:i<checkouts.length-1?8:0}}>
-                        <div style={{flex:1}}>
-                          <div style={{fontWeight:800,color:"#fff",fontSize:14}}>{b.guest}</div>
-                          <div style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:2}}>{b.chalet} · {fd(b.date_to)}</div>
-                        </div>
-                        <div style={{fontWeight:800,color:"#FFD700",fontSize:15,marginLeft:8}}>{Number(b.price).toLocaleString()+" ر"}</div>
-                        <button onClick={()=>setCoMdl(b)} style={{background:"#fff",color:"#7A1F1F",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:800,cursor:"pointer",fontFamily:"'IBM Plex Sans Arabic',sans-serif",flexShrink:0}}>تسجيل خروج</button>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-
-              {/* ── تنبيه: وصول خلال ساعة ── */}
-              {soonArrivals.length>0&&(
-                <div style={{background:"linear-gradient(135deg,#B45309,#92400E)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 4px 20px rgba(180,83,9,.4)",animation:"pulse 2s infinite"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-                    <span style={{fontSize:18}}>🔔</span>
-                    <span style={{fontWeight:800,color:"#fff",fontSize:15}}>وصول خلال ساعة!</span>
-                    <span style={{background:"rgba(255,255,255,.25)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{soonArrivals.length}</span>
-                  </div>
-                  {soonArrivals.map((b,i)=>{
-                    const dt=checkinDateTime(b);
-                    const mins=dt?Math.max(0,Math.round((dt.getTime()-nowTick)/60000)):0;
-                    return (
-                      <div key={b.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:b.pre_arrival_sent?"rgba(34,197,94,.15)":"rgba(255,255,255,.1)",borderRadius:10,marginBottom:i<soonArrivals.length-1?8:0,flexWrap:"wrap",border:b.pre_arrival_sent?"1px solid rgba(34,197,94,.35)":"1px solid transparent"}}>
-                        <div style={{flex:1,minWidth:140}}>
-                          <div style={{display:"flex",alignItems:"center",gap:6}}>
-                            <span style={{fontWeight:800,color:"#fff",fontSize:14}}>{b.guest}</span>
-                            <span style={{fontSize:10,background:"rgba(255,255,255,.25)",color:"#fff",borderRadius:99,padding:"1px 8px",fontWeight:700}}>{"خلال "+mins+" دقيقة"}</span>
-                            {b.pre_arrival_sent&&<span style={{fontSize:10,background:"rgba(34,197,94,.3)",color:"#86EFAC",borderRadius:99,padding:"1px 8px",fontWeight:700}}>✓ أُرسلت</span>}
-                          </div>
-                          <div style={{fontSize:11,color:"rgba(255,255,255,.75)",marginTop:2}}>
-                            {b.chalet}{" · دخول "+b.checkin_time}
-                            {!b.phone&&<span style={{color:"#FCA5A5",marginRight:6}}>· ⚠ لا يوجد هاتف</span>}
-                          </div>
-                        </div>
-                        <button onClick={()=>setPreArrMdl({booking:b})} style={{
-                          background:b.pre_arrival_sent?"rgba(255,255,255,.15)":"#fff",
-                          color:b.pre_arrival_sent?"#fff":"#92400E",
-                          border:b.pre_arrival_sent?"1px solid rgba(255,255,255,.3)":"none",
-                          borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:800,cursor:"pointer",
-                          fontFamily:"'IBM Plex Sans Arabic',sans-serif",flexShrink:0,
-                        }}>{b.pre_arrival_sent?"📋 إعادة إرسال":"📋 إرسال رسالة"}</button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* ── وصول غداً (رسائل قبل الوصول) ── */}
-              {(()=>{
-                const tom=new Date(); tom.setDate(tom.getDate()+1);
-                const tomStr=tom.toISOString().slice(0,10);
-                const arrivals=scBookings.filter(b=>b.status==="confirmed"&&b.date_from===tomStr);
-                if(!arrivals.length) return null;
-                return (
-                  <div style={{background:"linear-gradient(135deg,#312E81,#4338CA)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 4px 20px rgba(67,56,202,.35)"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-                      <span style={{fontSize:18}}>🌅</span>
-                      <span style={{fontWeight:800,color:"#fff",fontSize:15}}>وصول غداً · رسائل قبل الوصول</span>
-                      <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{arrivals.length}</span>
-                    </div>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                      <span style={{fontSize:11,color:"rgba(255,255,255,.6)"}}>
-                        {arrivals.filter(b=>b.pre_arrival_sent).length}/{arrivals.length} تم الإرسال
-                      </span>
-                    </div>
-                    {arrivals.map((b,i)=>(
-                      <div key={b.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:b.pre_arrival_sent?"rgba(34,197,94,.15)":"rgba(255,255,255,.08)",borderRadius:10,marginBottom:i<arrivals.length-1?8:0,flexWrap:"wrap",border:b.pre_arrival_sent?"1px solid rgba(34,197,94,.35)":"1px solid transparent"}}>
-                        <div style={{flex:1,minWidth:140}}>
-                          <div style={{display:"flex",alignItems:"center",gap:6}}>
-                            <span style={{fontWeight:800,color:"#fff",fontSize:14}}>{b.guest}</span>
-                            {b.pre_arrival_sent&&<span style={{fontSize:10,background:"rgba(34,197,94,.3)",color:"#86EFAC",borderRadius:99,padding:"1px 8px",fontWeight:700}}>✓ أُرسلت</span>}
-                          </div>
-                          <div style={{fontSize:11,color:"rgba(255,255,255,.7)",marginTop:2}}>
-                            {b.chalet}
-                            {b.checkin_time&&<span style={{marginRight:6}}>· دخول {b.checkin_time}</span>}
-                            {b.checkout_time&&<span style={{marginRight:6}}>· خروج {b.checkout_time}</span>}
-                            {!b.phone&&<span style={{color:"#FCA5A5",marginRight:6}}>· ⚠ لا يوجد هاتف</span>}
-                          </div>
-                        </div>
-                        <button onClick={()=>setPreArrMdl({booking:b})} style={{
-                          background:b.pre_arrival_sent?"rgba(255,255,255,.15)":"#fff",
-                          color:b.pre_arrival_sent?"#fff":"#4338CA",
-                          border:b.pre_arrival_sent?"1px solid rgba(255,255,255,.3)":"none",
-                          borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:800,cursor:"pointer",
-                          fontFamily:"'IBM Plex Sans Arabic',sans-serif",flexShrink:0,
-                        }}>{b.pre_arrival_sent?"📋 إعادة إرسال":"📋 إرسال رسالة"}</button>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-
-              {/* ── طلبات المسبح المعلقة ── */}
-              {(()=>{
-                const poolReqs = scBookings.filter(b=>b.pool_preference&&!b.pool_approved&&b.status==="confirmed");
-                if(!poolReqs.length) return null;
-                function poolLabel(pref: string){
-                  if(!pref) return "-";
-                  if(pref==="on_arrival") return "تعبئة عند الوصول 🕐";
-                  if(pref.startsWith("ready")){
-                    const t=pref.split(":").slice(1).join(":");
-                    return t ? `جاهز عند الوصول · الساعة ${t} ✅` : "جاهز عند الوصول ✅";
-                  }
-                  return pref;
-                }
-                return (
-                  <div style={{background:"linear-gradient(135deg,#065F46,#047857)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 4px 20px rgba(4,120,87,.3)"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
-                      <span style={{fontSize:18}}>🏊</span>
-                      <span style={{fontWeight:800,color:"#fff",fontSize:15}}>طلبات المسبح · تنتظر موافقتك</span>
-                      <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{poolReqs.length}</span>
-                    </div>
-                    {poolReqs.map((b,i)=>(
-                      <div key={b.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"rgba(255,255,255,.1)",borderRadius:10,marginBottom:i<poolReqs.length-1?8:0,flexWrap:"wrap"}}>
-                        <div style={{flex:1,minWidth:140}}>
-                          <div style={{fontWeight:800,color:"#fff",fontSize:14}}>{b.guest}</div>
-                          <div style={{fontSize:11,color:"rgba(255,255,255,.8)",marginTop:2}}>{b.chalet} · {poolLabel(b.pool_preference||"")}</div>
-                          <div style={{fontSize:10,color:"rgba(255,255,255,.6)",marginTop:1}}>دخول {fd(b.date_from)}</div>
-                        </div>
-                        <button onClick={async()=>{
-                          await db("bookings","PATCH",{pool_approved:true},b.id);
-                          await loadAll();
-                          const msg=encodeURIComponent(buildPoolApprovalMsg(b));
-                          const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966")||"";
-                          if(phone) window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");
-                        }} style={{
-                          background:"#fff",color:"#065F46",border:"none",borderRadius:8,
-                          padding:"8px 14px",fontSize:12,fontWeight:800,cursor:"pointer",
-                          fontFamily:"'IBM Plex Sans Arabic',sans-serif",flexShrink:0,
-                        }}>✅ موافقة وإرسال</button>
-                        <button onClick={async()=>{
-                          await db("bookings","PATCH",{pool_preference:null,pool_approved:false},b.id);
-                          await loadAll();
-                        }} style={{
-                          background:"rgba(239,68,68,.2)",color:"#FCA5A5",border:"1px solid rgba(239,68,68,.3)",
-                          borderRadius:8,padding:"8px 10px",fontSize:12,fontWeight:700,cursor:"pointer",
-                          fontFamily:"'IBM Plex Sans Arabic',sans-serif",flexShrink:0,
-                        }}>رفض</button>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })()}
-
-              {/* ── طلبات الغرف ── */}
-              {roomReqs.length>0&&(
-                <div style={{background:"linear-gradient(135deg,#3B2A1C,#6D28D9)",borderRadius:14,padding:16,marginBottom:20,boxShadow:"0 4px 20px rgba(109,40,217,.3)"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,justifyContent:"space-between"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <span style={{fontSize:18}}>🛎️</span>
-                      <span style={{fontWeight:800,color:"#fff",fontSize:15}}>طلبات الغرف</span>
-                      <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,fontSize:12,padding:"2px 10px",fontWeight:700}}>{roomReqs.length}</span>
-                    </div>
-                  </div>
-                  <div style={{display:"grid",gap:8}}>
-                    {roomReqs.map((r:any)=>{
-                      const rt=ROOM_REQUEST_TYPES.find(x=>x.val===r.type)||{icon:"📋",label:r.type,color:"#fff"};
-                      const ago=Math.round((Date.now()-new Date(r.created_at).getTime())/60000);
-                      const agoStr=ago<1?"الآن":ago<60?`منذ ${ago} د`:`منذ ${Math.round(ago/60)} س`;
-                      return (
-                        <div key={r.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"rgba(255,255,255,.1)",borderRadius:10,flexWrap:"wrap"}}>
-                          <span style={{fontSize:24}}>{rt.icon}</span>
-                          <div style={{flex:1,minWidth:120}}>
-                            <div style={{fontWeight:800,color:"#fff",fontSize:13}}>{rt.label}</div>
-                            <div style={{fontSize:11,color:"rgba(255,255,255,.75)",marginTop:2}}>
-                              {r.chalet} · {r.room} · {agoStr}
-                            </div>
-                            {r.note&&<div style={{fontSize:11,color:"rgba(255,255,255,.6)",marginTop:1,fontStyle:"italic"}}>"{r.note}"</div>}
-                          </div>
-                          <button onClick={async()=>{await db("room_requests","PATCH",{resolved:true},r.id);await loadAll();}} style={{
-                            background:"rgba(255,255,255,.2)",color:"#fff",border:"1px solid rgba(255,255,255,.3)",
-                            borderRadius:8,padding:"7px 12px",fontSize:11,fontWeight:700,cursor:"pointer",
-                            fontFamily:"'IBM Plex Sans Arabic',sans-serif",flexShrink:0,
-                          }}>✓ تم</button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* ── تنبيه استحقاق الإيجار ── */}
-              {(()=>{
-                const rentDueItems=scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx)})).filter(x=>x.info&&x.info.daysUntil<=RENT_REMINDER_DAYS).sort((a,b)=>a.info!.daysUntil-b.info!.daysUntil);
-                if(!rentDueItems.length) return null;
-                return <RentDueBanner items={rentDueItems} onAcknowledge={acknowledgeRent}/>;
-              })()}
-
-              {/* ── تنبيه المصروفات الثابتة غير المدفوعة (الإيجار مستثنى، له تذكير مستقل أعلاه) ── */}
-              {(()=>{
-                const nowD=new Date();
-                const thisYM=`${nowD.getFullYear()}-${String(nowD.getMonth()+1).padStart(2,"0")}`;
-                const activeFixed=scFixedExpenses.filter(fx=>fx.active&&fx.category!=="إيجار");
-                if(!activeFixed.length) return null;
-                const paidNames=new Set(scExpenses.filter(e=>e.expense_date?.startsWith(thisYM)).map(e=>e.note));
-                const unpaid=activeFixed.filter(fx=>!paidNames.has(fx.name));
-                if(!unpaid.length) return null;
-                const unpaidTotal=unpaid.reduce((s,fx)=>s+Number(fx.amount),0);
-                return <UnpaidFixedBanner unpaid={unpaid} total={unpaidTotal} onPay={payFixedExpense}/>;
-              })()}
-                  </div>
-                );
-              })()}
-
-              {/* ── أهداف الشهر ── */}
-              {cStats.some(c=>c.goal>0)&&(
-                <div className="card" style={{padding:16,marginBottom:20}}>
-                  <div style={{fontWeight:800,color:B,fontSize:14,marginBottom:14,display:"flex",alignItems:"center",gap:8}}>
-                    <span>🎯 أهداف الشهر</span>
-                    <span style={{fontSize:11,color:T,fontWeight:400}}>صافي الأرباح مقابل الهدف</span>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10}}>
-                    {cStats.filter(c=>c.goal>0).map(c=>{
+              {cStats.length>0&&(
+                <div className="x-card">
+                  <CardHead icon="home" title="أداء الشاليهات هذا الشهر"><button className="btn bo bsm" onClick={()=>setTab("chalets")}>إدارة الشاليهات</button></CardHead>
+                  <div className="tbl-wrap"><table className="x-tbl">
+                    <thead><tr><th>الشاليه</th><th>الإيرادات</th><th>الصافي</th><th>الإشغال</th><th>هدف الشهر</th><th>تنبيهات</th></tr></thead>
+                    <tbody>{cStats.map(c=>{
                       const net=c.monthRev-c.monthExp;
-                      const pct=Math.min(Math.round(net/c.goal*100),100);
-                      const color=pct>=100?"#4CAF50":pct>=60?"#B8A06A":"#C97B63";
+                      const gp=c.goal>0?Math.round(net/c.goal*100):null;
+                      const rentDue=scFixedExpenses.some(fx=>fx.chalet===c.name&&fx.active&&fx.category==="إيجار"&&(()=>{const i=nextDueInfo(fx);return !!i&&i.daysUntil<=RENT_REMINDER_DAYS;})());
                       return (
-                        <div key={c.id} style={{background:SL,borderRadius:10,padding:"12px 14px",border:"1px solid rgba(201,163,106,.2)"}}>
-                          <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                            <span style={{fontWeight:700,color:B,fontSize:12}}>{c.name}</span>
-                            <span style={{fontWeight:900,color,fontSize:13}}>{pct}%</span>
-                          </div>
-                          <div style={{background:"rgba(201,163,106,.2)",borderRadius:99,height:8,overflow:"hidden",marginBottom:6}}>
-                            <div style={{width:pct+"%",height:"100%",background:color,borderRadius:99,transition:"width .4s"}}/>
-                          </div>
-                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:T}}>
-                            <span>{net.toLocaleString()+" ر"}</span>
-                            <span>{"/ "+c.goal.toLocaleString()+" ر"}</span>
-                          </div>
-                          {pct>=100&&<div style={{fontSize:10,color:"#4CAF50",fontWeight:700,marginTop:4,textAlign:"center"}}>🎉 تم تحقيق الهدف!</div>}
-                        </div>
+                        <tr key={c.id}>
+                          <td className="strong">{c.name}</td>
+                          <td><SAR v={c.monthRev} unit={false}/></td>
+                          <td className={net<0?"x-neg":""}><SAR v={net} unit={false}/></td>
+                          <td><div className="x-barrow"><Track pct={c.occ} tone={toneFor(c.occ)}/><span>{c.occ}%</span></div></td>
+                          <td>{gp===null?<span className="x-muted">—</span>:<div className="x-barrow"><Track pct={gp} tone={toneFor(gp,100,60)}/><span dir="ltr">{gp}%</span></div>}</td>
+                          <td><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>{c.mop>0&&<Pill tone="bad">{c.mop+" صيانة"}</Pill>}{rentDue&&<Pill tone="warn">إيجار</Pill>}{!c.mop&&!rentDue&&<Pill tone="ok">سليم</Pill>}</div></td>
+                        </tr>
                       );
-                    })}
-                  </div>
+                    })}</tbody>
+                  </table></div>
                 </div>
               )}
-
-              {/* ── الحجوزات القادمة + أداء الشاليهات ── */}
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:16,marginBottom:20}}>
-                {/* الحجوزات القادمة */}
-                {(()=>{
-                  const now=new Date();
-                  const today=new Date(now.getFullYear(),now.getMonth(),now.getDate());
-                  const upcoming=scBookings.filter(b=>b.status!=="cancelled"&&b.status!=="completed").map(b=>{const from=new Date(b.date_from);return{...b,daysLeft:Math.round((new Date(from.getFullYear(),from.getMonth(),from.getDate())-today)/86400000)};}).filter(b=>b.daysLeft>=-1).sort((a,b)=>a.daysLeft-b.daysLeft).slice(0,6);
-                  return (
-                    <div className="card" style={{overflow:"hidden"}}>
-                      <div style={{padding:"12px 16px",borderBottom:"2px solid rgba(201,163,106,.2)",fontWeight:700,color:B,fontSize:13,background:SL,display:"flex",alignItems:"center",gap:8}}>
-                        <span>🔔 الحجوزات القادمة</span>
-                        <span style={{background:T,color:"#fff",borderRadius:20,fontSize:10,padding:"1px 7px"}}>{upcoming.length}</span>
-                      </div>
-                      <div>
-                        {upcoming.length===0?<div style={{padding:20,textAlign:"center",color:SI,fontSize:12}}>لا توجد حجوزات قادمة</div>:upcoming.map((b,i)=>{
-                          const isToday=b.daysLeft===0;const isIn=b.daysLeft<0;
-                          const urgColor=isIn?"#7A5A0E":isToday?"#A63A2A":b.daysLeft<=3?SD:T;
-                          const urgBg=isIn?"#FBF3DF":isToday?"#FBEDEA":b.daysLeft<=3?"#E6F1EA":SL;
-                          return (
-                            <div key={b.id} className="list-item" style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderBottom:i<upcoming.length-1?"1px solid rgba(201,163,106,.08)":"none"}}>
-                              <span style={{background:urgBg,color:urgColor,borderRadius:6,padding:"3px 8px",fontSize:11,fontWeight:800,whiteSpace:"nowrap",flexShrink:0}}>{isIn?"داخل":isToday?"اليوم":b.daysLeft===1?"غداً":b.daysLeft+" يوم"}</span>
-                              <div style={{flex:1,minWidth:0}}>
-                                <div style={{fontWeight:700,color:B,fontSize:13,overflow:"hidden",whiteSpace:"nowrap",textOverflow:"ellipsis"}}>{b.guest}</div>
-                                <div style={{fontSize:11,color:T}}>{b.chalet}</div>
-                              </div>
-                              <div style={{fontWeight:700,color:T,fontSize:13,flexShrink:0}}>{Number(b.price).toLocaleString()+" ر"}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {/* أداء الشاليهات */}
-                <div className="card" style={{overflow:"hidden"}}>
-                  <div style={{padding:"12px 16px",borderBottom:"2px solid rgba(201,163,106,.2)",fontWeight:700,color:B,fontSize:13,background:SL}}>🏠 أداء الشاليهات هذا الشهر</div>
-                  <div>
-                    {cStats.map((c,i)=>{
-                      const maxR=Math.max(...cStats.map(x=>x.monthRev),1);
-                      const pct=Math.round(c.monthRev/maxR*100);
-                      return (
-                        <div key={i} style={{padding:"12px 14px",borderBottom:i<cStats.length-1?"1px solid rgba(201,163,106,.08)":"none"}}>
-                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                            <span style={{fontWeight:700,color:B,fontSize:13}}>{c.name}</span>
-                            <span style={{fontWeight:800,color:T,fontSize:13}}>{c.monthRev.toLocaleString()+" ر"}</span>
-                          </div>
-                          <div style={{background:"rgba(201,163,106,.15)",borderRadius:99,height:6,overflow:"hidden"}}>
-                            <div style={{width:pct+"%",height:"100%",background:"linear-gradient(90deg,"+T+","+TD+")",borderRadius:99,transition:"width .4s"}}/>
-                          </div>
-                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:SI,marginTop:3}}>
-                            <span>{c.mop>0?<span style={{color:"#C97B63"}}>⚠️ {c.mop} صيانة مفتوحة</span>:"✅ لا صيانة مفتوحة"}</span>
-                            <span>{c.ins.toLocaleString()+" ر تأمين"}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-
-              <MonthlyChart bookings={scBookings} expenses={scExpenses} maint={scMaint} B={B} T={T} SI={SI} SL={SL}/>
             </div>
-          )}
+            );
+          })()}
 
           {/* ── Chalets ── */}
           {tab==="chalets"&&(
@@ -3587,157 +3232,102 @@ ${poolLine}
 
           {/* ── Bookings ── */}
           {tab==="bookings"&&(()=>{
-            const visibleBookings = bookings.filter(b=>
+            const scoped = bookings.filter(b=>
               (fch==="الكل"||b.chalet===fch)&&
-              (bkStatus==="الكل"||b.status===bkStatus)&&
               (!bkFrom||!b.date_to||b.date_to>=bkFrom)&&
               (!bkTo||!b.date_from||b.date_from<=bkTo)&&
               (isAdmin||isStaff||(isChaletMgr&&b.chalet===currentUser.chalet))
             );
+            const visibleBookings = scoped.filter(b=>bkStatus==="الكل"||b.status===bkStatus);
             const vbNights = visibleBookings.reduce((s,b)=>s+fn(b.date_from,b.date_to),0);
-            const vbRevenue = visibleBookings.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+Number(b.price),0);
-            const groupByChalet = fch==="الكل";
-            const groupNames = groupByChalet ? names.filter(n=>visibleBookings.some(b=>b.chalet===n)) : [fch];
-            const renderBookingRow = (b: Booking) => {
-              const sc=STATUS[b.status]||{bg:"#eee",color:"#333",label:b.status};
-              const scLabel=bt(STATUS_LABEL_KEY[b.status]||"")||sc.label;
-              const nights=fn(b.date_from,b.date_to);
-              return (
-                <tr key={b.id} style={{cursor:"pointer"}} onClick={()=>setBkDetail(b)}>
-                  <td data-label={bt("guest")}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{width:4,height:36,borderRadius:4,background:sc.color,flexShrink:0}}/>
-                      <div>
-                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          <span style={{fontWeight:800,color:B,fontSize:13}}>{b.guest}</span>
-                          {b.pre_arrival_sent&&<span style={{fontSize:9,background:"#DCFCE7",color:"#166534",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>✓ رسالة</span>}
-                          {isGuestBlocked(b.phone)&&<span style={{fontSize:9,background:"#FBEDEA",color:"#A63A2A",borderRadius:99,padding:"1px 6px",fontWeight:700,flexShrink:0}}>{bt("blocked")}</span>}
-                        </div>
-                        <div style={{fontSize:11,color:T,marginTop:1,direction:"ltr",textAlign:"right"}}>{b.phone||"-"}</div>
-                      </div>
-                    </div>
-                  </td>
-                  {!groupByChalet && (
-                    <td data-label={bt("chalet")}>
-                      <div style={{fontWeight:600,color:B,fontSize:13}}>{b.chalet}</div>
-                    </td>
-                  )}
-                  <td data-label={bt("period")}>
-                    <div style={{fontSize:12,color:B,fontWeight:600}}>{fd(b.date_from)}</div>
-                    <div style={{fontSize:11,color:T,marginTop:1}}>{"← "+fd(b.date_to)}</div>
-                  </td>
-                  <td data-label={bt("nights")} style={{textAlign:"center"}}>
-                    <div style={{background:SL,borderRadius:8,padding:"4px 10px",display:"inline-block",fontWeight:800,color:B,fontSize:13}}>{nights}</div>
-                  </td>
-                  <td data-label={bt("price")}>
-                    <div style={{fontWeight:900,color:T,fontSize:14}}>{Number(b.price).toLocaleString()}</div>
-                    <div style={{fontSize:10,color:SI}}>ريال</div>
-                  </td>
-                  <td data-label={bt("status")}>
-                    <span style={{background:sc.bg,color:sc.color,borderRadius:20,padding:"4px 12px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>{scLabel}</span>
-                  </td>
-                  <td data-label="" style={{textAlign:"left"}}>
-                    <RowActionsMenu actions={[
-                      {label:bt("edit"), onClick:e=>{e.stopPropagation();setBMdl({...b})}},
-                      {label:bt("delete"), color:"#A63A2A", onClick:async e=>{e.stopPropagation();if(window.confirm(bt("deleteConfirm"))){await db("bookings","DELETE",null,b.id);await loadAll();}}},
-                      {label:bt("preArrival"), onClick:e=>{e.stopPropagation();setPreArrMdl({booking:b});}},
-                      {label:bt("whatsappCheckin"), onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=checkin`;const msg=`مرحباً ${b.guest} 👋%0aأهلاً بك في ${b.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
-                      {label:bt("sendReview"), onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=review`;const msg=`${b.guest} 😊%0aرابط التقييم:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
-                      ...(isCheckedOut(b)?[{label:bt("rateGuest"), onClick:(e:React.MouseEvent)=>{e.stopPropagation();setGrMdl({booking:b,rating:0,note:""});}}]:[]),
-                      {label:isGuestBlocked(b.phone)?bt("unblock"):bt("block"), color:"#A63A2A", onClick:e=>{e.stopPropagation();if(isGuestBlocked(b.phone))unblockGuest(b.phone);else setBlockMdl({booking:b,reason:""});}},
-                    ]}/>
-                  </td>
-                </tr>
-              );
-            };
+            const earned = visibleBookings.filter(b=>b.status!=="cancelled");
+            const vbRevenue = earned.reduce((s,b)=>s+Number(b.price),0);
+            const avgBooking = earned.length?Math.round(vbRevenue/earned.length):0;
+            const statusTone: Record<string,"ok"|"warn"|"bad"|"muted"> = {confirmed:"ok",pending:"warn",cancelled:"bad",completed:"muted"};
+            const filtersOn = fch!=="الكل"||bkStatus!=="الكل"||!!bkFrom||!!bkTo;
             return (
-            <div>
+            <div className="x-page">
+              <PageHead title={bt("title")} sub={bkLang==="ar"?"التقويم فوق، وكل الحجوزات تحت":undefined}>
+                <button className="btn bo" onClick={()=>setBkLang(l=>l==="ar"?"hi":"ar")}><Icon n="globe"/>{bkLang==="ar"?"हिंदी":"عربي"}</button>
+                <button className="btn bo" onClick={()=>sendBookingsToWorkersHindi(visibleBookings)} disabled={visibleBookings.length===0}><Icon n="send"/>{bkLang==="ar"?"إرسال للعمال":"कर्मचारियों को भेजें"}</button>
+                <button className="btn bp" onClick={()=>setBMdl({...eB})}><Icon n="plus"/>{bt("addBooking").replace(/^\+\s*/,"")}</button>
+              </PageHead>
+
+              <div className="x-kpis">
+                <Kpi label={bkLang==="ar"?"عدد الحجوزات":"बुकिंग की संख्या"} value={visibleBookings.length.toLocaleString("en-US")}/>
+                <Kpi label={bkLang==="ar"?"الليالي":"रातें"} value={vbNights.toLocaleString("en-US")}/>
+                <Kpi label={bkLang==="ar"?"الإجمالي":"कुल"} value={<SAR v={vbRevenue}/>} sub={bkLang==="ar"?"بدون الملغي":undefined}/>
+                <Kpi label={bkLang==="ar"?"متوسط الحجز":"औसत"} value={<SAR v={avgBooking}/>}/>
+              </div>
+
               <BookingCalendar
                 bookings={isChaletMgr?bookings.filter(b=>b.chalet===currentUser.chalet):bookings}
                 names={isChaletMgr?[currentUser.chalet]:names}
                 onSelectBooking={b=>setBkDetail(b)}
                 onAddAt={(chalet,dateISO)=>setBMdl({...eB,chalet,date_from:dateISO,date_to:dateISO})}
               />
+
               {(isAdmin||isStaff)&&<BlockedGuestsBanner guests={blockedGuests} onUnblock={unblockGuest}/>}
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
-                <TH title={bt("title")}/>
-                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                  <button className="btn be bsm" onClick={()=>setBkLang(l=>l==="ar"?"hi":"ar")}>{bkLang==="ar"?"🌐 हिंदी":"🌐 عربي"}</button>
-                  <button className="btn be bsm" onClick={()=>sendBookingsToWorkersHindi(visibleBookings)} disabled={visibleBookings.length===0}
-                    style={{opacity:visibleBookings.length===0?.5:1}}>{bkLang==="ar"?"📤 إرسال للعمال":"📤 कर्मचारियों को भेजें"}</button>
-                  <button className="btn bp" onClick={()=>setBMdl({...eB})}>{bt("addBooking")}</button>
-                </div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:14}}>
-                {[
-                  {l:bkLang==="ar"?"عدد الحجوزات":"बुकिंग की संख्या", v:String(visibleBookings.length), i:"📅"},
-                  {l:bkLang==="ar"?"الليالي":"रातें", v:String(vbNights), i:"🌙"},
-                  {l:bkLang==="ar"?"الإجمالي":"कुल", v:vbRevenue.toLocaleString()+" ر", i:"💰"},
-                ].map((s,i)=>(
-                  <div key={i} style={{background:SL,borderRadius:12,padding:"12px 14px",border:"1px solid rgba(201,163,106,.18)"}}>
-                    <div style={{fontSize:16,marginBottom:4}}>{s.i}</div>
-                    <div style={{fontSize:14.5,fontWeight:800,color:B}}>{s.v}</div>
-                    <div style={{fontSize:10,color:T,marginTop:2}}>{s.l}</div>
-                  </div>
-                ))}
-              </div>
-              <div className="card" style={{padding:"14px 16px",marginBottom:16,display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
-                <div>
-                  <label className="lbl">{bt("chalet")}</label>
-                  <select className="inp" style={{width:"auto"}} value={fch} onChange={e=>setFch(e.target.value)}>
-                    <option value="الكل">{bt("allChalets")}</option>
-                    {names.map(c=><option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="lbl">{bt("status")}</label>
-                  <select className="inp" style={{width:"auto"}} value={bkStatus} onChange={e=>setBkStatus(e.target.value)}>
-                    <option value="الكل">{bt("allStatuses")}</option>
-                    {Object.entries(STATUS).map(([k,v])=><option key={k} value={k}>{bt(STATUS_LABEL_KEY[k]||"")||v.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="lbl">{bt("from")}</label>
-                  <input className="inp" type="date" style={{width:"auto"}} value={bkFrom} onChange={e=>setBkFrom(e.target.value)}/>
-                </div>
-                <div>
-                  <label className="lbl">{bt("to")}</label>
-                  <input className="inp" type="date" style={{width:"auto"}} value={bkTo} onChange={e=>setBkTo(e.target.value)}/>
-                </div>
-                <button className="btn be bsm" onClick={()=>{setBkFrom(monthStart());setBkTo(monthEnd());}}>{bt("thisMonth")}</button>
-                {(fch!=="الكل"||bkStatus!=="الكل"||bkFrom||bkTo)&&
-                  <button className="btn be bsm" onClick={()=>{setFch("الكل");setBkStatus("الكل");setBkFrom("");setBkTo("");}}>{bt("showAll")}</button>}
-              </div>
-              {groupNames.length===0 ? (
-                <div className="card" style={{padding:24,textAlign:"center",color:T}}>{bkLang==="ar"?"لا توجد حجوزات مطابقة":"कोई मेल खाती बुकिंग नहीं"}</div>
-              ) : groupNames.map(chaletName=>{
-                const groupBookings = visibleBookings.filter(b=>b.chalet===chaletName);
-                if (groupBookings.length===0) return null;
-                const groupRevenue = groupBookings.filter(b=>b.status!=="cancelled").reduce((s,b)=>s+Number(b.price),0);
-                const collapsed = groupByChalet && !!bkCollapsed[chaletName];
-                return (
-                  <div key={chaletName} className="card" style={{overflow:"hidden",marginBottom:14}}>
-                    {groupByChalet && (
-                      <button onClick={()=>setBkCollapsed(p=>({...p,[chaletName]:!p[chaletName]}))}
-                        style={{width:"100%",display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 16px",background:SL,border:"none",borderBottom:collapsed?"none":"2px solid rgba(201,163,106,.2)",cursor:"pointer",textAlign:"right",fontFamily:"'IBM Plex Sans Arabic',sans-serif"}}>
-                        <div style={{display:"flex",alignItems:"center",gap:8}}>
-                          <span style={{fontSize:12,color:T,transition:"transform .15s",transform:collapsed?"rotate(-90deg)":"none",display:"inline-block"}}>▾</span>
-                          <span style={{fontWeight:800,color:B,fontSize:14}}>🏠 {chaletName}</span>
-                          <span style={{fontSize:11,color:B,background:"#fff",borderRadius:99,padding:"2px 9px",fontWeight:700}}>{groupBookings.length}</span>
-                        </div>
-                        <span style={{fontSize:13,fontWeight:800,color:B}}>{groupRevenue.toLocaleString()+" ر"}</span>
-                      </button>
+
+              <div className="x-card">
+                <div className="x-card-h">
+                  <Seg label={bt("status")} value={bkStatus} onChange={v=>setBkStatus(v)}
+                    options={[{v:"الكل",l:bt("allStatuses"),c:scoped.length},...Object.entries(STATUS).map(([k,v])=>({v:k,l:bt(STATUS_LABEL_KEY[k]||"")||v.label,c:scoped.filter(b=>b.status===k).length}))]}/>
+                  <div className="x-toolbar">
+                    {!isChaletMgr&&(
+                      <select className="x-select" aria-label={bt("chalet")} value={fch} onChange={e=>setFch(e.target.value)}>
+                        <option value="الكل">{bt("allChalets")}</option>
+                        {names.map(c=><option key={c} value={c}>{c}</option>)}
+                      </select>
                     )}
-                    {!collapsed && (
-                      <Tbl heads={groupByChalet
-                        ? [bt("guest"),bt("period"),bt("nights"),bt("price"),bt("status"),bt("actions")]
-                        : [bt("guest"),bt("chalet"),bt("period"),bt("nights"),bt("price"),bt("status"),bt("actions")]}
-                        rows={groupBookings.map(renderBookingRow)}
-                      />
-                    )}
+                    <input className="x-select" type="date" aria-label={bt("from")} value={bkFrom} onChange={e=>setBkFrom(e.target.value)}/>
+                    <input className="x-select" type="date" aria-label={bt("to")} value={bkTo} onChange={e=>setBkTo(e.target.value)}/>
+                    <button className="btn bo bsm" onClick={()=>{setBkFrom(monthStart());setBkTo(monthEnd());}}>{bt("thisMonth")}</button>
+                    {filtersOn&&<button className="btn bo bsm" onClick={()=>{setFch("الكل");setBkStatus("الكل");setBkFrom("");setBkTo("");}}>{bt("showAll")}</button>}
                   </div>
-                );
-              })}
+                </div>
+                {visibleBookings.length===0 ? (
+                  <Empty>{bkLang==="ar"?"لا توجد حجوزات مطابقة":"कोई मेल खाती बुकिंग नहीं"}</Empty>
+                ) : (
+                  <div className="tbl-wrap"><table className="x-tbl">
+                    <thead><tr>
+                      <th>{bt("guest")}</th><th>{bt("chalet")}</th><th>{bt("period")}</th><th>{bt("nights")}</th><th>{bt("price")}</th><th>{bt("status")}</th><th className="end"><span className="x-hide-sm">{bt("actions")}</span></th>
+                    </tr></thead>
+                    <tbody>{visibleBookings.map(b=>{
+                      const sc=STATUS[b.status]||{label:b.status};
+                      const scLabel=bt(STATUS_LABEL_KEY[b.status]||"")||sc.label;
+                      return (
+                        <tr key={b.id} style={{cursor:"pointer"}} onClick={()=>setBkDetail(b)}>
+                          <td>
+                            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                              <b>{b.guest}</b>
+                              {b.pre_arrival_sent&&<Pill tone="info">أُرسلت الرسالة</Pill>}
+                              {isGuestBlocked(b.phone)&&<Pill tone="bad">{bt("blocked")}</Pill>}
+                            </div>
+                            <div className="x-mono x-muted" style={{fontSize:13,textAlign:"right"}}>{b.phone||"-"}</div>
+                          </td>
+                          <td>{b.chalet}</td>
+                          <td>{fd(b.date_from)}<div className="x-muted" style={{fontSize:13}}>{"إلى "+fd(b.date_to)}</div></td>
+                          <td>{fn(b.date_from,b.date_to)}</td>
+                          <td className="strong"><SAR v={Number(b.price)}/></td>
+                          <td><Pill tone={statusTone[b.status]||"muted"} dot>{scLabel}</Pill></td>
+                          <td className="end" onClick={e=>e.stopPropagation()}>
+                            <RowActionsMenu actions={[
+                              {label:bt("edit"), onClick:e=>{e.stopPropagation();setBMdl({...b})}},
+                              {label:bt("preArrival"), onClick:e=>{e.stopPropagation();setPreArrMdl({booking:b});}},
+                              {label:bt("whatsappCheckin"), onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=checkin`;const msg=`مرحباً ${b.guest} 👋%0aأهلاً بك في ${b.chalet}%0a%0aرابط تسجيل الدخول:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
+                              {label:bt("sendReview"), onClick:e=>{e.stopPropagation();const url=`https://reetam-chalets.vercel.app?guest=1&b=${b.id}&m=review`;const msg=`${b.guest} 😊%0aرابط التقييم:%0a${encodeURIComponent(url)}`;const phone=b.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");window.open(`https://wa.me/${phone}?text=${msg}`,"_blank");}},
+                              ...(isCheckedOut(b)?[{label:bt("rateGuest"), onClick:(e:React.MouseEvent)=>{e.stopPropagation();setGrMdl({booking:b,rating:0,note:""});}}]:[]),
+                              {label:isGuestBlocked(b.phone)?bt("unblock"):bt("block"), color:"#A63A2A", onClick:e=>{e.stopPropagation();if(isGuestBlocked(b.phone))unblockGuest(b.phone);else setBlockMdl({booking:b,reason:""});}},
+                              {label:bt("delete"), color:"#A63A2A", onClick:async e=>{e.stopPropagation();if(window.confirm(bt("deleteConfirm"))){await db("bookings","DELETE",null,b.id);await loadAll();}}},
+                            ]}/>
+                          </td>
+                        </tr>
+                      );
+                    })}</tbody>
+                  </table></div>
+                )}
+              </div>
             </div>
             );
           })()}
@@ -3758,73 +3348,66 @@ ${poolLine}
           )}
 
           {/* ── Investors ── */}
-          {tab==="investors"&&isAdmin&&(
-            <div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
-                <TH title="🤝 إدارة المستثمرين"/>
-                <div className="row">
-                  {([["this_month","هذا الشهر"],["last_month","الشهر الماضي"],["this_year","هذا العام"]] as [typeof invPeriod,string][]).map(([v,l])=>(
-                    <button key={v} className="btn" onClick={()=>setInvPeriod(v)}
-                      style={{background:invPeriod===v?B:W,color:invPeriod===v?S:B,border:"1.5px solid "+(invPeriod===v?B:"rgba(201,163,106,.4)"),padding:"8px 12px",fontSize:12}}>
-                      {l}
-                    </button>
-                  ))}
-                </div>
+          {tab==="investors"&&isAdmin&&(()=>{
+            const totalNet=names.reduce((s,n)=>s+((chaletNetForPeriod[n]?.net)||0),0);
+            const partnerNames=new Set(investors.map(iv=>iv.name));
+            const incomplete=names.filter(n=>{const l=investors.filter(iv=>iv.chalet===n);return l.length>0&&l.reduce((s,iv)=>s+Number(iv.percentage||0),0)!==100;}).length;
+            return (
+            <div className="x-page">
+              <PageHead title="المستثمرون" sub="حصة كل شريك من صافي ربح الشاليه (الإيرادات ناقص الصيانة)">
+                <Seg label="الفترة" value={invPeriod} onChange={v=>setInvPeriod(v)} options={[{v:"this_month",l:"هذا الشهر"},{v:"last_month",l:"الشهر الماضي"},{v:"this_year",l:"هذا العام"}]}/>
+              </PageHead>
+              <div className="x-kpis">
+                <Kpi hero label={"الأرباح القابلة للتوزيع · "+invPeriodLabel} value={<SAR v={totalNet}/>}/>
+                <Kpi label="عدد الشركاء" value={partnerNames.size} sub={"في "+names.length+" شاليه"}/>
+                <Kpi label="شاليهات نسبها غير مكتملة" value={incomplete} tone={incomplete?"neg":"pos"} sub={incomplete?"مجموع النسب لا يساوي 100%":"كل النسب مكتملة"}/>
               </div>
-
-              {names.length===0 && <div className="card" style={{padding:24,textAlign:"center",color:T}}>أضف شاليهات أولاً</div>}
-
+              {names.length===0 && <div className="x-card"><Empty>أضف شاليهات أولاً</Empty></div>}
               {names.map(n=>{
                 const chInvestors = investors.filter(iv=>iv.chalet===n);
                 const totalPct = chInvestors.reduce((s,iv)=>s+Number(iv.percentage||0),0);
                 const stats = chaletNetForPeriod[n] || {rev:0,mex:0,net:0};
                 return (
-                  <div key={n} className="card" style={{overflow:"hidden",marginBottom:16}}>
-                    <div style={{padding:"12px 16px",borderBottom:"2px solid rgba(201,163,106,.2)",background:SL,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-                      <div>
-                        <span style={{fontWeight:800,color:B,fontSize:15}}>{"🏠 "+n}</span>
-                        <span style={{marginRight:10,fontSize:12,color:T}}>{"صافي "+invPeriodLabel+": "}<b style={{color:stats.net>=0?SD:"#A63A2A"}}>{stats.net.toLocaleString()+" ر"}</b></span>
-                      </div>
-                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                        <Bdg bg={totalPct===100?"#DCFCE7":totalPct>100?"#FBEDEA":"#FEF3C7"} color={totalPct===100?"#166534":totalPct>100?"#A63A2A":"#92400E"}>{"إجمالي النسب: "+totalPct+"%"}</Bdg>
-                        <button className="btn bp bsm" onClick={()=>setInvMdl({chalet:n,name:"",phone:"",percentage:0,note:""})}>+ إضافة مستثمر</button>
-                      </div>
-                    </div>
+                  <div key={n} className="x-card">
+                    <CardHead icon="home" title={n} sub={<>صافي {invPeriodLabel}: <b className={stats.net<0?"x-neg":"x-pos"}><SAR v={stats.net}/></b></>}>
+                      {chInvestors.length>0&&<Pill tone={totalPct===100?"ok":"warn"}>{"مجموع النسب "+totalPct+"%"}</Pill>}
+                      <button className="btn bo bsm" onClick={()=>setInvMdl({chalet:n,name:"",phone:"",percentage:0,note:""})}><Icon n="plus" s={15}/>شريك</button>
+                    </CardHead>
                     {chInvestors.length===0
-                      ? <div style={{padding:20,textAlign:"center",color:T,fontSize:13}}>لا يوجد مستثمرون لهذا الشاليه</div>
-                      : <div className="tbl-wrap"><table className="tbl">
-                          <thead><tr>{["الاسم","الهاتف","النسبة","نصيبه من الصافي","إجراءات"].map((h,i)=><th key={i}>{h}</th>)}</tr></thead>
+                      ? <Empty>لا يوجد شركاء لهذا الشاليه</Empty>
+                      : <div className="tbl-wrap"><table className="x-tbl">
+                          <thead><tr><th>الشريك</th><th>النسبة</th><th>نصيبه</th><th className="x-hide-sm">الجوال</th><th className="end"></th></tr></thead>
                           <tbody>
                             {chInvestors.map(iv=>{
                               const share = Math.round(stats.net * (Number(iv.percentage)||0) / 100);
                               return (
                                 <tr key={iv.id}>
-                                  <td data-label="الاسم" style={{fontWeight:700}}>{iv.name}</td>
-                                  <td data-label="الهاتف" style={{direction:"ltr",textAlign:"right"}}>{iv.phone||"-"}</td>
-                                  <td data-label="النسبة" style={{fontWeight:700}}>{Number(iv.percentage)+"%"}</td>
-                                  <td data-label="نصيبه من الصافي" style={{fontWeight:800,color:share>=0?SD:"#A63A2A"}}>{share.toLocaleString()+" ر"}</td>
-                                  <td data-label="">
-                                    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                                      <button className="btn bsm" style={{background:"#1F8A4C",color:"#fff"}} onClick={()=>{
+                                  <td className="strong">{iv.name}</td>
+                                  <td><div className="x-barrow"><Track pct={Number(iv.percentage)||0}/><span>{Number(iv.percentage)+"%"}</span></div></td>
+                                  <td className={"strong "+(share<0?"x-neg":"")}><SAR v={share}/></td>
+                                  <td className="x-mono x-muted x-hide-sm">{iv.phone||"-"}</td>
+                                  <td className="end">
+                                    <div style={{display:"inline-flex",gap:6}}>
+                                      <button className="btn bsm bshare" onClick={()=>{
                                         const lines=[
                                           `📊 *تقرير حصتك — ${n}*`,
                                           `🗓️ الفترة: ${invPeriodLabel}`,
                                           ``,
-                                          `💵 إيرادات الشاليه: ${stats.rev.toLocaleString()} ر`,
-                                          `🔧 تكاليف الصيانة: ${stats.mex.toLocaleString()} ر`,
-                                          `📈 صافي ربح الشاليه: ${stats.net.toLocaleString()} ر`,
+                                          `💵 إيرادات الشاليه: ${stats.rev.toLocaleString("en-US")} ر`,
+                                          `🔧 تكاليف الصيانة: ${stats.mex.toLocaleString("en-US")} ر`,
+                                          `📈 صافي ربح الشاليه: ${stats.net.toLocaleString("en-US")} ر`,
                                           `🤝 نسبتك: ${Number(iv.percentage)}%`,
                                           ``,
-                                          `*نصيبك: ${share.toLocaleString()} ر*`,
+                                          `*نصيبك: ${share.toLocaleString("en-US")} ر*`,
                                           ``,
                                           `_تقرير آلي من نظام إدارة ريتام_`,
                                         ];
                                         const phone = iv.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");
                                         const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(lines.join("\n"))}`;
                                         window.open(url,"_blank");
-                                      }}>📤 إرسال</button>
-                                      <button className="btn be bsm" onClick={()=>setInvMdl({...iv})}>تعديل</button>
-                                      <button className="btn bd bsm" onClick={async()=>{if(window.confirm("حذف "+iv.name+"؟")){await db("investors","DELETE",null,iv.id);await loadAll();}}}>🗑️</button>
+                                      }}><Icon n="send" s={15}/>إرسال التقرير</button>
+                                      <button className="btn bo bsm" aria-label="تعديل" onClick={()=>setInvMdl({...iv})}><Icon n="edit" s={15}/></button>
+                                      <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(window.confirm("حذف "+iv.name+"؟")){await db("investors","DELETE",null,iv.id);await loadAll();}}}><Icon n="trash" s={15}/></button>
                                     </div>
                                   </td>
                                 </tr>
@@ -3837,403 +3420,292 @@ ${poolLine}
                 );
               })}
             </div>
-          )}
+            );
+          })()}
 
           {/* ── Maintenance ── */}
-          {tab==="maintenance"&&(
-            <div>
-              <div className="sg" style={{marginBottom:18}}>
-                {[{l:"مفتوح",cnt:maint.filter(m=>m.status==="open").length,bg:"#FBEDEA",c:"#A63A2A",i:"🔴"},{l:"قيد التنفيذ",cnt:maint.filter(m=>m.status==="in_progress").length,bg:"#FBF3DF",c:"#7A5A0E",i:"🟡"},{l:"منتهي",cnt:maint.filter(m=>m.status==="done").length,bg:"#E6F1EA",c:SD,i:"🟢"},{l:"إجمالي التكاليف",cnt:mCost.toLocaleString()+" ر",bg:SL,c:B,i:"💰"}].map((s,i)=>(
-                  <div key={i} style={{background:s.bg,borderRadius:10,padding:"12px 14px",border:"1px solid rgba(201,163,106,.2)"}}>
-                    <div style={{fontSize:16}}>{s.i}</div>
-                    <div style={{fontSize:20,fontWeight:800,color:s.c}}>{s.cnt}</div>
-                    <div style={{fontSize:11,color:s.c,opacity:.8}}>{s.l}</div>
-                  </div>
-                ))}
+          {tab==="maintenance"&&(()=>{
+            const scoped=maint.filter(m=>(fch==="الكل"||m.chalet===fch)&&(isAdmin||isStaff||(isChaletMgr&&m.chalet===currentUser.chalet)));
+            const cnt=(k:string)=>k==="all"?scoped.length:scoped.filter(m=>m.status===k).length;
+            const list=scoped.filter(m=>mStatus==="all"||m.status===mStatus).sort((a,b)=>{const p={عالي:0,متوسط:1,منخفض:2};const s={open:0,in_progress:1,done:2};return(p[a.priority]??1)-(p[b.priority]??1)||(s[a.status]??1)-(s[b.status]??1);});
+            const ym=td().slice(0,7);
+            const monthCost=scoped.filter(m=>m.cost&&m.maint_date?.startsWith(ym)).reduce((s,m)=>s+Number(m.cost),0);
+            const highOpen=scoped.filter(m=>m.status==="open"&&m.priority==="عالي").length;
+            const prTone=(p:string)=>p==="عالي"?"bad":p==="متوسط"?"warn":"muted";
+            const stTone=(s:string)=>s==="open"?"bad":s==="in_progress"?"warn":"ok";
+            return (
+            <div className="x-page">
+              <PageHead title="الصيانة" sub="الطلبات مرتبة حسب الأولوية">
+                <button className="btn bp" onClick={()=>{setMOld(null);setMMdl({...eM});}}><Icon n="plus"/>طلب صيانة</button>
+              </PageHead>
+              <div className="x-kpis">
+                <Kpi label="مفتوح" value={cnt("open")} tone={cnt("open")?"neg":undefined} sub={highOpen?highOpen+" بأولوية عالية":"لا يوجد طلب عاجل"}/>
+                <Kpi label="قيد التنفيذ" value={cnt("in_progress")}/>
+                <Kpi label="تكاليف هذا الشهر" value={<SAR v={monthCost}/>}/>
+                <Kpi label="إجمالي التكاليف" value={<SAR v={scoped.filter(m=>m.cost).reduce((s,m)=>s+Number(m.cost),0)}/>} sub="منذ البداية"/>
               </div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:10}}>
-                <TH title="طلبات الصيانة"/>
-                <div style={{display:"flex",gap:8}}>
-                  <select className="inp" style={{width:"auto"}} value={fch} onChange={e=>setFch(e.target.value)}>
-                    <option value="الكل">الكل</option>
-                    {names.map(c=><option key={c} value={c}>{c}</option>)}
-                  </select>
-                  <button className="btn bp" onClick={()=>{setMOld(null);setMMdl({...eM});}}>+ طلب صيانة</button>
+              <div className="x-card">
+                <div className="x-card-h">
+                  <Seg label="الحالة" value={mStatus} onChange={v=>setMStatus(v)} options={[{v:"open",l:"مفتوح",c:cnt("open")},{v:"in_progress",l:"قيد التنفيذ",c:cnt("in_progress")},{v:"done",l:"منتهي",c:cnt("done")},{v:"all",l:"الكل",c:cnt("all")}]}/>
+                  {!isChaletMgr&&(
+                    <select className="x-select" aria-label="الشاليه" value={fch} onChange={e=>setFch(e.target.value)}>
+                      <option value="الكل">كل الشاليهات</option>
+                      {cStats.map(c=><option key={c.name} value={c.name}>{c.name+(c.mop?" ("+c.mop+" مفتوح)":"")}</option>)}
+                    </select>
+                  )}
                 </div>
-              </div>
-              <div className="mg" style={{marginBottom:16}}>
-                {cStats.map(c=>(
-                  <div key={c.id} style={{background:W,borderRadius:10,padding:12,boxShadow:"0 2px 8px rgba(59,42,28,.07)",borderRight:"4px solid "+(c.mop>0?"#A63A2A":SA)}}>
-                    <div style={{fontWeight:700,color:B,marginBottom:7,fontSize:13}}>{"🏠 "+c.name}</div>
-                    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                      <Bdg bg="#FBEDEA" color="#A63A2A">{c.mop+" مفتوح"}</Bdg>
-                      <Bdg bg="#FBF3DF" color="#7A5A0E">{c.mip+" جاري"}</Bdg>
-                      <Bdg bg="#E6F1EA" color={SD}>{c.mdn+" منتهي"}</Bdg>
+                {list.length===0 ? <Empty>لا توجد طلبات بهذه الحالة</Empty> : (
+                  <div className="x-list">{list.map(m=>(
+                    <div key={m.id} className="x-li">
+                      <div className={"x-ic "+prTone(m.priority)}><Icon n="wrench"/></div>
+                      <div className="meta"><b>{m.issue}</b><span>{m.chalet+" · "+fd(m.maint_date)+(m.req?" · بلّغ عنه "+m.req:"")}</span></div>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                        <Pill tone={prTone(m.priority)}>{"أولوية "+m.priority}</Pill>
+                        <Pill tone={stTone(m.status)} dot>{MS[m.status]?.label||m.status}</Pill>
+                        {m.image&&<img src={m.image} alt="صورة المشكلة" onClick={()=>window.open(m.image,"_blank")} style={{width:36,height:36,objectFit:"cover",borderRadius:8,cursor:"pointer",border:"1px solid var(--border)"}}/>}
+                      </div>
+                      <span className="amt">{m.cost?<SAR v={Number(m.cost)}/>:<span className="x-muted">—</span>}</span>
+                      <div className="acts">
+                        <button className="btn bo bsm" onClick={()=>{setMOld({...m});setMMdl({...m});}}><Icon n="edit" s={15}/>{m.status==="done"?"تعديل":"تحديث الحالة"}</button>
+                        <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(!window.confirm("حذف طلب الصيانة؟"))return;await db("maintenance","DELETE",null,m.id);await loadAll();}}><Icon n="trash" s={15}/></button>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-              <div className="card" style={{overflow:"hidden"}}>
-                <Tbl heads={["الشاليه","المشكلة","مقدم الطلب","التاريخ","الأولوية","الحالة","التكلفة","صورة","إجراءات"]}
-                  rows={maint.filter(m=>(fch==="الكل"||m.chalet===fch)&&(isAdmin||isStaff||(isChaletMgr&&m.chalet===currentUser.chalet))).sort((a,b)=>{const p={عالي:0,متوسط:1,منخفض:2};const s={open:0,in_progress:1,done:2};return(p[a.priority]??1)-(p[b.priority]??1)||(s[a.status]??1)-(s[b.status]??1);}).map(m=>(
-                    <tr key={m.id}>
-                      <td style={{fontWeight:600}}>{m.chalet}</td>
-                      <td>{m.issue}</td>
-                      <td style={{fontSize:12,color:T}}>{m.req||"-"}</td>
-                      <td>{fd(m.maint_date)}</td>
-                      <td><Bdg bg={m.priority==="عالي"?"#FBEDEA":m.priority==="متوسط"?"#FBF3DF":"#E6F1EA"} color={m.priority==="عالي"?"#A63A2A":m.priority==="متوسط"?"#7A5A0E":SD}>{m.priority}</Bdg></td>
-                      <td><Bdg bg={MS[m.status]?.bg||"#eee"} color={MS[m.status]?.color||"#333"}>{MS[m.status]?.label||m.status}</Bdg></td>
-                      <td style={{fontWeight:700,color:m.cost?T:SI}}>{m.cost?Number(m.cost).toLocaleString()+" ر":"-"}</td>
-                      <td>{m.image?<img src={m.image} alt="صورة" onClick={()=>window.open(m.image,"_blank")} style={{width:40,height:40,objectFit:"cover",borderRadius:6,cursor:"pointer",border:"1px solid rgba(201,163,106,.3)"}}/>:<span style={{color:SI,fontSize:12}}>-</span>}</td>
-                      <td>
-                        <div style={{display:"flex",gap:4}}>
-                          <button className="btn be bsm" onClick={()=>{setMOld({...m});setMMdl({...m});}}>تعديل</button>
-                          <button className="btn bd bsm" onClick={async()=>{if(!window.confirm("حذف طلب الصيانة؟"))return;await db("maintenance","DELETE",null,m.id);await loadAll();}}>حذف</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                />
+                  ))}</div>
+                )}
               </div>
             </div>
-          )}
+            );
+          })()}
 
-          {/* ── Insurance ── */}
-          {tab==="insurance"&&(
-            <div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,flexWrap:"wrap",gap:10}}>
-                <div><TH title="محفظة التأمين"/><p style={{color:T,fontSize:13}}>يزيد بإضافة تأمين ويُخصم عند إغلاق طلبات الصيانة</p></div>
-                <button className="btn bp" onClick={()=>setIMdl(true)}>+ إضافة تأمين</button>
+          {/* ── Wallets: التأمين + النظافة ── */}
+          {tab==="wallets"&&isAdmin&&(()=>{
+            const insIn=wallet.filter(t=>t.type==="إيداع").reduce((s,t)=>s+t.amount,0), insOut=wallet.filter(t=>t.type!=="إيداع").reduce((s,t)=>s+t.amount,0);
+            const clIn=cleaning.filter(t=>t.type==="إيداع").reduce((s,t)=>s+t.amount,0), clOut=cleaning.filter(t=>t.type!=="إيداع").reduce((s,t)=>s+t.amount,0);
+            const clBal=(n:string)=>cleaning.filter(t=>t.chalet===n).reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0);
+            const lowIns=cStats.filter(c=>c.ins<500);
+            const ym=td().slice(0,7);
+            const clExpMonth=clExp.filter(e=>e.expense_date?.startsWith(ym)).reduce((s,e)=>s+Number(e.amount),0);
+            const ledger=walletTab==="ins"?[...wallet].reverse():[...cleaning].reverse();
+            return (
+            <div className="x-page">
+              <PageHead title="المحافظ" sub="محفظة التأمين ومحفظة النظافة">
+                <button className="btn bo" onClick={()=>setClExpMdl({chalet:names[0]||"",category:"رواتب",amount:"",note:"",expense_date:td()})}><Icon n="receipt"/>التزام نظافة</button>
+                <button className="btn bo" onClick={()=>setClnMdl(true)}><Icon n="plus"/>رصيد نظافة</button>
+                <button className="btn bp" onClick={()=>setIMdl(true)}><Icon n="plus"/>إضافة تأمين</button>
+              </PageHead>
+              <div className="x-kpis">
+                <Kpi hero label="محفظة التأمين" value={<SAR v={walletBal}/>} sub={"إيداعات "+insIn.toLocaleString("en-US")+" · صرف "+insOut.toLocaleString("en-US")}/>
+                <Kpi label="محفظة النظافة" value={<SAR v={cleaningBal}/>} sub={"إيداعات "+clIn.toLocaleString("en-US")+" · صرف "+clOut.toLocaleString("en-US")}/>
+                <Kpi label="التزامات النظافة هذا الشهر" value={<SAR v={clExpMonth}/>}/>
+                <Kpi label="تأمين منخفض" value={<>{lowIns.length}<small> شاليه</small></>} tone={lowIns.length?"neg":"pos"} sub={lowIns.length?lowIns.map(c=>c.name).join("، "):"كل الأرصدة فوق 500 ر.س"}/>
               </div>
-              <div style={{background:"linear-gradient(135deg,"+B+","+BD+")",borderRadius:18,padding:"24px 28px",marginBottom:22,display:"flex",justifyContent:"space-between",alignItems:"center",boxShadow:"0 8px 32px rgba(59,42,28,.3)",flexWrap:"wrap",gap:12}}>
-                <div>
-                  <div style={{color:SI,fontSize:13,marginBottom:3}}>إجمالي محفظة التأمين</div>
-                  <div style={{color:S,fontSize:36,fontWeight:800}}>{walletBal.toLocaleString()+" ريال"}</div>
-                  <div style={{color:SI,fontSize:12,marginTop:6}}>{"إيداعات: "+wallet.filter(t=>t.type==="إيداع").reduce((s,t)=>s+t.amount,0).toLocaleString()+" ر | صرف: "+wallet.filter(t=>t.type!=="إيداع").reduce((s,t)=>s+t.amount,0).toLocaleString()+" ر"}</div>
+              <div className="x-card">
+                <CardHead icon="home" title="الرصيد لكل شاليه"/>
+                <div className="tbl-wrap"><table className="x-tbl">
+                  <thead><tr><th>الشاليه</th><th>التأمين</th><th>النظافة</th><th>طلبات الصيانة</th><th>الحالة</th></tr></thead>
+                  <tbody>{cStats.map(c=>(
+                    <tr key={c.id}><td className="strong">{c.name}</td><td className={c.ins<500?"x-neg strong":""}><SAR v={c.ins} unit={false}/></td><td><SAR v={clBal(c.name)} unit={false}/></td><td>{c.mtot}</td><td>{c.ins<500?<Pill tone="bad">تأمين منخفض</Pill>:<Pill tone="ok">جيد</Pill>}</td></tr>
+                  ))}</tbody>
+                </table></div>
+              </div>
+              <div className="x-card">
+                <div className="x-card-h">
+                  <h2><Icon n="receipt"/>سجل الحركات</h2>
+                  <Seg label="المحفظة" value={walletTab} onChange={v=>setWalletTab(v)} options={[{v:"ins",l:"التأمين",c:wallet.length},{v:"cln",l:"النظافة",c:cleaning.length},{v:"obl",l:"التزامات النظافة",c:clExp.length}]}/>
                 </div>
-                <Logo size={55}/>
-              </div>
-              <div className="ig" style={{marginBottom:22}}>
-                {cStats.map(c=>(
-                  <div key={c.id} style={{background:W,borderRadius:12,padding:16,boxShadow:"0 2px 10px rgba(59,42,28,.08)",borderTop:"4px solid "+(c.ins<500?"#A63A2A":c.ins<1000?SA:T)}}>
-                    <div style={{fontWeight:700,color:B,fontSize:14,marginBottom:3}}>{c.name}</div>
-                    <div style={{fontSize:11,color:T,marginBottom:8}}>{"📍 "+c.loc}</div>
-                    <div style={{fontSize:24,fontWeight:800,color:c.ins<500?"#A63A2A":T,marginBottom:7}}>{c.ins.toLocaleString()+" ر"}</div>
-                    <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:T}}>
-                      <span>{"طلبات: "+c.mtot}</span>
-                      <Bdg bg={c.ins<500?"#FBEDEA":SL} color={c.ins<500?"#A63A2A":B}>{c.ins<500?"منخفض":"جيد"}</Bdg>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="card" style={{overflow:"hidden"}}>
-                <div style={{padding:"12px 16px",borderBottom:"2px solid rgba(201,163,106,.2)",fontWeight:700,color:B,fontSize:14,background:SL}}>سجل معاملات التأمين</div>
-                <Tbl heads={["التاريخ","الشاليه","النوع","المبلغ","ملاحظة","إجراءات"]}
-                  rows={[...wallet].reverse().map((t,i)=>(
-                    <tr key={i}>
-                      <td>{fd(t.trans_date)}</td>
-                      <td style={{fontWeight:600}}>{t.chalet}</td>
-                      <td><Bdg bg={t.type==="إيداع"?"#E6F1EA":"#FBEDEA"} color={t.type==="إيداع"?SD:"#A63A2A"}>{t.type}</Bdg></td>
-                      <td style={{fontWeight:700,color:t.type==="إيداع"?T:"#A63A2A"}}>{(t.type==="إيداع"?"+":"-")+t.amount.toLocaleString()+" ر"}</td>
-                      <td style={{color:T,fontSize:12}}>{t.note||"-"}</td>
-                      <td><div style={{display:"flex",gap:4}}><button className="btn be bsm" onClick={()=>setWMdl({...t})}>تعديل</button><button className="btn bd bsm" onClick={async()=>{if(window.confirm("حذف هذا الصف؟")){await db("wallet","DELETE",null,t.id);await loadAll();}}}>حذف</button></div></td>
-                    </tr>
-                  ))}
-                />
-              </div>
-            </div>
-          )}
-
-          {tab==="cleaning"&&(
-            <div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:20,flexWrap:"wrap",gap:10}}>
-                <div><TH title="محفظة النظافة"/><p style={{color:T,fontSize:13}}>يزيد بإضافة رصيد نظافة ويُخصم يدوياً</p></div>
-                <button className="btn bp" style={{background:"#3D7A5A"}} onClick={()=>setClnMdl(true)}>+ إضافة رصيد</button>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:14,marginBottom:20}}>
-                <div className="card" style={{padding:20,textAlign:"center",background:"linear-gradient(135deg,#3D7A5A,#2A5E42)",color:"#fff",borderRadius:14}}>
-                  <div style={{fontSize:13,marginBottom:4,opacity:.85}}>إجمالي محفظة النظافة</div>
-                  <div style={{fontSize:36,fontWeight:800}}>{cleaningBal.toLocaleString()+" ريال"}</div>
-                  <div style={{fontSize:12,marginTop:6,opacity:.75}}>{"إيداعات: "+cleaning.filter(t=>t.type==="إيداع").reduce((s,t)=>s+t.amount,0).toLocaleString()+" ر | صرف: "+cleaning.filter(t=>t.type!=="إيداع").reduce((s,t)=>s+t.amount,0).toLocaleString()+" ر"}</div>
-                </div>
-                {chalets.map(c=>{
-                  const bal=cleaning.filter(t=>t.chalet===c.name).reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0);
-                  return bal>0?(
-                    <div key={c.name} className="card" style={{padding:16,textAlign:"center"}}>
-                      <div style={{fontSize:12,color:T,marginBottom:4}}>{c.name}</div>
-                      <div style={{fontSize:22,fontWeight:800,color:"#3D7A5A"}}>{bal.toLocaleString()+" ر"}</div>
-                    </div>
-                  ):null;
-                })}
-              </div>
-              <div className="card" style={{overflow:"hidden"}}>
-                <div style={{padding:"12px 16px",borderBottom:"2px solid rgba(201,163,106,.2)",fontWeight:700,color:B,fontSize:14,background:SL}}>سجل معاملات النظافة</div>
-                <Tbl heads={["التاريخ","الشاليه","النوع","المبلغ","ملاحظة","إجراءات"]}
-                  rows={[...cleaning].reverse().map((t,i)=>(
-                    <tr key={i}>
-                      <td data-label="التاريخ">{fd(t.trans_date)}</td>
-                      <td data-label="الشاليه" style={{fontWeight:600}}>{t.chalet}</td>
-                      <td data-label="النوع"><Bdg bg={t.type==="إيداع"?"#E8F5EE":"#FBEDEA"} color={t.type==="إيداع"?"#3D7A5A":"#A63A2A"}>{t.type}</Bdg></td>
-                      <td data-label="المبلغ" style={{fontWeight:700,color:t.type==="إيداع"?"#3D7A5A":"#A63A2A"}}>{(t.type==="إيداع"?"+":"-")+t.amount.toLocaleString()+" ر"}</td>
-                      <td data-label="ملاحظة" style={{color:T,fontSize:12}}>{t.note||"-"}</td>
-                      <td data-label=""><div style={{display:"flex",gap:4}}><button className="btn be bsm" onClick={()=>setClMdl({...t})}>تعديل</button><button className="btn bd bsm" onClick={async()=>{if(window.confirm("حذف هذا الصف؟")){await db("cleaning","DELETE",null,t.id);await loadAll();}}}>حذف</button></div></td>
-                    </tr>
-                  ))}
-                />
-              </div>
-
-              {/* التزامات */}
-              <div style={{marginTop:24}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-                  <div style={{fontWeight:700,color:B,fontSize:16}}>📋 التزامات النظافة</div>
-                  <button className="btn bp" style={{background:"#3D7A5A"}} onClick={()=>setClExpMdl({chalet:names[0]||"",category:"رواتب",amount:"",note:"",expense_date:td()})}>+ إضافة التزام</button>
-                </div>
-                <div className="card" style={{overflow:"hidden"}}>
-                  <Tbl heads={["التاريخ","الشاليه","الفئة","المبلغ","ملاحظة","إجراءات"]}
-                    rows={[...clExp].reverse().map((e,i)=>(
-                      <tr key={i}>
-                        <td data-label="التاريخ" style={{fontSize:12}}>{fd(e.expense_date)}</td>
-                        <td data-label="الشاليه" style={{fontWeight:600}}>{e.chalet}</td>
-                        <td data-label="الفئة"><Bdg bg="#E8F5EE" color="#3D7A5A">{e.category}</Bdg></td>
-                        <td data-label="المبلغ" style={{fontWeight:700,color:"#A63A2A"}}>-{Number(e.amount).toLocaleString()+" ر"}</td>
-                        <td data-label="ملاحظة" style={{color:T,fontSize:12}}>{e.note||"-"}</td>
-                        <td data-label=""><div style={{display:"flex",gap:4}}>
-                          <button className="btn be bsm" onClick={()=>setClExpMdl({...e})}>تعديل</button>
-                          <button className="btn bd bsm" onClick={async()=>{if(window.confirm("حذف؟")){await db("cleaning_expenses","DELETE",null,e.id);await loadAll();}}}>حذف</button>
+                {walletTab!=="obl" ? (ledger.length===0?<Empty>لا توجد حركات</Empty>:
+                  <div className="tbl-wrap"><table className="x-tbl">
+                    <thead><tr><th>التاريخ</th><th>الشاليه</th><th>النوع</th><th>المبلغ</th><th>ملاحظة</th><th className="end"></th></tr></thead>
+                    <tbody>{ledger.map((t,i)=>(
+                      <tr key={t.id||i}>
+                        <td>{fd(t.trans_date)}</td><td className="strong">{t.chalet}</td>
+                        <td><Pill tone={t.type==="إيداع"?"ok":"bad"}>{t.type}</Pill></td>
+                        <td className={"strong "+(t.type==="إيداع"?"x-pos":"x-neg")}><span dir="ltr" style={{unicodeBidi:"isolate"}}>{(t.type==="إيداع"?"+":"−")+t.amount.toLocaleString("en-US")}</span></td>
+                        <td className="x-muted">{t.note||"-"}</td>
+                        <td className="end"><div style={{display:"inline-flex",gap:6}}>
+                          <button className="btn bo bsm" aria-label="تعديل" onClick={()=>walletTab==="ins"?setWMdl({...t}):setClMdl({...t})}><Icon n="edit" s={15}/></button>
+                          <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(window.confirm("حذف هذا الصف؟")){await db(walletTab==="ins"?"wallet":"cleaning","DELETE",null,t.id);await loadAll();}}}><Icon n="trash" s={15}/></button>
                         </div></td>
                       </tr>
-                    ))}
-                    footer={[
-                      <td key={0} colSpan={3} style={{fontWeight:800,color:B}}>إجمالي الالتزامات</td>,
-                      <td key={1} style={{fontWeight:800,color:"#A63A2A",fontSize:15}}>{clExp.reduce((s,e)=>s+Number(e.amount),0).toLocaleString()+" ر"}</td>,
-                      <td key={2}/>,<td key={3}/>
-                    ]}
-                  />
-                </div>
+                    ))}</tbody>
+                  </table></div>
+                ) : (clExp.length===0?<Empty>لا توجد التزامات</Empty>:
+                  <div className="tbl-wrap"><table className="x-tbl">
+                    <thead><tr><th>التاريخ</th><th>الشاليه</th><th>الفئة</th><th>المبلغ</th><th>ملاحظة</th><th className="end"></th></tr></thead>
+                    <tbody>{[...clExp].reverse().map((e,i)=>(
+                      <tr key={e.id||i}>
+                        <td>{fd(e.expense_date)}</td><td className="strong">{e.chalet}</td><td><Pill tone="muted">{e.category}</Pill></td>
+                        <td className="strong x-neg"><span dir="ltr" style={{unicodeBidi:"isolate"}}>{"−"+Number(e.amount).toLocaleString("en-US")}</span></td>
+                        <td className="x-muted">{e.note||"-"}</td>
+                        <td className="end"><div style={{display:"inline-flex",gap:6}}>
+                          <button className="btn bo bsm" aria-label="تعديل" onClick={()=>setClExpMdl({...e})}><Icon n="edit" s={15}/></button>
+                          <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(window.confirm("حذف؟")){await db("cleaning_expenses","DELETE",null,e.id);await loadAll();}}}><Icon n="trash" s={15}/></button>
+                        </div></td>
+                      </tr>
+                    ))}</tbody>
+                    <tfoot><tr><td colSpan={3}>إجمالي الالتزامات</td><td className="x-neg"><SAR v={clExp.reduce((s,e)=>s+Number(e.amount),0)}/></td><td colSpan={2}/></tr></tfoot>
+                  </table></div>
+                )}
+              </div>
+            </div>
+            );
+          })()}
+
+          {/* ── Cleaning: المهام والفريق ── */}
+          {tab==="cleaning"&&(()=>{
+            const month=new Date().toISOString().slice(0,7);
+            const chNames=clSelCh?[clSelCh]:[...new Set(clTasks.map(t=>t.chalet))];
+            const activeTasks=clTasks.filter(t=>t.active!==false&&chNames.includes(t.chalet));
+            const monthLogs=clLogs.filter(l=>l.log_date?.startsWith(month));
+            const doneCnt=activeTasks.filter(t=>monthLogs.some(l=>l.task_id===t.id&&l.supervisor_ok)).length;
+            const waitCnt=activeTasks.filter(t=>monthLogs.some(l=>l.task_id===t.id&&(l.worker_done||l.status==="done"))&&!monthLogs.some(l=>l.task_id===t.id&&l.supervisor_ok)).length;
+            const pctAll=activeTasks.length?Math.round(doneCnt/activeTasks.length*100):0;
+            return (
+            <div className="x-page">
+              <PageHead title="النظافة" sub="مهام هذا الشهر وفريق العمل">
+                <select className="x-select" aria-label="الشاليه" value={clSelCh||""} onChange={e=>setClSelCh(e.target.value||null)}>
+                  <option value="">كل الشاليهات</option>
+                  {names.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+                <button className="btn bo" onClick={()=>setCwMdl({name:"",phone:"",language:"hi",active:true})}><Icon n="users"/>إضافة عامل</button>
+                <button className="btn bp" onClick={()=>setClTaskMdl({chalet:names[0]||"",title:"",frequency:"أسبوعي",category:"مسبح",assigned_to:"",active:true})}><Icon n="plus"/>إضافة مهمة</button>
+              </PageHead>
+              <div className="x-kpis">
+                <Kpi label="إنجاز المشرف هذا الشهر" value={<>{pctAll}<small>%</small></>} sub={doneCnt+" من "+activeTasks.length+" مهام مؤكدة"}><Track pct={pctAll} tone={toneFor(pctAll,100,50)}/></Kpi>
+                <Kpi label="بانتظار تأكيدك" value={waitCnt} sub="أنجزها العامل ولم تُراجع"/>
+                <Kpi label="رصيد محفظة النظافة" value={<SAR v={cleaningBal}/>} sub={isAdmin?<button className="x-back" style={{minHeight:0}} onClick={()=>{setWalletTab("cln");setTab("wallets");}}>عرض السجل</button>:undefined}/>
               </div>
 
-              <div style={{marginTop:24}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
-                  <div style={{fontWeight:700,color:B,fontSize:16}}>✅ مهام النظافة</div>
-                  <div style={{display:"flex",gap:8}}>
-                    <select className="inp" style={{minWidth:160}} value={clSelCh||""} onChange={e=>setClSelCh(e.target.value||null)}>
-                      <option value="">كل الشاليهات</option>
-                      {names.map(c=><option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <button className="btn bp" style={{background:"#3D7A5A"}} onClick={()=>setClTaskMdl({chalet:names[0]||"",title:"",frequency:"أسبوعي",category:"مسبح",assigned_to:"",active:true})}>+ إضافة مهمة</button>
-                  </div>
-                </div>
-
-                {(clSelCh?[clSelCh]:[...new Set(clTasks.map(t=>t.chalet))]).map(chName=>{
-                  const tasks = clTasks.filter(t=>t.chalet===chName&&t.active!==false);
-                  if(!tasks.length) return null;
-                  const month = new Date().toISOString().slice(0,7);
-                  const logs  = clLogs.filter(l=>l.chalet===chName&&l.log_date?.startsWith(month));
-                  const done  = tasks.filter(t=>logs.some(l=>l.task_id===t.id&&l.supervisor_ok));
-                  const workerDone = tasks.filter(t=>logs.some(l=>l.task_id===t.id));
-                  const pct   = tasks.length>0?Math.round(done.length/tasks.length*100):0;
-                  return (
-                    <div key={chName} className="card" style={{marginBottom:16,overflow:"hidden"}}>
-                      <div style={{padding:"12px 16px",background:SL,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                        <div style={{fontWeight:700,color:B}}>{chName}</div>
-                        <div style={{display:"flex",alignItems:"center",gap:12}}>
-                          <div style={{fontSize:12,color:T}}>العامل: {workerDone.length}/{tasks.length} | المشرف: {done.length}/{tasks.length}</div>
-                          <div style={{background:"#f0f0f0",borderRadius:99,width:80,height:8,overflow:"hidden"}}>
-                            <div style={{width:pct+"%",height:"100%",background:pct===100?"#3D7A5A":pct>50?"#B8A06A":"#C97B63",transition:"width .3s"}}/>
-                          </div>
-                          <div style={{fontWeight:800,color:pct===100?"#3D7A5A":B,fontSize:13}}>{pct+"%"}</div>
-                        </div>
-                      </div>
-                      <div className="tbl-wrap">
-                      <table className="tbl">
-                        <thead><tr style={{background:"rgba(201,163,106,.1)"}}>
-                          {["المهمة","الفئة","التكرار","العامل ✓","المشرف ✓","إرسال",""].map((h,i)=><th key={i}>{h}</th>)}
-                        </tr></thead>
-                        <tbody>
-                          {tasks.map(task=>{
-                            const log = logs.find(l=>l.task_id===task.id);
-                            const isDone = log?.supervisor_ok||log?.status==="done";
-                            return (
-                              <tr key={task.id} style={{background:isDone?"rgba(61,122,90,.05)":log?.status==="sent"?"rgba(37,211,102,.05)":""}}>
-                                <td data-label="المهمة" style={{fontWeight:600}}>
-                                  {task.title}
-                                  {log?.status==="sent"&&<div style={{fontSize:10,color:"#059669",fontWeight:600}}>📤 أُرسلت</div>}
-                                  {isDone&&<div style={{fontSize:10,color:"#166534",fontWeight:600}}>✅ منتهية</div>}
-                                </td>
-                                <td data-label="الفئة"><Bdg bg="#E8F5EE" color="#3D7A5A">{task.category}</Bdg></td>
-                                <td data-label="التكرار" style={{fontSize:12,color:T}}>{task.frequency}</td>
-                                <td data-label="العامل ✓" style={{textAlign:"center"}}>
-                                  {log?.worker_done||log?.status==="done" ? <span style={{color:"#3D7A5A",fontWeight:700,fontSize:16}}>✓</span> : <span style={{color:"#ccc",fontSize:16}}>○</span>}
-                                </td>
-                                <td data-label="المشرف ✓" style={{textAlign:"center"}}>
-                                  {isDone
-                                    ? <span style={{color:"#3D7A5A",fontWeight:700,fontSize:16}}>✓</span>
-                                    : <button className="btn be bsm" style={{fontSize:11}} onClick={async()=>{
-                                        if(log){await db("cleaning_logs","PATCH",{supervisor_ok:true,status:"done"},log.id);}
-                                        else{await db("cleaning_logs","POST",{task_id:task.id,chalet:chName,log_date:td(),worker_done:true,supervisor_ok:true,status:"done"});}
-                                        await loadAll();
-                                      }}>تأكيد ✓</button>
-                                  }
-                                </td>
-                                <td data-label="إرسال">
+              {chNames.map(chName=>{
+                const tasks = clTasks.filter(t=>t.chalet===chName&&t.active!==false);
+                if(!tasks.length) return null;
+                const logs  = clLogs.filter(l=>l.chalet===chName&&l.log_date?.startsWith(month));
+                const done  = tasks.filter(t=>logs.some(l=>l.task_id===t.id&&l.supervisor_ok));
+                const workerDone = tasks.filter(t=>logs.some(l=>l.task_id===t.id));
+                const pct   = tasks.length>0?Math.round(done.length/tasks.length*100):0;
+                return (
+                  <div key={chName} className="x-card">
+                    <CardHead icon="broom" title={chName} sub={"العامل "+workerDone.length+"/"+tasks.length+" · المشرف "+done.length+"/"+tasks.length}>
+                      <div className="x-barrow" style={{minWidth:150}}><Track pct={pct} tone={toneFor(pct,100,50)}/><b className="x-num">{pct+"%"}</b></div>
+                    </CardHead>
+                    <div className="tbl-wrap"><table className="x-tbl">
+                      <thead><tr><th>المهمة</th><th>التكرار</th><th>العامل</th><th>المشرف</th><th className="end"></th></tr></thead>
+                      <tbody>
+                        {tasks.map(task=>{
+                          const log = logs.find(l=>l.task_id===task.id);
+                          const isDone = log?.supervisor_ok||log?.status==="done";
+                          const workerOk = log?.worker_done||log?.status==="done";
+                          return (
+                            <tr key={task.id}>
+                              <td className="strong">{task.title}<div className="x-muted" style={{fontSize:13,fontWeight:400}}>{task.category}</div></td>
+                              <td className="x-muted">{task.frequency}</td>
+                              <td>{workerOk?<Pill tone="ok">أنجز</Pill>:log?.status==="sent"?<Pill tone="info">أُرسلت</Pill>:<Pill tone="muted">لم يبدأ</Pill>}</td>
+                              <td>{isDone
+                                ? <Pill tone="ok">مؤكد</Pill>
+                                : <ActBtn primary={!!workerOk} onClick={async()=>{
+                                    if(log){await db("cleaning_logs","PATCH",{supervisor_ok:true,status:"done"},log.id);}
+                                    else{await db("cleaning_logs","POST",{task_id:task.id,chalet:chName,log_date:td(),worker_done:true,supervisor_ok:true,status:"done"});}
+                                    await loadAll();
+                                  }}>تأكيد</ActBtn>}
+                              </td>
+                              <td className="end">
+                                <div style={{display:"inline-flex",gap:6,alignItems:"center",flexWrap:"wrap",justifyContent:"flex-end"}}>
                                   {!isDone&&cleanWorkers.filter(w=>w.active).length>0&&(
                                     <SendTaskBtn task={task} workers={cleanWorkers.filter(w=>w.active)} log={log||null} onSent={loadAll}/>
                                   )}
-                                </td>
-                                <td data-label="">
-                                  <div style={{display:"flex",gap:4}}>
-                                    <button className="btn be bsm" style={{fontSize:11}} onClick={()=>setClTaskMdl({...task})}>تعديل</button>
-                                    <button className="btn bd bsm" style={{fontSize:11}} onClick={async()=>{if(window.confirm("حذف المهمة؟")){await db("cleaning_tasks","DELETE",null,task.id);await loadAll();}}}>حذف</button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                                  <button className="btn bo bsm" aria-label="تعديل" onClick={()=>setClTaskMdl({...task})}><Icon n="edit" s={15}/></button>
+                                  <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(window.confirm("حذف المهمة؟")){await db("cleaning_tasks","DELETE",null,task.id);await loadAll();}}}><Icon n="trash" s={15}/></button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table></div>
+                  </div>
+                );
+              })}
+              {clTasks.length===0&&<div className="x-card"><Empty>لا توجد مهام بعد، أضف مهام النظافة لكل شاليه</Empty></div>}
+
+              <div className="x-card">
+                <CardHead icon="users" title="فريق النظافة"/>
+                {cleanWorkers.length===0 ? <Empty>لا يوجد عمال، أضف فريق النظافة</Empty> : (
+                  <div className="x-list">{cleanWorkers.map(w=>(
+                    <div key={w.id} className="x-li">
+                      <div className="x-avatar">{(w.name||"؟").charAt(0)}</div>
+                      <div className="meta"><b>{w.name}</b><span className="x-mono" style={{textAlign:"right"}}>{w.phone}</span></div>
+                      <Pill tone="muted">{w.language==="hi"?"هندية":w.language==="ar"?"عربية":"إنجليزية"}</Pill>
+                      <Pill tone={w.active?"ok":"muted"} dot>{w.active?"نشط":"موقف"}</Pill>
+                      <div className="acts">
+                        <ActBtn onClick={async()=>{await db("cleaning_workers","PATCH",{active:!w.active},w.id);await loadAll();}}>{w.active?"إيقاف":"تفعيل"}</ActBtn>
+                        <button className="btn bo bsm" aria-label="تعديل" onClick={()=>setCwMdl({...w})}><Icon n="edit" s={15}/></button>
+                        <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(window.confirm("حذف العامل؟")){await db("cleaning_workers","DELETE",null,w.id);await loadAll();}}}><Icon n="trash" s={15}/></button>
                       </div>
                     </div>
-                  );
-                })}
-                {clTasks.length===0&&<div className="card" style={{padding:24,textAlign:"center",color:T}}>لا توجد مهام بعد — أضف مهام النظافة لكل شاليه</div>}
-
-                {/* ── فريق النظافة ── */}
-                <div style={{marginTop:24}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                    <div style={{fontWeight:700,color:B,fontSize:16}}>👷 فريق النظافة</div>
-                    <button className="btn bp" style={{background:"#065F46"}} onClick={()=>setCwMdl({name:"",phone:"",language:"hi",active:true})}>+ إضافة عامل</button>
-                  </div>
-                  {cleanWorkers.length===0
-                    ? <div className="card" style={{padding:20,textAlign:"center",color:T,fontSize:13}}>لا يوجد عمال — أضف فريق النظافة</div>
-                    : <div className="card" style={{overflow:"hidden"}}>
-                        <div className="tbl-wrap">
-                        <table className="tbl">
-                          <thead><tr>
-                            {["الاسم","الهاتف","اللغة","الحالة","إجراءات"].map((h,i)=><th key={i}>{h}</th>)}
-                          </tr></thead>
-                          <tbody>
-                            {cleanWorkers.map(w=>(
-                              <tr key={w.id}>
-                                <td data-label="الاسم" style={{fontWeight:700}}>{w.name}</td>
-                                <td data-label="الهاتف" style={{direction:"ltr",textAlign:"right"}}>{w.phone}</td>
-                                <td data-label="اللغة">
-                                  <Bdg bg={w.language==="hi"?"#FFF7ED":"#EFF6FF"} color={w.language==="hi"?"#C2410C":"#1D4ED8"}>
-                                    {w.language==="hi"?"🇮🇳 هندية":w.language==="ar"?"🇸🇦 عربية":"🌐 إنجليزية"}
-                                  </Bdg>
-                                </td>
-                                <td data-label="الحالة">
-                                  <Bdg bg={w.active?"#DCFCE7":"#F3F4F6"} color={w.active?"#166534":"#6B7280"}>{w.active?"نشط":"موقف"}</Bdg>
-                                </td>
-                                <td data-label="">
-                                  <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                                    <button className="btn be bsm" onClick={()=>setCwMdl({...w})}>تعديل</button>
-                                    <button className="btn bsm" onClick={async()=>{await db("cleaning_workers","PATCH",{active:!w.active},w.id);await loadAll();}}
-                                      style={{background:w.active?"#FEF3C7":"#DCFCE7",color:w.active?"#92400E":"#166534",padding:"5px 10px",fontSize:12}}>
-                                      {w.active?"إيقاف":"تفعيل"}
-                                    </button>
-                                    <button className="btn bd bsm" onClick={async()=>{if(window.confirm("حذف العامل؟")){await db("cleaning_workers","DELETE",null,w.id);await loadAll();}}}>🗑️</button>
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                        </div>
-                      </div>
-                  }
-                </div>
+                  ))}</div>
+                )}
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* ── Smart Control ── */}
-          {tab==="smart"&&(
-            <div>
-              <div style={{marginBottom:20}}><h2 style={{color:B,fontWeight:800,fontSize:22,marginBottom:6}}>🌡️ التحكم الذكي</h2><div style={{width:50,height:3,background:S,borderRadius:99}}></div></div>
-              {!selChalet?(
-                <div>
-                  <p style={{color:T,fontSize:14,marginBottom:16}}>اختر شاليهاً للتحكم بمكيفاته</p>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(250px,1fr))",gap:14}}>
-                    {chalets.filter(c=>isAdmin||isStaff||(isChaletMgr&&c.name===currentUser.chalet)).map(c=>{
-                      const chRooms=rooms.filter(r=>r.chalet===c.name);
-                      return (
-                        <div key={c.id} className="card" style={{overflow:"hidden",cursor:"pointer"}} onClick={()=>setSelChalet(c)}>
-                          <div style={{background:"linear-gradient(135deg,"+B+","+BD+")",padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                            <div><div style={{color:S,fontWeight:800,fontSize:15}}>{c.name}</div><div style={{color:SI,fontSize:11,marginTop:2}}>{"📍 "+c.loc}</div></div>
-                            <div style={{color:S,fontSize:24}}>🏠</div>
-                          </div>
-                          <div style={{padding:"14px 18px"}}>
-                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                              <span style={{fontSize:13,color:T}}>{chRooms.length+" غرفة"}</span>
-                              <span style={{fontSize:11,background:SL,color:B,padding:"3px 10px",borderRadius:20,fontWeight:600}}>اضغط للتحكم</span>
-                            </div>
-                            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                              {chRooms.map(r=>(<span key={r.id} style={{fontSize:11,background:SL,color:T,padding:"3px 10px",borderRadius:20,border:"1px solid rgba(201,163,106,.3)"}}>{r.name}</span>))}
-                            </div>
-                          </div>
+          {tab==="smart"&&(()=>{
+            const allowed=chalets.filter(c=>isAdmin||isStaff||(isChaletMgr&&c.name===currentUser.chalet));
+            const cur=(selChalet&&allowed.find(c=>c.id===selChalet.id))||allowed[0];
+            if(!cur) return <div className="x-page"><PageHead title="التحكم الذكي"/><div className="x-card"><Empty>أضف شاليهات أولاً</Empty></div></div>;
+            const chRooms=rooms.filter(r=>r.chalet===cur.name);
+            const onCount=chRooms.filter(r=>r._acOn).length;
+            return (
+            <div className="x-page">
+              <PageHead title="التحكم الذكي" sub={onCount+" من "+chRooms.length+" مكيفات تعمل في "+cur.name}>
+                <ActBtn onClick={async()=>{for(const r of chRooms)await svAC(cur.name,"ac_on",false,r.id);}}>إيقاف الكل</ActBtn>
+                <ActBtn primary onClick={async()=>{for(const r of chRooms)await svAC(cur.name,"ac_on",true,r.id);}}>تشغيل الكل</ActBtn>
+                <button className="btn bo bsm" onClick={()=>setAddRoomMdl(cur.name)}><Icon n="plus" s={15}/>غرفة</button>
+              </PageHead>
+              {allowed.length>1&&(
+                <Seg label="الشاليه" value={cur.id} onChange={id=>setSelChalet(allowed.find(c=>c.id===id)||null)}
+                  options={allowed.map(c=>({v:c.id,l:c.name,c:rooms.filter(r=>r.chalet===c.name&&r._acOn).length+"/"+rooms.filter(r=>r.chalet===c.name).length}))}/>
+              )}
+              {chRooms.length===0 ? <div className="x-card"><Empty>لا توجد غرف لهذا الشاليه، أضف غرفة لبدء التحكم بمكيفها</Empty></div> : (
+                <div className="x-rooms">
+                  {chRooms.map(room=>{
+                    const isOn=room._acOn||false;const temp=room._acTemp||22;const mode=room._acMode||"cool";const speed=room._acSpeed||"auto";
+                    return (
+                      <div key={room.id} className={"x-card x-room"+(isOn?"":" off")}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <b style={{fontSize:16}}>{room.name}</b>
+                          <Pill tone={isOn?"ok":"muted"} dot>{isOn?"يعمل":"مطفأ"}</Pill>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ):(
-                <div>
-                  <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
-                    <button className="btn" onClick={()=>setSelChalet(null)} style={{background:SL,color:B,padding:"8px 16px",border:"1.5px solid rgba(201,163,106,.4)",fontSize:13}}>← رجوع</button>
-                    <div><div style={{color:B,fontWeight:800,fontSize:18}}>{selChalet.name}</div><div style={{color:T,fontSize:12}}>{"📍 "+selChalet.loc}</div></div>
-                    <div style={{marginRight:"auto",display:"flex",gap:8}}>
-                      <button className="btn" style={{background:"linear-gradient(135deg,#10b981,#059669)",color:"#fff",padding:"8px 16px",fontSize:13}} onClick={async()=>{const chRooms=rooms.filter(r=>r.chalet===selChalet.name);for(const r of chRooms)await svAC(selChalet.name,"ac_on",true,r.id);}}>▶ تشغيل الكل</button>
-                      <button className="btn" style={{background:SL,color:B,padding:"8px 16px",fontSize:13,border:"1.5px solid rgba(201,163,106,.4)"}} onClick={async()=>{const chRooms=rooms.filter(r=>r.chalet===selChalet.name);for(const r of chRooms)await svAC(selChalet.name,"ac_on",false,r.id);}}>⏹ إيقاف الكل</button>
-                      <button className="btn" style={{background:S,color:B,padding:"8px 16px",fontSize:13}} onClick={()=>setAddRoomMdl(selChalet.name)}>+ غرفة</button>
-                    </div>
-                  </div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16}}>
-                    {rooms.filter(r=>r.chalet===selChalet.name).map(room=>{
-                      const isOn=room._acOn||false;const temp=room._acTemp||22;const mode=room._acMode||"cool";const speed=room._acSpeed||"auto";
-                      return (
-                        <div key={room.id} className="card" style={{overflow:"hidden"}}>
-                          <div style={{background:isOn?"linear-gradient(135deg,#0f7b5f,#0a5c47)":"linear-gradient(135deg,"+B+","+BD+")",padding:"14px 18px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                            <div><div style={{color:S,fontWeight:800,fontSize:15}}>{"🏠 "+room.name}</div><div style={{color:SI,fontSize:11}}>{selChalet.name}</div></div>
-                            <div style={{background:isOn?"rgba(16,185,129,.2)":"rgba(200,201,202,.15)",color:isOn?"#10b981":SI,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>{isOn?"شغّال":"مطفي"}</div>
-                          </div>
-                          <div style={{padding:"16px"}}>
-                            <div style={{textAlign:"center",marginBottom:14}}>
-                              <div style={{fontSize:11,color:T,marginBottom:6,fontWeight:600}}>درجة الحرارة</div>
-                              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,direction:"ltr"}}>
-                                <button className="btn" disabled={!isOn} onClick={async()=>{const t=Math.max(16,temp-1);setRooms(p=>p.map(x=>x.id===room.id?{...x,_acTemp:t}:x));await svAC(selChalet.name,"ac_temp",t,room.id);}} style={{width:32,height:32,borderRadius:9,background:SL,color:B,fontSize:16,border:"1.5px solid rgba(201,163,106,.3)",opacity:isOn?1:.4}}>−</button>
-                                <div style={{fontSize:38,fontWeight:800,color:isOn?(temp<=18?"#3b82f6":temp>=28?"#ef4444":B):SI,minWidth:65,textAlign:"center"}}>{temp}°</div>
-                                <button className="btn" disabled={!isOn} onClick={async()=>{const t=Math.min(30,temp+1);setRooms(p=>p.map(x=>x.id===room.id?{...x,_acTemp:t}:x));await svAC(selChalet.name,"ac_temp",t,room.id);}} style={{width:32,height:32,borderRadius:9,background:SL,color:B,fontSize:16,border:"1.5px solid rgba(201,163,106,.3)",opacity:isOn?1:.4}}>+</button>
-                              </div>
-                            </div>
-                            <div style={{marginBottom:12}}>
-                              <div style={{fontSize:11,color:T,marginBottom:6,fontWeight:600}}>الوضع</div>
-                              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                                {[{id:"cool",l:"❄️ تبريد"},{id:"heat",l:"🔥 تدفئة"},{id:"fan",l:"💨 هواء"},{id:"auto",l:"🔄 تلقائي"}].map(m=>(
-                                  <button key={m.id} className="btn" disabled={!isOn} onClick={async()=>{setRooms(p=>p.map(x=>x.id===room.id?{...x,_acMode:m.id}:x));await svAC(selChalet.name,"ac_mode",m.id,room.id);}} style={{padding:"5px 10px",fontSize:11,background:mode===m.id&&isOn?B:SL,color:mode===m.id&&isOn?S:B,border:"1.5px solid rgba(201,163,106,.3)",opacity:isOn?1:.5}}>{m.l}</button>
-                                ))}
-                              </div>
-                            </div>
-                            <div style={{marginBottom:14}}>
-                              <div style={{fontSize:11,color:T,marginBottom:6,fontWeight:600}}>سرعة المروحة</div>
-                              <div style={{display:"flex",gap:4}}>
-                                {[{id:"auto",l:"تلقائي"},{id:"low",l:"بطيء"},{id:"med",l:"متوسط"},{id:"high",l:"سريع"}].map(sp=>(
-                                  <button key={sp.id} className="btn" disabled={!isOn} onClick={async()=>{setRooms(p=>p.map(x=>x.id===room.id?{...x,_acSpeed:sp.id}:x));await svAC(selChalet.name,"ac_speed",sp.id,room.id);}} style={{flex:1,padding:"5px 0",fontSize:11,background:speed===sp.id&&isOn?B:SL,color:speed===sp.id&&isOn?S:B,border:"1.5px solid rgba(201,163,106,.3)",opacity:isOn?1:.5}}>{sp.l}</button>
-                                ))}
-                              </div>
-                            </div>
-                            <div style={{display:"flex",gap:8}}>
-                              <button className="btn" style={{flex:1,padding:"11px",fontSize:14,background:isOn?"linear-gradient(135deg,#ef4444,#dc2626)":"linear-gradient(135deg,#10b981,#059669)",color:"#fff"}} onClick={async()=>{const newOn=!isOn;setRooms(p=>p.map(x=>x.id===room.id?{...x,_acOn:newOn}:x));await svAC(selChalet.name,"ac_on",newOn,room.id);}}>{isOn?"⏸ إيقاف":"▶ تشغيل"}</button>
-                              <button className="btn" style={{padding:"11px 14px",background:"#FBEDEA",color:"#A63A2A",fontSize:13}} onClick={async()=>{if(!window.confirm("حذف غرفة "+room.name+"؟"))return;await db("rooms","DELETE",null,room.id);await loadAll();}}>🗑️</button>
-                            </div>
-                          </div>
+                        <div className="x-temp">
+                          <button className="btn bo" style={{width:44,padding:0}} aria-label="خفض الحرارة" disabled={!isOn} onClick={async()=>{const t=Math.max(16,temp-1);setRooms(p=>p.map(x=>x.id===room.id?{...x,_acTemp:t}:x));await svAC(cur.name,"ac_temp",t,room.id);}}>−</button>
+                          <span className="deg">{temp}°</span>
+                          <button className="btn bo" style={{width:44,padding:0}} aria-label="رفع الحرارة" disabled={!isOn} onClick={async()=>{const t=Math.min(30,temp+1);setRooms(p=>p.map(x=>x.id===room.id?{...x,_acTemp:t}:x));await svAC(cur.name,"ac_temp",t,room.id);}}>+</button>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div>
+                          <div className="x-lbl">الوضع</div>
+                          <div className="x-seg">{[{id:"cool",l:"تبريد"},{id:"heat",l:"تدفئة"},{id:"fan",l:"هواء"},{id:"auto",l:"تلقائي"}].map(m=>(
+                            <button key={m.id} type="button" disabled={!isOn} aria-pressed={isOn&&mode===m.id} onClick={async()=>{setRooms(p=>p.map(x=>x.id===room.id?{...x,_acMode:m.id}:x));await svAC(cur.name,"ac_mode",m.id,room.id);}}>{m.l}</button>
+                          ))}</div>
+                        </div>
+                        <div>
+                          <div className="x-lbl">المروحة</div>
+                          <div className="x-seg">{[{id:"auto",l:"تلقائي"},{id:"low",l:"بطيء"},{id:"med",l:"متوسط"},{id:"high",l:"سريع"}].map(sp=>(
+                            <button key={sp.id} type="button" disabled={!isOn} aria-pressed={isOn&&speed===sp.id} onClick={async()=>{setRooms(p=>p.map(x=>x.id===room.id?{...x,_acSpeed:sp.id}:x));await svAC(cur.name,"ac_speed",sp.id,room.id);}}>{sp.l}</button>
+                          ))}</div>
+                        </div>
+                        <div style={{display:"flex",gap:8}}>
+                          <button className={"btn "+(isOn?"bo":"bp")} style={{flex:1}} onClick={async()=>{const newOn=!isOn;setRooms(p=>p.map(x=>x.id===room.id?{...x,_acOn:newOn}:x));await svAC(cur.name,"ac_on",newOn,room.id);}}><Icon n="power"/>{isOn?"إيقاف":"تشغيل"}</button>
+                          <button className="btn bd" style={{width:42,padding:0}} aria-label={"حذف "+room.name} onClick={async()=>{if(!window.confirm("حذف غرفة "+room.name+"؟"))return;await db("rooms","DELETE",null,room.id);await loadAll();}}><Icon n="trash" s={16}/></button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
-          )}
+            );
+          })()}
 
           {/* ── Reviews ── */}
           {/* ── Loyalty + Reviews ── */}
@@ -4459,7 +3931,7 @@ ${poolLine}
 
       {mMdl&&(
         <Mdl onClose={()=>setMMdl(null)} title={mMdl.id?"تعديل طلب الصيانة":"طلب صيانة جديد"}>
-          {mMdl.status==="done"&&Number(mMdl.cost)>0&&(<div style={{background:SL,borderRadius:9,padding:"9px 13px",marginBottom:14,fontSize:13,color:T,fontWeight:600,border:"1px solid "+S}}>{"سيُخصم "+Number(mMdl.cost).toLocaleString()+" ريال من محفظة التأمين"}</div>)}
+          {mMdl.status==="done"&&Number(mMdl.cost)>0&&(<div style={{background:SL,borderRadius:9,padding:"9px 13px",marginBottom:14,fontSize:13,color:T,fontWeight:600,border:"1px solid "+S}}>{"سيُخصم "+Number(mMdl.cost).toLocaleString("en-US")+" ريال من محفظة التأمين"}</div>)}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <div><label className="lbl">الشاليه</label><select className="inp" value={mMdl.chalet||""} onChange={e=>setMMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
             <div><label className="lbl">التاريخ</label><input className="inp" type="date" value={mMdl.maint_date||""} onChange={e=>setMMdl(p=>({...p,maint_date:e.target.value}))}/></div>
@@ -4704,7 +4176,7 @@ ${poolLine}
                   {l:bt("nightsLabel"),v:fn(bkDetail.date_from,bkDetail.date_to)+" "+bt("nights"),i:"🌙"},
                   {l:bt("arrival"),v:fd(bkDetail.date_from),i:"📅"},
                   {l:bt("departure"),v:fd(bkDetail.date_to),i:"🚪"},
-                  {l:bt("totalPrice"),v:Number(bkDetail.price).toLocaleString()+" ر",i:"💰"},
+                  {l:bt("totalPrice"),v:Number(bkDetail.price).toLocaleString("en-US")+" ر",i:"💰"},
                   {l:bt("paymentMethod"),v:bkDetail.payment_method||"-",i:"💳"},
                   ...(bkDetail.status==="completed"?[{l:"استلم المبلغ",v:bkDetail.received_by||"-",i:"👤"}]:[]),
                 ].map((item,i)=>(
