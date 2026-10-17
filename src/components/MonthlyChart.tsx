@@ -36,7 +36,7 @@ export default function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookin
   return (
     <div className="card" style={{overflow:"hidden",marginBottom:16}}>
       {/* الرأس */}
-      <div style={{padding:"14px 18px",borderBottom:"1px solid rgba(197,172,136,.15)",background:SL,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+      <div style={{padding:"14px 18px",borderBottom:"1px solid rgba(201,163,106,.15)",background:SL,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
         <div>
           <div style={{fontWeight:800,color:B,fontSize:14}}>📊 الإيرادات الشهرية {currentYear}</div>
           <div style={{fontSize:11,color:SI,marginTop:2}}>{activeMos} أشهر نشطة · أفضل شهر: <span style={{color:B,fontWeight:700}}>{MONTHS[bestIdx]}</span></div>
@@ -58,7 +58,7 @@ export default function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookin
 
       {/* Tooltip المنبثق */}
       {activeData&&active!==null&&(
-        <div style={{margin:"12px 18px 0",background:"rgba(197,172,136,.08)",border:"1px solid rgba(197,172,136,.25)",borderRadius:12,padding:"12px 16px",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,transition:"all .2s"}}>
+        <div style={{margin:"12px 18px 0",background:"rgba(201,163,106,.08)",border:"1px solid rgba(201,163,106,.25)",borderRadius:12,padding:"12px 16px",display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,transition:"all .2s"}}>
           <div>
             <div style={{fontSize:11,color:SI,marginBottom:2}}>📅 الشهر</div>
             <div style={{fontWeight:800,color:B,fontSize:14}}>{MONTHS[active]}</div>
@@ -88,12 +88,12 @@ export default function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookin
           {yLines.map(v=>(
             <div key={v} style={{position:"absolute",bottom:(v/maxRev)*100+"%",left:0,right:0,display:"flex",alignItems:"center",gap:6}}>
               <div style={{fontSize:9,color:SI,whiteSpace:"nowrap",width:36,textAlign:"left",flexShrink:0}}>{v>=1000?(v/1000)+"k":v}</div>
-              <div style={{flex:1,height:1,background:"rgba(197,172,136,.1)"}}/>
+              <div style={{flex:1,height:1,background:"rgba(201,163,106,.1)"}}/>
             </div>
           ))}
           {avgRev>0&&(
             <div style={{position:"absolute",bottom:(avgRev/maxRev)*100+"%",left:40,right:0,display:"flex",alignItems:"center",gap:6}}>
-              <div style={{flex:1,height:1,borderTop:"1.5px dashed rgba(197,172,136,.35)"}}/>
+              <div style={{flex:1,height:1,borderTop:"1.5px dashed rgba(201,163,106,.35)"}}/>
               <div style={{fontSize:9,color:T,fontWeight:700,whiteSpace:"nowrap"}}>متوسط</div>
             </div>
           )}
@@ -107,7 +107,7 @@ export default function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookin
             const isBest=i===bestIdx&&d.rev>0;
             const revH=mounted&&maxRev>0?Math.max((d.rev/maxRev)*100,d.rev>0?3:0):0;
             const expH=mounted&&maxRev>0&&d.exp>0?Math.max((d.exp/maxRev)*100,2):0;
-            const revColor=isCur?"linear-gradient(180deg,#C5AC88,#8B7355)":isBest?"linear-gradient(180deg,#4CAF50,#2E7D32)":isPast?"linear-gradient(180deg,rgba(87,109,111,.9),rgba(87,109,111,.5))":"rgba(197,172,136,.2)";
+            const revColor=isCur?"linear-gradient(180deg,#C9A36A,#8B7355)":isBest?"linear-gradient(180deg,#4CAF50,#2E7D32)":isPast?"linear-gradient(180deg,rgba(107,95,82,.9),rgba(107,95,82,.5))":"rgba(201,163,106,.2)";
             return (
               <div
                 key={i}
@@ -127,13 +127,13 @@ export default function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookin
                     borderRadius:"4px 4px 0 0",
                     position:"relative",
                     transition:"height .5s cubic-bezier(.34,1.56,.64,1), box-shadow .15s, transform .15s",
-                    boxShadow:isHov?"0 0 16px rgba(197,172,136,.5)":isCur?"0 0 10px rgba(197,172,136,.3)":"none",
+                    boxShadow:isHov?"0 0 16px rgba(201,163,106,.5)":isCur?"0 0 10px rgba(201,163,106,.3)":"none",
                     transform:isHov?"scaleX(1.08)":"scaleX(1)",
                     minHeight:d.rev>0?"3px":0,
-                    outline:selected===i?"2px solid #C5AC88":"none",
+                    outline:selected===i?"2px solid #C9A36A":"none",
                     outlineOffset:1,
                   }}>
-                    {isCur&&<div style={{position:"absolute",top:-4,left:"50%",transform:"translateX(-50%)",width:8,height:8,borderRadius:"50%",background:"#C5AC88",boxShadow:"0 0 6px rgba(197,172,136,.8)"}}/>}
+                    {isCur&&<div style={{position:"absolute",top:-4,left:"50%",transform:"translateX(-50%)",width:8,height:8,borderRadius:"50%",background:"#C9A36A",boxShadow:"0 0 6px rgba(201,163,106,.8)"}}/>}
                   </div>
                   {d.exp>0&&<div style={{width:3,height:expH+"%",background:isHov?"rgba(201,123,99,.9)":"rgba(201,123,99,.5)",borderRadius:"2px 2px 0 0",minHeight:2,transition:"height .5s cubic-bezier(.34,1.56,.64,1)"}}/>}
                 </div>
@@ -149,7 +149,7 @@ export default function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookin
             return (
               <div key={i} style={{flex:1,textAlign:"center",cursor:"pointer"}} onMouseEnter={()=>setHovered(i)} onMouseLeave={()=>setHovered(null)} onClick={()=>setSelected(selected===i?null:i)}>
                 <div style={{fontSize:8.5,color:isActive?B:isCur?B:i<curMonth?T:SI,fontWeight:isActive||isCur?900:500,lineHeight:1,transition:"color .15s"}}>{MONTHS[i].slice(0,3)}</div>
-                {d.cnt>0&&<div style={{fontSize:7.5,color:isActive?"#C5AC88":SI,fontWeight:600,marginTop:1,transition:"color .15s"}}>{d.cnt}</div>}
+                {d.cnt>0&&<div style={{fontSize:7.5,color:isActive?"#C9A36A":SI,fontWeight:600,marginTop:1,transition:"color .15s"}}>{d.cnt}</div>}
               </div>
             );
           })}
@@ -157,10 +157,10 @@ export default function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookin
 
         <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:12,flexWrap:"wrap"}}>
           {[
-            {color:"linear-gradient(90deg,#C5AC88,#8B7355)",label:"الشهر الحالي"},
+            {color:"linear-gradient(90deg,#C9A36A,#8B7355)",label:"الشهر الحالي"},
             {color:"linear-gradient(90deg,#4CAF50,#2E7D32)",label:"أفضل شهر"},
-            {color:"rgba(87,109,111,.7)",label:"الأشهر الماضية"},
-            {color:"rgba(197,172,136,.2)",label:"القادمة"},
+            {color:"rgba(107,95,82,.7)",label:"الأشهر الماضية"},
+            {color:"rgba(201,163,106,.2)",label:"القادمة"},
             {color:"rgba(201,123,99,.6)",label:"المصاريف"},
           ].map(({color,label})=>(
             <div key={label} style={{display:"flex",alignItems:"center",gap:5}}>
@@ -172,7 +172,7 @@ export default function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookin
       </div>
 
       {/* ملخص ربع سنوي */}
-      <div style={{borderTop:"1px solid rgba(197,172,136,.12)",display:"grid",gridTemplateColumns:"repeat(4,1fr)"}}>
+      <div style={{borderTop:"1px solid rgba(201,163,106,.12)",display:"grid",gridTemplateColumns:"repeat(4,1fr)"}}>
         {["Q1","Q2","Q3","Q4"].map((q,qi)=>{
           const slice=monthlyData.slice(qi*3,qi*3+3);
           const qRev=slice.reduce((s,d)=>s+d.rev,0);
@@ -180,7 +180,7 @@ export default function MonthlyChart({bookings,expenses,maint,B,T,SI,SL}:{bookin
           const isCurQ=Math.floor(curMonth/3)===qi;
           const isSelQ=selected!==null&&Math.floor(selected/3)===qi;
           return (
-            <div key={q} style={{padding:"10px 12px",borderLeft:qi>0?"1px solid rgba(197,172,136,.12)":"none",background:isSelQ?"rgba(197,172,136,.12)":isCurQ?SL:"transparent",cursor:"pointer",transition:"background .2s"}} onClick={()=>{}}>
+            <div key={q} style={{padding:"10px 12px",borderLeft:qi>0?"1px solid rgba(201,163,106,.12)":"none",background:isSelQ?"rgba(201,163,106,.12)":isCurQ?SL:"transparent",cursor:"pointer",transition:"background .2s"}} onClick={()=>{}}>
               <div style={{fontSize:10,color:isCurQ||isSelQ?B:SI,fontWeight:isCurQ||isSelQ?800:600,marginBottom:3}}>{q}{isCurQ?" ← الآن":""}</div>
               <div style={{fontSize:13,fontWeight:900,color:isCurQ||isSelQ?B:T}}>{qRev>=1000?(qRev/1000).toFixed(1)+"k":qRev} <span style={{fontSize:9,opacity:.6}}>ر</span></div>
               <div style={{fontSize:9,color:"#C97B63"}}>{qExp>0&&<><span dir="ltr">{"−"+(qExp>=1000?(qExp/1000).toFixed(1)+"k":qExp)}</span>{" مصاريف"}</>}</div>

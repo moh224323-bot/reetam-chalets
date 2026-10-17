@@ -121,7 +121,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
     return Math.round((curV - prevV) / Math.abs(prevV) * 100);
   }
   const DeltaChip = ({ v }: { v: number | null }) => v === null ? null : (
-    <span style={{ fontSize: 11, fontWeight: 800, color: v >= 0 ? SD : "#8B3A3A", background: v >= 0 ? "rgba(109,142,118,.12)" : "rgba(139,58,58,.1)", borderRadius: 6, padding: "1px 7px", marginRight: 6 }}>
+    <span style={{ fontSize: 11, fontWeight: 800, color: v >= 0 ? SD : "#A63A2A", background: v >= 0 ? "rgba(109,142,118,.12)" : "rgba(166,58,42,.1)", borderRadius: 6, padding: "1px 7px", marginRight: 6 }}>
       {v >= 0 ? "↑" : "↓"} {Math.abs(v)}%
     </span>
   );
@@ -282,7 +282,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
   );
 
   const DetailRow = ({ icon, label, sub, badge, value, valueColor, onClick }: { icon: string; label: string; sub: string; badge?: React.ReactNode; value: number; valueColor?: string; onClick: () => void }) => (
-    <button onClick={onClick} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%", background:"none", border:"none", padding:"13px 2px", cursor:"pointer", textAlign:"right", fontFamily:"'Tajawal',sans-serif" }}>
+    <button onClick={onClick} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", width:"100%", background:"none", border:"none", padding:"13px 2px", cursor:"pointer", textAlign:"right", fontFamily:"'IBM Plex Sans Arabic',sans-serif" }}>
       <div style={{ display:"flex", alignItems:"center", gap:10, minWidth:0 }}>
         <div style={{ fontSize:18, width:36, height:36, borderRadius:10, background:SL, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>{icon}</div>
         <div style={{ textAlign:"right", minWidth:0 }}>
@@ -298,7 +298,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
   );
 
   const StatementRow = ({ label, value, sub, bold }: { label: string; value: number; sub?: string; bold?: boolean }) => (
-    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", padding: bold?"10px 0 0":"6px 0", borderTop: bold?`1.5px solid rgba(197,172,136,.3)`:"none" }}>
+    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"baseline", padding: bold?"10px 0 0":"6px 0", borderTop: bold?`1.5px solid rgba(201,163,106,.3)`:"none" }}>
       <span style={{ fontSize: bold?14:13, fontWeight: bold?800:500, color: bold?B:T }}>{label}{sub&&<span style={{fontSize:11,color:SI,marginRight:6}}>{sub}</span>}</span>
       <span style={{ fontSize: bold?16:13, fontWeight: bold?900:700, color:B }}>
         <Money value={value}/>
@@ -313,13 +313,13 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
         <SectionTitle title={lockedChalet ? "المالية — "+lockedChalet : "المالية"}/>
         <div style={{ position:"relative" }}>
           <button onClick={()=>setMenuOpen(o=>!o)} aria-label="خيارات إضافية"
-            style={{ background:SL, color:B, border:"1px solid rgba(197,172,136,.35)", borderRadius:10, width:38, height:38, fontSize:18, fontWeight:900, cursor:"pointer" }}>
+            style={{ background:SL, color:B, border:"1px solid rgba(201,163,106,.35)", borderRadius:10, width:38, height:38, fontSize:18, fontWeight:900, cursor:"pointer" }}>
             ⋯
           </button>
           {menuOpen && (
             <>
               <div style={{ position:"fixed", inset:0, zIndex:299 }} onClick={()=>setMenuOpen(false)}/>
-              <div style={{ position:"absolute", top:"110%", left:0, zIndex:300, background:"#fff", borderRadius:12, boxShadow:"0 8px 24px rgba(0,0,0,.18)", border:"1px solid rgba(197,172,136,.2)", minWidth:210, overflow:"hidden" }}>
+              <div style={{ position:"absolute", top:"110%", left:0, zIndex:300, background:"#fff", borderRadius:12, boxShadow:"0 8px 24px rgba(0,0,0,.18)", border:"1px solid rgba(201,163,106,.2)", minWidth:210, overflow:"hidden" }}>
                 {[
                   { l:"📋 تقرير المصاريف الاحترافي", fn:()=>setReportOpen(true) },
                   { l:"⬇ تصدير Excel", fn:exportCSV },
@@ -328,7 +328,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                   ...(onAddFixedExpense?[{ l:"📌 مصروف ثابت", fn:onAddFixedExpense }]:[]),
                 ].map((a,i,arr)=>(
                   <button key={i} onClick={()=>{setMenuOpen(false);a.fn();}}
-                    style={{ display:"block", width:"100%", textAlign:"right", padding:"12px 16px", background:"none", border:"none", borderBottom:i<arr.length-1?"1px solid rgba(197,172,136,.12)":"none", cursor:"pointer", fontFamily:"'Tajawal',sans-serif", fontSize:13, fontWeight:600, color:B }}>
+                    style={{ display:"block", width:"100%", textAlign:"right", padding:"12px 16px", background:"none", border:"none", borderBottom:i<arr.length-1?"1px solid rgba(201,163,106,.12)":"none", cursor:"pointer", fontFamily:"'IBM Plex Sans Arabic',sans-serif", fontSize:13, fontWeight:600, color:B }}>
                     {a.l}
                   </button>
                 ))}
@@ -344,7 +344,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
         <div style={{ display:"flex", gap:7, overflowX:"auto", paddingBottom:4, marginBottom:16, WebkitOverflowScrolling:"touch" }}>
           {(Object.entries(PERIOD_LABELS) as [Period, string][]).map(([v, l]) => (
             <button key={v} className="btn" onClick={() => setPeriod(v)}
-              style={{ background:period===v?B:W, color:period===v?S:B, border:"1.5px solid "+(period===v?B:"rgba(197,172,136,.4)"), padding:"7px 14px", fontSize:12, flexShrink:0, whiteSpace:"nowrap" }}>
+              style={{ background:period===v?B:W, color:period===v?S:B, border:"1.5px solid "+(period===v?B:"rgba(201,163,106,.4)"), padding:"7px 14px", fontSize:12, flexShrink:0, whiteSpace:"nowrap" }}>
               {l}
             </button>
           ))}
@@ -354,7 +354,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
           {"صافي الربح · " + plab + (effFch !== "الكل" ? " · " + effFch : "")}
         </div>
         <div style={{ display:"flex", alignItems:"baseline", gap:8, flexWrap:"wrap" }}>
-          <div style={{ fontSize:34, fontWeight:900, color: trueNet>=0?SD:"#8B3A3A", lineHeight:1 }}>
+          <div style={{ fontSize:34, fontWeight:900, color: trueNet>=0?SD:"#A63A2A", lineHeight:1 }}>
             <Money value={trueNet} size={34}/>
           </div>
           {compareMode==="periods" && prev && <DeltaChip v={delta(trueNet, prev.trueNet)}/>}
@@ -364,7 +364,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
           {compareMode==="periods" && prev && prevRange && (" · مقابل "+prevRange.label+": "+prev.trueNet.toLocaleString()+" ر")}
         </div>
 
-        <div style={{ height:1, background:"rgba(197,172,136,.18)", margin:"16px 0 10px" }}/>
+        <div style={{ height:1, background:"rgba(201,163,106,.18)", margin:"16px 0 10px" }}/>
 
         <StatementRow label="إيرادات الحجوزات" value={rev} sub={fb.length+" حجز"}/>
         <StatementRow label="تكاليف الصيانة" value={-mex}/>
@@ -380,7 +380,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
           { l:"متوسط سعر الليلة",   v:adr.toLocaleString()+" ر",      i:"💳" },
           { l:"إيداعات التأمين",    v:insIn.toLocaleString()+" ر",    i:"🛡️" },
         ].map((s,i)=>(
-          <div key={i} style={{ background:SL, borderRadius:12, padding:"12px 14px", border:"1px solid rgba(197,172,136,.18)" }}>
+          <div key={i} style={{ background:SL, borderRadius:12, padding:"12px 14px", border:"1px solid rgba(201,163,106,.18)" }}>
             <div style={{ fontSize:16, marginBottom:4 }}>{s.i}</div>
             <div style={{ fontSize:14.5, fontWeight:800, color:B }}>{s.v}</div>
             <div style={{ fontSize:10, color:T, marginTop:2 }}>{s.l}</div>
@@ -419,7 +419,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
       {/* ── مقارنة الفترات ── */}
       {compareMode==="periods" && prev && prevRange && (
         <div className="card" style={{ overflow:"hidden", marginBottom:16 }}>
-          <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(197,172,136,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>
+          <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(201,163,106,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>
             {"↔ مقارنة: " + plab + " مقابل " + prevRange.label}
           </div>
           <DataTable heads={["البند", plab, prevRange.label, "التغيّر"]}
@@ -443,7 +443,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
       {/* ── مقارنة الشاليهات ── */}
       {compareMode==="chalets" && csum.length > 0 && (
         <div className="card" style={{ overflow:"hidden", marginBottom:16 }}>
-          <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(197,172,136,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>{"🏠 مقارنة الشاليهات — " + plab}</div>
+          <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(201,163,106,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>{"🏠 مقارنة الشاليهات — " + plab}</div>
           <DataTable heads={["الشاليه","الإيرادات","المصروفات","صافي الربح","نسبة الربح"]}
             rows={[...csum].sort((a,b)=>b.net-a.net).map((c, i) => {
               const pct = c.r > 0 ? Math.min(100, Math.max(0, (c.net / c.r) * 100)) : 0;
@@ -451,14 +451,14 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                 <tr key={i}>
                   <td data-label="الشاليه" style={{ fontWeight:700 }}>{"🏠 " + c.n}</td>
                   <td data-label="الإيرادات" style={{ fontWeight:700, color:T }}>{c.r.toLocaleString() + " ر"}</td>
-                  <td data-label="المصروفات" style={{ fontWeight:700, color:"#8B3A3A" }}>{(c.e+c.x).toLocaleString() + " ر"}</td>
-                  <td data-label="صافي الربح" style={{ fontWeight:800, color:c.net>=0?SD:"#8B3A3A" }}><Money value={c.net}/></td>
+                  <td data-label="المصروفات" style={{ fontWeight:700, color:"#A63A2A" }}>{(c.e+c.x).toLocaleString() + " ر"}</td>
+                  <td data-label="صافي الربح" style={{ fontWeight:800, color:c.net>=0?SD:"#A63A2A" }}><Money value={c.net}/></td>
                   <td data-label="نسبة الربح">
                     <div style={{ display:"flex", alignItems:"center", gap:6 }}>
                       <div style={{ flex:1, background:"#f1f5f9", borderRadius:99, height:7, overflow:"hidden", minWidth:60 }}>
-                        <div style={{ width:pct+"%", height:"100%", background:c.net>=0?SA:"#8B3A3A", borderRadius:99 }}/>
+                        <div style={{ width:pct+"%", height:"100%", background:c.net>=0?SA:"#A63A2A", borderRadius:99 }}/>
                       </div>
-                      <span style={{ fontSize:11, fontWeight:700, color:c.net>=0?SD:"#8B3A3A", minWidth:32 }}>{Math.round(pct) + "%"}</span>
+                      <span style={{ fontSize:11, fontWeight:700, color:c.net>=0?SD:"#A63A2A", minWidth:32 }}>{Math.round(pct) + "%"}</span>
                     </div>
                   </td>
                 </tr>
@@ -478,21 +478,21 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
 
       {/* ── تفاصيل الإيرادات والمصاريف — أرقام مختصرة، والتفاصيل في نافذة منبثقة ── */}
       <div className="card" style={{ overflow:"hidden" }}>
-        <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(197,172,136,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>📋 التفاصيل</div>
+        <div style={{ padding:"12px 16px", borderBottom:"2px solid rgba(201,163,106,.2)", fontWeight:700, color:B, fontSize:14, background:SL }}>📋 التفاصيل</div>
         <div style={{ padding:"2px 14px" }}>
           {[
             { key:"bookings" as const, icon:"💵", label:"إيرادات الحجوزات", sub:fb.length+" حجز", value:rev, valueColor:T, badge:null as React.ReactNode, show:true },
             { key:"receivers" as const, icon:"👥", label:"حسب المستلم", sub:receiverBreakdown.length+" شخص", value:rev, valueColor:T,
-              badge: (()=>{ const unassigned = receiverBreakdown.find(r=>r.name==="غير محدد"); return (unassigned ? <span style={{color:"#8B3A3A",fontWeight:700}}>{" · ⚠ "+unassigned.count+" بدون مستلم"}</span> : null) as React.ReactNode; })(),
+              badge: (()=>{ const unassigned = receiverBreakdown.find(r=>r.name==="غير محدد"); return (unassigned ? <span style={{color:"#A63A2A",fontWeight:700}}>{" · ⚠ "+unassigned.count+" بدون مستلم"}</span> : null) as React.ReactNode; })(),
               show:fb.length>0 },
             { key:"fixed" as const, icon:"📌", label:"المصروفات الثابتة", sub:fixedList.length+" بند", value:fixedActiveMonthly, valueColor:"#7C3AED",
               badge: (unpaidFixedCount>0 ? <span style={{color:"#92400E",fontWeight:700}}>{" · ⚠ "+unpaidFixedCount+" لم يُسدَّد"}</span> : null) as React.ReactNode,
               show:fixedList.length>0 },
-            { key:"maint" as const, icon:"🔧", label:"تكاليف الصيانة", sub:fm.length+" عملية", value:mex, valueColor:"#8B3A3A", badge:null as React.ReactNode, show:fm.length>0 },
-            { key:"expenses" as const, icon:"💸", label:"المصاريف", sub:fex.length+" مصروف", value:exTotal, valueColor:"#8B3A3A", badge:null as React.ReactNode, show:fex.length>0 },
+            { key:"maint" as const, icon:"🔧", label:"تكاليف الصيانة", sub:fm.length+" عملية", value:mex, valueColor:"#A63A2A", badge:null as React.ReactNode, show:fm.length>0 },
+            { key:"expenses" as const, icon:"💸", label:"المصاريف", sub:fex.length+" مصروف", value:exTotal, valueColor:"#A63A2A", badge:null as React.ReactNode, show:fex.length>0 },
             { key:"insurance" as const, icon:"🛡️", label:"معاملات التأمين", sub:ft.length+" معاملة", value:insIn, valueColor:T, badge:null as React.ReactNode, show:ft.length>0 },
           ].filter(r=>r.show).map((r,i,arr)=>(
-            <div key={r.key} style={{ borderBottom: i<arr.length-1?"1px solid rgba(197,172,136,.12)":"none" }}>
+            <div key={r.key} style={{ borderBottom: i<arr.length-1?"1px solid rgba(201,163,106,.12)":"none" }}>
               <DetailRow icon={r.icon} label={r.label} sub={r.sub} badge={r.badge} value={r.value} valueColor={r.valueColor} onClick={()=>setDetailModal(r.key)}/>
             </div>
           ))}
@@ -532,7 +532,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
           <DataTable heads={["المستلم","عدد الحجوزات","المبلغ"]}
             rows={receiverBreakdown.map((r,i) => (
               <tr key={i}>
-                <td data-label="المستلم" style={{ fontWeight:700, color: r.name==="غير محدد"?"#8B3A3A":B }}>{r.name}</td>
+                <td data-label="المستلم" style={{ fontWeight:700, color: r.name==="غير محدد"?"#A63A2A":B }}>{r.name}</td>
                 <td data-label="عدد الحجوزات" style={{ textAlign:"center" }}>{r.count}</td>
                 <td data-label="المبلغ" style={{ fontWeight:700, color:T }}>{r.total.toLocaleString() + " ر"}</td>
               </tr>
@@ -574,7 +574,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                           style={{ background:"#059669", color:"#fff", padding:"5px 10px", fontSize:12 }}>✓ تسديد</button>
                       )}
                       <button className="btn bsm" onClick={async () => { await db("fixed_expenses","PATCH",{active:!fx.active},fx.id); onReload?.(); }}
-                        style={{ background: fx.active ? "#F5E6E6" : "#EEF0E9", color: fx.active ? "#8B3A3A" : "#3D7A5A", padding:"5px 10px", fontSize:12 }}>
+                        style={{ background: fx.active ? "#FBEDEA" : "#E6F1EA", color: fx.active ? "#A63A2A" : "#3D7A5A", padding:"5px 10px", fontSize:12 }}>
                         {fx.active ? "إيقاف" : "تفعيل"}
                       </button>
                       <button className="btn bd bsm" onClick={async () => { if(window.confirm("حذف هذا المصروف الثابت؟")){await db("fixed_expenses","DELETE",null,fx.id); onReload?.();} }}>🗑️</button>
@@ -596,12 +596,12 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                 <td data-label="الشاليه" style={{ fontWeight:600 }}>{m.chalet}</td>
                 <td data-label="المشكلة">{m.issue}</td>
                 <td data-label="التاريخ">{formatDate(m.maint_date)}</td>
-                <td data-label="التكلفة" style={{ fontWeight:700, color:"#8B3A3A" }}>{Number(m.cost).toLocaleString() + " ر"}</td>
+                <td data-label="التكلفة" style={{ fontWeight:700, color:"#A63A2A" }}>{Number(m.cost).toLocaleString() + " ر"}</td>
               </tr>
             ))}
             footer={[
               <td key={0} colSpan={3} style={{ fontWeight:800, color:B }}>الإجمالي</td>,
-              <td key={1} style={{ fontWeight:800, color:"#8B3A3A", fontSize:15 }}>{mex.toLocaleString() + " ر"}</td>,
+              <td key={1} style={{ fontWeight:800, color:"#A63A2A", fontSize:15 }}>{mex.toLocaleString() + " ر"}</td>,
             ]}
           />
         </Modal>
@@ -616,14 +616,14 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                 <td data-label="التاريخ" style={{ fontSize:12 }}>{formatDate(e.expense_date)}</td>
                 <td data-label="الشاليه" style={{ fontWeight:600 }}>{e.chalet}</td>
                 <td data-label="الفئة"><Bdg bg="#FEF3C7" color="#92400E">{e.category}</Bdg></td>
-                <td data-label="المبلغ" style={{ fontWeight:700, color:"#8B3A3A" }}>{Number(e.amount).toLocaleString() + " ر"}</td>
+                <td data-label="المبلغ" style={{ fontWeight:700, color:"#A63A2A" }}>{Number(e.amount).toLocaleString() + " ر"}</td>
                 <td data-label="ملاحظة" style={{ color:T, fontSize:12 }}>{e.note || "-"}</td>
                 <td data-label=""><button className="btn bd bsm" onClick={async () => { await db("expenses","DELETE",null,e.id); onReload?.(); }}>🗑️</button></td>
               </tr>
             ))}
             footer={[
               <td key={0} colSpan={3} style={{ fontWeight:800, color:B }}>الإجمالي</td>,
-              <td key={1} style={{ fontWeight:800, color:"#8B3A3A", fontSize:15 }}>{exTotal.toLocaleString() + " ر"}</td>,
+              <td key={1} style={{ fontWeight:800, color:"#A63A2A", fontSize:15 }}>{exTotal.toLocaleString() + " ر"}</td>,
               <td key={2}/>, <td key={3}/>,
             ]}
           />
@@ -638,8 +638,8 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
               <tr key={i}>
                 <td data-label="التاريخ">{formatDate(t.trans_date)}</td>
                 <td data-label="الشاليه" style={{ fontWeight:600 }}>{t.chalet}</td>
-                <td data-label="النوع"><Bdg bg={t.type==="إيداع"?"#EEF0E9":"#F5E6E6"} color={t.type==="إيداع"?SD:"#8B3A3A"}>{t.type}</Bdg></td>
-                <td data-label="المبلغ" style={{ fontWeight:700, color:t.type==="إيداع"?T:"#8B3A3A" }}><span dir="ltr" style={{whiteSpace:"nowrap"}}>{t.type==="إيداع"?"+":"−"}{t.amount.toLocaleString()} ر</span></td>
+                <td data-label="النوع"><Bdg bg={t.type==="إيداع"?"#E6F1EA":"#FBEDEA"} color={t.type==="إيداع"?SD:"#A63A2A"}>{t.type}</Bdg></td>
+                <td data-label="المبلغ" style={{ fontWeight:700, color:t.type==="إيداع"?T:"#A63A2A" }}><span dir="ltr" style={{whiteSpace:"nowrap"}}>{t.type==="إيداع"?"+":"−"}{t.amount.toLocaleString()} ر</span></td>
                 <td data-label="ملاحظة" style={{ color:T, fontSize:12 }}>{t.note || "-"}</td>
                 <td data-label="">
                   <div style={{ display:"flex", gap:4 }}>
@@ -659,14 +659,14 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
         return (
         <Modal title={"📋 تقرير المصاريف الاحترافي · " + plab + (effFch !== "الكل" ? " · " + effFch : "")} onClose={()=>setReportOpen(false)}>
           {/* ملخص الإجمالي */}
-          <div style={{ background:SL, borderRadius:12, padding:"14px 16px", marginBottom:18, border:"1px solid rgba(197,172,136,.25)" }}>
+          <div style={{ background:SL, borderRadius:12, padding:"14px 16px", marginBottom:18, border:"1px solid rgba(201,163,106,.25)" }}>
             <div style={{ fontSize:11, color:T, fontWeight:700, marginBottom:4 }}>إجمالي المصاريف (ثابتة مدفوعة + صيانة + متنوعة)</div>
-            <div style={{ fontSize:26, fontWeight:900, color:"#8B3A3A" }}><Money value={totalSpend} size={26}/></div>
+            <div style={{ fontSize:26, fontWeight:900, color:"#A63A2A" }}><Money value={totalSpend} size={26}/></div>
             {prev && prevRange && (
               <div style={{ fontSize:11, color:T, marginTop:4 }}>
                 مقابل {prevRange.label}: {(prev.exTotal+prev.mex).toLocaleString()} ر
                 {(prev.exTotal+prev.mex) > 0 && (
-                  <span style={{ marginRight:6, fontWeight:800, color: totalSpend > (prev.exTotal+prev.mex) ? "#8B3A3A" : SD }}>
+                  <span style={{ marginRight:6, fontWeight:800, color: totalSpend > (prev.exTotal+prev.mex) ? "#A63A2A" : SD }}>
                     {totalSpend > (prev.exTotal+prev.mex) ? "↑" : "↓"} {Math.abs(Math.round((totalSpend-(prev.exTotal+prev.mex))/(prev.exTotal+prev.mex)*100))}%
                   </span>
                 )}
@@ -703,15 +703,15 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                         <span style={{ fontSize:12.5, fontWeight:700, color:B }}>
                           {c.cat}
                           {c.isNew && (
-                            <span style={{ fontSize:10.5, fontWeight:800, marginRight:6, color:"#8B3A3A" }}>🆕 جديد</span>
+                            <span style={{ fontSize:10.5, fontWeight:800, marginRight:6, color:"#A63A2A" }}>🆕 جديد</span>
                           )}
                           {!c.isNew && c.chg !== null && (
-                            <span style={{ fontSize:10.5, fontWeight:800, marginRight:6, color: c.chg>=0?"#8B3A3A":SD }}>
+                            <span style={{ fontSize:10.5, fontWeight:800, marginRight:6, color: c.chg>=0?"#A63A2A":SD }}>
                               {c.chg>=0?"↑":"↓"} {Math.abs(c.chg)}%
                             </span>
                           )}
                         </span>
-                        <span style={{ fontSize:12.5, fontWeight:800, color:"#8B3A3A" }}>{c.amt.toLocaleString()} ر <span style={{ color:SI, fontWeight:600 }}>({c.pctOfTotal}%)</span></span>
+                        <span style={{ fontSize:12.5, fontWeight:800, color:"#A63A2A" }}>{c.amt.toLocaleString()} ر <span style={{ color:SI, fontWeight:600 }}>({c.pctOfTotal}%)</span></span>
                       </div>
                       <div style={{ background:"#f1f5f9", borderRadius:99, height:6, overflow:"hidden" }}>
                         <div style={{ width:c.pctOfTotal+"%", height:"100%", background:"#C97B63", borderRadius:99 }}/>
@@ -731,11 +731,11 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                   <tr key={i}>
                     <td data-label="الشاليه" style={{ fontWeight:700 }}>{c.n}</td>
                     <td data-label="الإيرادات" style={{ color:T }}>{c.r.toLocaleString()+" ر"}</td>
-                    <td data-label="المصاريف" style={{ color:"#8B3A3A" }}>{c.spend.toLocaleString()+" ر"}</td>
+                    <td data-label="المصاريف" style={{ color:"#A63A2A" }}>{c.spend.toLocaleString()+" ر"}</td>
                     <td data-label="النسبة">
                       {c.ratio===null
-                        ? <span style={{ fontSize:11, fontWeight:700, color:"#8B3A3A" }}>بدون إيراد ⚠️</span>
-                        : <span style={{ fontSize:11, fontWeight:800, color: c.ratio>=50?"#8B3A3A":c.ratio>=30?"#92400E":SD }}>{c.ratio}%</span>
+                        ? <span style={{ fontSize:11, fontWeight:700, color:"#A63A2A" }}>بدون إيراد ⚠️</span>
+                        : <span style={{ fontSize:11, fontWeight:800, color: c.ratio>=50?"#A63A2A":c.ratio>=30?"#92400E":SD }}>{c.ratio}%</span>
                       }
                     </td>
                   </tr>
@@ -755,7 +755,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
                       <td data-label="البند" style={{ fontWeight:600, fontSize:12 }}>{it.label}</td>
                       <td data-label="الشاليه">{it.chalet}</td>
                       <td data-label="التاريخ" style={{ fontSize:12 }}>{formatDate(it.date)}</td>
-                      <td data-label="المبلغ" style={{ fontWeight:800, color:"#8B3A3A" }}>{it.amount.toLocaleString()+" ر"}</td>
+                      <td data-label="المبلغ" style={{ fontWeight:800, color:"#A63A2A" }}>{it.amount.toLocaleString()+" ر"}</td>
                     </tr>
                   ))}
                 />

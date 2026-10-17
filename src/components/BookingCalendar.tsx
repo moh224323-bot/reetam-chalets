@@ -100,7 +100,7 @@ export default function BookingCalendar({ bookings, names, onSelectBooking, onAd
                 <div key={i} style={{
                   width:CELL_W, flexShrink:0, textAlign:"center", padding:"6px 2px",
                   borderBottom:"2px solid var(--border2)",
-                  background: isToday ? "var(--text)" : isWknd ? "rgba(197,172,136,.06)" : "transparent",
+                  background: isToday ? "var(--text)" : isWknd ? "rgba(201,163,106,.06)" : "transparent",
                   borderInlineStart: i>0 ? "1px solid var(--border)" : undefined,
                 }}>
                   <div style={{ fontSize:9, fontWeight:600, color: isToday?"var(--bg)":"var(--text3)" }}>{DAYS[d.getDay()]}</div>
@@ -141,7 +141,7 @@ export default function BookingCalendar({ bookings, names, onSelectBooking, onAd
                           width:CELL_W, flexShrink:0, minHeight: mobile?46:52,
                           background: ri%2 ? "var(--surface)" : "var(--bg)",
                           borderInlineStart: i>0 ? "1px solid var(--border)" : undefined,
-                          boxShadow: isToday ? "inset 0 0 0 1.5px rgba(197,172,136,.5)" : undefined,
+                          boxShadow: isToday ? "inset 0 0 0 1.5px rgba(201,163,106,.5)" : undefined,
                           opacity: isWknd ? .97 : 1,
                           cursor: onAddAt ? "cell" : "default",
                         }}
@@ -222,9 +222,9 @@ export default function BookingCalendar({ bookings, names, onSelectBooking, onAd
                 style={{
                   minHeight:mobile?48:100, padding: mobile?"6px 2px":"6px 5px 5px", borderRadius:8,
                   display: mobile?"flex":undefined, flexDirection: mobile?"column":undefined, alignItems: mobile?"center":undefined,
-                  background: isSel   ? "rgba(87,109,111,.12)"
-                            : isToday ? "rgba(197,172,136,.15)"
-                            : isWknd  ? "rgba(197,172,136,.04)"
+                  background: isSel   ? "rgba(107,95,82,.12)"
+                            : isToday ? "rgba(201,163,106,.15)"
+                            : isWknd  ? "rgba(201,163,106,.04)"
                             : "var(--surface)",
                   border: isSel   ? "2px solid var(--text2)"
                         : isToday ? "2px solid var(--text)"

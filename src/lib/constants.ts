@@ -1,37 +1,37 @@
 export const BOOKING_STATUS = {
-  confirmed: { label:"مؤكد",        color:"#576D6F", bg:"#E8F0F0" },
-  pending:   { label:"معلق",        color:"#8B6914", bg:"#F5EFD6" },
-  cancelled: { label:"ملغي",        color:"#8B3A3A", bg:"#F5E6E6" },
-  completed: { label:"مكتمل",       color:"#8D9577", bg:"#EEF0E9" },
+  confirmed: { label:"مؤكد",        color:"#6B5F52", bg:"#E8F0F0" },
+  pending:   { label:"معلق",        color:"#7A5A0E", bg:"#FBF3DF" },
+  cancelled: { label:"ملغي",        color:"#A63A2A", bg:"#FBEDEA" },
+  completed: { label:"مكتمل",       color:"#2E7D52", bg:"#E6F1EA" },
 } as const;
 
 export const MAINTENANCE_STATUS = {
-  open:        { label:"مفتوح",       color:"#8B3A3A", bg:"#F5E6E6" },
-  in_progress: { label:"قيد التنفيذ", color:"#8B6914", bg:"#F5EFD6" },
-  done:        { label:"منتهي",       color:"#6B7258", bg:"#EEF0E9" },
+  open:        { label:"مفتوح",       color:"#A63A2A", bg:"#FBEDEA" },
+  in_progress: { label:"قيد التنفيذ", color:"#7A5A0E", bg:"#FBF3DF" },
+  done:        { label:"منتهي",       color:"#1E6B45", bg:"#E6F1EA" },
 } as const;
 
 export const GLOBAL_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700;800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@300;400;500;600;700&family=Noto+Kufi+Arabic:wght@600;700&display=swap');
 
   :root {
-    --bg:      #FAF8F5;
+    --bg:      #F5F0E8;
     --surface: #FFFFFF;
-    --border:  rgba(197,172,136,.2);
-    --border2: rgba(197,172,136,.35);
-    --text:    #413523;
-    --text2:   #576D6F;
+    --border:  rgba(201,163,106,.2);
+    --border2: rgba(201,163,106,.35);
+    --text:    #3B2A1C;
+    --text2:   #6B5F52;
     --text3:   #C8C9CA;
     --inp-bg:  #FFFFFF;
-    --row-hov: #F5EFE6;
-    --th-bg:   #F5EFE6;
-    --mdl-bg:  rgba(65,53,35,.55);
+    --row-hov: #FAF6F0;
+    --th-bg:   #FAF6F0;
+    --mdl-bg:  rgba(59,42,28,.55);
   }
   [data-theme="dark"] {
-    --bg:      #0F0D0B;
+    --bg:      #0E0C0A;
     --surface: #1A1612;
-    --border:  rgba(197,172,136,.12);
-    --border2: rgba(197,172,136,.25);
+    --border:  rgba(201,163,106,.12);
+    --border2: rgba(201,163,106,.25);
     --text:    #E8DDD0;
     --text2:   #8FA8AA;
     --text3:   #4A4A4A;
@@ -44,18 +44,18 @@ export const GLOBAL_CSS = `
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   html,body{overflow-y:auto!important;height:auto!important;min-height:100vh;background:var(--bg);color:var(--text)}
   #root{height:auto;overflow:visible}
-  input,select,textarea{font-family:'Tajawal',sans-serif}
+  input,select,textarea{font-family:'IBM Plex Sans Arabic',sans-serif}
   ::-webkit-scrollbar{width:6px}
   ::-webkit-scrollbar-thumb{background:#3A3530;border-radius:3px}
   [data-theme="dark"] ::-webkit-scrollbar-thumb{background:#2A2520}
 
   .card{background:var(--surface);border-radius:16px;box-shadow:0 2px 16px rgba(0,0,0,.06);border:1px solid var(--border)}
-  .btn{border:none;cursor:pointer;border-radius:10px;font-family:'Tajawal',sans-serif;font-weight:700;transition:all .18s;font-size:14px}
+  .btn{border:none;cursor:pointer;border-radius:10px;font-family:'IBM Plex Sans Arabic',sans-serif;font-weight:700;transition:all .18s;font-size:14px}
   .btn:hover{filter:brightness(.93);transform:translateY(-1px)}
-  .bp{background:#413523;color:#C5AC88;padding:10px 22px}
-  [data-theme="dark"] .bp{background:#C5AC88;color:#1A1612}
-  .bo{background:transparent;color:var(--text);padding:10px 20px;border:2px solid #C5AC88}
-  .bd{background:#8B3A3A;color:#fff;padding:7px 14px;font-size:13px}
+  .bp{background:#3B2A1C;color:#C9A36A;padding:10px 22px}
+  [data-theme="dark"] .bp{background:#C9A36A;color:#1A1612}
+  .bo{background:transparent;color:var(--text);padding:10px 20px;border:2px solid #C9A36A}
+  .bd{background:#A63A2A;color:#fff;padding:7px 14px;font-size:13px}
   .be{background:var(--row-hov);color:var(--text);padding:7px 14px;font-size:13px;border:1px solid var(--border2)}
   .bsm{padding:5px 12px;font-size:13px}
 
@@ -68,7 +68,7 @@ export const GLOBAL_CSS = `
 
   .bdg{display:inline-block;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;white-space:nowrap}
   .inp{width:100%;padding:10px 14px;border:1.5px solid var(--border2);border-radius:10px;font-size:14px;outline:none;transition:border .2s;color:var(--text);background:var(--inp-bg)}
-  .inp:focus{border-color:#576D6F}
+  .inp:focus{border-color:#6B5F52}
   .lbl{font-size:13px;color:var(--text2);margin-bottom:5px;display:block;font-weight:600}
   .mbg{position:fixed;inset:0;background:var(--mdl-bg);display:flex;align-items:center;justify-content:center;z-index:200;padding:16px}
   .mbox{background:var(--surface);border-radius:20px;padding:24px;width:100%;max-width:540px;max-height:92vh;overflow-y:auto;border:1px solid var(--border)}
