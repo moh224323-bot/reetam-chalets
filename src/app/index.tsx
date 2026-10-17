@@ -2514,7 +2514,17 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
     await loadAll();setCMdl(null);
   }
   async function dlC(id: number): Promise<void> {if(!window.confirm("حذف الشاليه نهائياً؟ لا يمكن التراجع."))return;await db("chalets","DELETE",null,id);await loadAll();}
-  async function svB(f: Partial<Booking>): Promise<void> {const body={chalet:f.chalet,guest:f.guest,phone:f.phone,date_from:f.date_from,date_to:f.date_to,checkin_time:f.checkin_time||null,checkout_time:f.checkout_time||null,price:Number(f.price),status:f.status,note:f.note};if(f.id)await db("bookings","PATCH",body as Record<string,unknown>,f.id);else await db("bookings","POST",body as Record<string,unknown>);await loadAll();setBMdl(null);}
+  // عند فشل الحفظ (شبكة/صلاحيات) db() يرجّع null بصمت — لازم نوقف هنا ونبلّغ المستخدم بدل إغلاق النموذج وكأنه نجح،
+  // لأن هذا بالضبط ما كان يخلي المستخدم يظن إن الحجز اختفى ثم يضيفه من جديد يدوياً فيتكرر.
+  async function svB(f: Partial<Booking>): Promise<void> {
+    const body={chalet:f.chalet,guest:f.guest,phone:f.phone,date_from:f.date_from,date_to:f.date_to,checkin_time:f.checkin_time||null,checkout_time:f.checkout_time||null,price:Number(f.price),status:f.status,note:f.note};
+    const result = f.id
+      ? await db("bookings","PATCH",body as Record<string,unknown>,f.id)
+      : await db("bookings","POST",body as Record<string,unknown>);
+    if(!result){ alert("تعذّر حفظ الحجز، تحقق من الاتصال وحاول مرة أخرى. بياناتك لم تُفقد."); return; }
+    await loadAll();
+    setBMdl(null);
+  }
 
   // ── تقييم الضيوف بعد الخروج وحظرهم ──
   function normPhone(p?: string | null): string {
