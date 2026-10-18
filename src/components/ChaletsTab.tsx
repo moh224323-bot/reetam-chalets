@@ -386,8 +386,8 @@ export default function ChaletsTab({ cStats, rooms, loading, fixedExpenses, onAd
 
       {cStats.length > 0 && (
         <div className="x-kpis">
-          <Kpi label="صافي الشهر لكل الشاليهات" value={<SAR v={totalNetMonth}/>} tone={totalNetMonth < 0 ? "neg" : undefined}/>
-          <Kpi label="متوسط الإشغال" value={<>{avgOcc}<small>%</small></>}><Track pct={avgOcc} tone={toneFor(avgOcc)}/></Kpi>
+          <Kpi c={totalNetMonth<0?"red":"green"} label="صافي الشهر لكل الشاليهات" value={<SAR v={totalNetMonth}/>} tone={totalNetMonth < 0 ? "neg" : undefined}/>
+          <Kpi c={avgOcc>=60?"green":avgOcc>=40?"amber":"red"} label="متوسط الإشغال" value={<>{avgOcc}<small>%</small></>}><Track pct={avgOcc} tone={toneFor(avgOcc)}/></Kpi>
           <Kpi label="تحتاج متابعة" value={<>{attentionCount}<small> شاليه</small></>} tone={attentionCount ? "neg" : "pos"} sub="صيانة مفتوحة أو إيجار مستحق"/>
         </div>
       )}

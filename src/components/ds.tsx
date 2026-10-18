@@ -94,9 +94,12 @@ export function PageHead({ title, sub, children, back }: { title: React.ReactNod
   );
 }
 
-export function Kpi({ label, value, sub, badge, hero, tone, children }: { label: React.ReactNode; value: React.ReactNode; sub?: React.ReactNode; badge?: React.ReactNode; hero?: boolean; tone?: "neg" | "pos"; children?: React.ReactNode }) {
+export type KpiColor = "green" | "red" | "amber" | "blue" | "gold" | "teal";
+export function Kpi({ label, value, sub, badge, hero, tone, c, children }: { label: React.ReactNode; value: React.ReactNode; sub?: React.ReactNode; badge?: React.ReactNode; hero?: boolean; tone?: "neg" | "pos"; c?: KpiColor; children?: React.ReactNode }) {
+  // اللون: إما محدد صراحة، أو من الإشارة (سالب أحمر، موجب أخضر)
+  const col = c || (tone === "neg" ? "red" : tone === "pos" ? "green" : undefined);
   return (
-    <div className={"x-kpi" + (hero ? " hero" : "")}>
+    <div className={"x-kpi" + (hero ? " hero" : "") + (col && !hero ? " c-" + col : "")}>
       <span className="k">{label}{badge}</span>
       <span className={"v" + (tone ? " x-" + tone : "")}>{value}</span>
       {children}

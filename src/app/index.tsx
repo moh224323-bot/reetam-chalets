@@ -264,6 +264,8 @@ const CSS = `
     --bad:#A63A2A; --bad-bg:#FBEDEA; --bad-line:#EFC9C1;
     --warn:#7A5A0E; --warn-bg:#FBF3DF; --ok:#1E6B45; --ok-bg:#E6F1EA; --info:#2F5D7C; --info-bg:#E8F0F6;
     --share:#1F8A4C;
+    --k-green:#17663F; --k-green-bg:#DFF1E6; --k-red:#A3311F; --k-red-bg:#FBE4DF; --k-amber:#8A5A00; --k-amber-bg:#FCEFCF;
+    --k-blue:#1F5A86; --k-blue-bg:#E1EDF7; --k-gold:#7A5418; --k-gold-bg:#F6E8CF; --k-teal:#1D6461; --k-teal-bg:#DDF0EE;
     --side:#17130F; --side-2:#2A231C; --side-line:#2E2720; --side-fg:#D9CFC2; --side-strong:#F3EADC; --side-muted:#A8998A;
     --f-body:'IBM Plex Sans Arabic',system-ui,'Segoe UI',Tahoma,sans-serif;
     --f-display:'Noto Kufi Arabic','IBM Plex Sans Arabic',Tahoma,sans-serif;
@@ -278,6 +280,8 @@ const CSS = `
     --bad:#F08A78; --bad-bg:#3A1F1A; --bad-line:#5A2C24;
     --warn:#E8C46A; --warn-bg:#33291A; --ok:#7FD0A2; --ok-bg:#183024; --info:#8DBBDB; --info-bg:#1A2833;
     --side:#0E0C0A; --side-2:#221C16; --side-line:#2A231C;
+    --k-green:#86D9A8; --k-green-bg:#16301F; --k-red:#F59A88; --k-red-bg:#3A1D18; --k-amber:#F0C766; --k-amber-bg:#352A12;
+    --k-blue:#93C2E6; --k-blue-bg:#16283A; --k-gold:#E6C48C; --k-gold-bg:#33281A; --k-teal:#8ED8D2; --k-teal-bg:#132E2C;
     color-scheme:dark;
   }
 
@@ -453,6 +457,17 @@ const CSS = `
   .x-kpi.hero .k,.x-kpi.hero .s{opacity:.8}
   .x-kpi.hero .x-pill{background:rgba(255,255,255,.14);color:#F3EADC}
   [data-theme="dark"] .x-kpi.hero{background:#2A2016;border-color:#3A2E22}
+  .x-kpi.hero .v{color:#E6C48C}
+  .x-kpi[class*=" c-"]{border-color:transparent}
+  .x-kpi[class*=" c-"] .k{font-weight:600}
+  .x-kpi.c-green{background:var(--k-green-bg)} .x-kpi.c-green .v,.x-kpi.c-green .k{color:var(--k-green)}
+  .x-kpi.c-red{background:var(--k-red-bg)}     .x-kpi.c-red .v,.x-kpi.c-red .k{color:var(--k-red)}
+  .x-kpi.c-amber{background:var(--k-amber-bg)} .x-kpi.c-amber .v,.x-kpi.c-amber .k{color:var(--k-amber)}
+  .x-kpi.c-blue{background:var(--k-blue-bg)}   .x-kpi.c-blue .v,.x-kpi.c-blue .k{color:var(--k-blue)}
+  .x-kpi.c-gold{background:var(--k-gold-bg)}   .x-kpi.c-gold .v,.x-kpi.c-gold .k{color:var(--k-gold)}
+  .x-kpi.c-teal{background:var(--k-teal-bg)}   .x-kpi.c-teal .v,.x-kpi.c-teal .k{color:var(--k-teal)}
+  .x-kpi[class*=" c-"] .v small,.x-kpi[class*=" c-"] .x-unit{color:inherit;opacity:.7}
+  .x-kpi[class*=" c-"] .x-track{background:rgba(255,255,255,.6)}
   .x-pill{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:12px;font-size:12px;font-weight:600;white-space:nowrap}
   .x-pill.ok{background:var(--ok-bg);color:var(--ok)}
   .x-pill.bad{background:var(--bad-bg);color:var(--bad)}
@@ -1254,9 +1269,9 @@ function LoyaltyAdminPage({ cards, reviews, onReload }: { cards: LoyaltyCard[]; 
 
       <div className="x-kpis">
         <Kpi hero label="متوسط التقييم" value={<>{avgRating ? avgRating.toFixed(1) : "—"}<small> من 5</small></>} sub={reviews.length + " تقييم · " + reviews.filter(r=>r.rating===5).length + " بخمس نجوم"}/>
-        <Kpi label="أعضاء البرنامج" value={totalMembers}/>
-        <Kpi label="على وشك الجائزة" value={nearlyThere} sub="لديهم تذكرتان"/>
-        <Kpi label="ليالٍ مجانية معلقة" value={cards.reduce((s,c)=>s+c.free_nights,0)} sub={totalPending + " عميل لم يستخدمها"}/>
+        <Kpi c="blue" label="أعضاء البرنامج" value={totalMembers}/>
+        <Kpi c="amber" label="على وشك الجائزة" value={nearlyThere} sub="لديهم تذكرتان"/>
+        <Kpi c="gold" label="ليالٍ مجانية معلقة" value={cards.reduce((s,c)=>s+c.free_nights,0)} sub={totalPending + " عميل لم يستخدمها"}/>
       </div>
 
       <div className="x-page">
@@ -3140,12 +3155,12 @@ ${poolLine}
               <div className="x-kpis">
                 <Kpi hero label={"إيرادات "+monthName} badge={diff!==null?<Pill tone="">{(diff>0?"+":"")+diff+"% عن الشهر الماضي"}</Pill>:undefined}
                   value={<SAR v={monthRev}/>} sub={monthBks.length+" حجز · إيرادات العام "+yearRev.toLocaleString("en-US")+" ر.س"}/>
-                <Kpi label="صافي الربح" badge={monthRev>0?<Pill tone={margin>=40?"ok":margin>=0?"warn":"bad"}>{"هامش "+margin+"%"}</Pill>:undefined}
+                <Kpi c={netProfit<0?"red":"green"} label="صافي الربح" badge={monthRev>0?<Pill tone={margin>=40?"ok":margin>=0?"warn":"bad"}>{"هامش "+margin+"%"}</Pill>:undefined}
                   value={<SAR v={netProfit}/>} tone={netProfit<0?"neg":undefined} sub={"مصاريف "+monthExp.toLocaleString("en-US")+" ر.س"}/>
-                <Kpi label="نسبة الإشغال" value={<>{occupancyPct}<small>%</small></>} sub={bookedNights.toLocaleString("en-US")+" من "+availableNights.toLocaleString("en-US")+" ليلة متاحة"}>
+                <Kpi c={occupancyPct>=60?"green":occupancyPct>=40?"amber":"red"} label="نسبة الإشغال" value={<>{occupancyPct}<small>%</small></>} sub={bookedNights.toLocaleString("en-US")+" من "+availableNights.toLocaleString("en-US")+" ليلة متاحة"}>
                   <Track pct={occupancyPct} tone={toneFor(occupancyPct)}/>
                 </Kpi>
-                <Kpi label="متوسط سعر الليلة" value={<SAR v={adr}/>} sub={"العائد لكل ليلة متاحة "+revpar.toLocaleString("en-US")+" ر.س"}/>
+                <Kpi c="blue" label="متوسط سعر الليلة" value={<SAR v={adr}/>} sub={"العائد لكل ليلة متاحة "+revpar.toLocaleString("en-US")+" ر.س"}/>
               </div>
 
               <div className="x-card">
@@ -3254,10 +3269,10 @@ ${poolLine}
               </PageHead>
 
               <div className="x-kpis">
-                <Kpi label={bkLang==="ar"?"عدد الحجوزات":"बुकिंग की संख्या"} value={visibleBookings.length.toLocaleString("en-US")}/>
-                <Kpi label={bkLang==="ar"?"الليالي":"रातें"} value={vbNights.toLocaleString("en-US")}/>
-                <Kpi label={bkLang==="ar"?"الإجمالي":"कुल"} value={<SAR v={vbRevenue}/>} sub={bkLang==="ar"?"بدون الملغي":undefined}/>
-                <Kpi label={bkLang==="ar"?"متوسط الحجز":"औसत"} value={<SAR v={avgBooking}/>}/>
+                <Kpi c="blue" label={bkLang==="ar"?"عدد الحجوزات":"बुकिंग की संख्या"} value={visibleBookings.length.toLocaleString("en-US")}/>
+                <Kpi c="teal" label={bkLang==="ar"?"الليالي":"रातें"} value={vbNights.toLocaleString("en-US")}/>
+                <Kpi c="green" label={bkLang==="ar"?"الإجمالي":"कुल"} value={<SAR v={vbRevenue}/>} sub={bkLang==="ar"?"بدون الملغي":undefined}/>
+                <Kpi c="gold" label={bkLang==="ar"?"متوسط الحجز":"औसत"} value={<SAR v={avgBooking}/>}/>
               </div>
 
               <BookingCalendar
@@ -3359,7 +3374,7 @@ ${poolLine}
               </PageHead>
               <div className="x-kpis">
                 <Kpi hero label={"الأرباح القابلة للتوزيع · "+invPeriodLabel} value={<SAR v={totalNet}/>}/>
-                <Kpi label="عدد الشركاء" value={partnerNames.size} sub={"في "+names.length+" شاليه"}/>
+                <Kpi c="blue" label="عدد الشركاء" value={partnerNames.size} sub={"في "+names.length+" شاليه"}/>
                 <Kpi label="شاليهات نسبها غير مكتملة" value={incomplete} tone={incomplete?"neg":"pos"} sub={incomplete?"مجموع النسب لا يساوي 100%":"كل النسب مكتملة"}/>
               </div>
               {names.length===0 && <div className="x-card"><Empty>أضف شاليهات أولاً</Empty></div>}
@@ -3440,9 +3455,9 @@ ${poolLine}
               </PageHead>
               <div className="x-kpis">
                 <Kpi label="مفتوح" value={cnt("open")} tone={cnt("open")?"neg":undefined} sub={highOpen?highOpen+" بأولوية عالية":"لا يوجد طلب عاجل"}/>
-                <Kpi label="قيد التنفيذ" value={cnt("in_progress")}/>
-                <Kpi label="تكاليف هذا الشهر" value={<SAR v={monthCost}/>}/>
-                <Kpi label="إجمالي التكاليف" value={<SAR v={scoped.filter(m=>m.cost).reduce((s,m)=>s+Number(m.cost),0)}/>} sub="منذ البداية"/>
+                <Kpi c="amber" label="قيد التنفيذ" value={cnt("in_progress")}/>
+                <Kpi c="gold" label="تكاليف هذا الشهر" value={<SAR v={monthCost}/>}/>
+                <Kpi c="teal" label="إجمالي التكاليف" value={<SAR v={scoped.filter(m=>m.cost).reduce((s,m)=>s+Number(m.cost),0)}/>} sub="منذ البداية"/>
               </div>
               <div className="x-card">
                 <div className="x-card-h">
@@ -3495,8 +3510,8 @@ ${poolLine}
               </PageHead>
               <div className="x-kpis">
                 <Kpi hero label="محفظة التأمين" value={<SAR v={walletBal}/>} sub={"إيداعات "+insIn.toLocaleString("en-US")+" · صرف "+insOut.toLocaleString("en-US")}/>
-                <Kpi label="محفظة النظافة" value={<SAR v={cleaningBal}/>} sub={"إيداعات "+clIn.toLocaleString("en-US")+" · صرف "+clOut.toLocaleString("en-US")}/>
-                <Kpi label="التزامات النظافة هذا الشهر" value={<SAR v={clExpMonth}/>}/>
+                <Kpi c="teal" label="محفظة النظافة" value={<SAR v={cleaningBal}/>} sub={"إيداعات "+clIn.toLocaleString("en-US")+" · صرف "+clOut.toLocaleString("en-US")}/>
+                <Kpi c="amber" label="التزامات النظافة هذا الشهر" value={<SAR v={clExpMonth}/>}/>
                 <Kpi label="تأمين منخفض" value={<>{lowIns.length}<small> شاليه</small></>} tone={lowIns.length?"neg":"pos"} sub={lowIns.length?lowIns.map(c=>c.name).join("، "):"كل الأرصدة فوق 500 ر.س"}/>
               </div>
               <div className="x-card">
@@ -3571,9 +3586,9 @@ ${poolLine}
                 <button className="btn bp" onClick={()=>setClTaskMdl({chalet:names[0]||"",title:"",frequency:"أسبوعي",category:"مسبح",assigned_to:"",active:true})}><Icon n="plus"/>إضافة مهمة</button>
               </PageHead>
               <div className="x-kpis">
-                <Kpi label="إنجاز المشرف هذا الشهر" value={<>{pctAll}<small>%</small></>} sub={doneCnt+" من "+activeTasks.length+" مهام مؤكدة"}><Track pct={pctAll} tone={toneFor(pctAll,100,50)}/></Kpi>
-                <Kpi label="بانتظار تأكيدك" value={waitCnt} sub="أنجزها العامل ولم تُراجع"/>
-                <Kpi label="رصيد محفظة النظافة" value={<SAR v={cleaningBal}/>} sub={isAdmin?<button className="x-back" style={{minHeight:0}} onClick={()=>{setWalletTab("cln");setTab("wallets");}}>عرض السجل</button>:undefined}/>
+                <Kpi c={pctAll>=100?"green":pctAll>=50?"amber":"red"} label="إنجاز المشرف هذا الشهر" value={<>{pctAll}<small>%</small></>} sub={doneCnt+" من "+activeTasks.length+" مهام مؤكدة"}><Track pct={pctAll} tone={toneFor(pctAll,100,50)}/></Kpi>
+                <Kpi c={waitCnt?"amber":"green"} label="بانتظار تأكيدك" value={waitCnt} sub="أنجزها العامل ولم تُراجع"/>
+                <Kpi c="teal" label="رصيد محفظة النظافة" value={<SAR v={cleaningBal}/>} sub={isAdmin?<button className="x-back" style={{minHeight:0}} onClick={()=>{setWalletTab("cln");setTab("wallets");}}>عرض السجل</button>:undefined}/>
               </div>
 
               {chNames.map(chName=>{
