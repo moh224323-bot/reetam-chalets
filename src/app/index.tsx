@@ -2360,7 +2360,7 @@ function AppWrapper() {
 
   useEffect(()=>{
     const p = new URLSearchParams(window.location.search);
-    if(p.has("site")){ setForceSite(true); setReady(true); return; }
+    if(p.has("site")||(p.has("c")&&p.get("guest")!=="1")){ setForceSite(true); setReady(true); return; }
     if(p.get("guest")==="1"){
       setGuestParams({bookingId:p.get("b"),mode:p.get("m")||"checkin",chalet:p.get("ch"),room:p.get("rm")});
       setIsGuest(true);

@@ -156,7 +156,7 @@ const ChaletDetail = memo(function ChaletDetail({ c, rooms, fixedExpenses, onBac
     .filter(fx => fx.chalet === c.name && fx.active && fx.category === "إيجار")
     .map(fx => ({ fx, info: nextDueInfo(fx) }));
 
-  const guestLink = () => `${typeof window!=="undefined"?window.location.origin:""}?guest=1&m=chalet&ch=${encodeURIComponent(c.name)}`;
+  const guestLink = () => `${typeof window!=="undefined"?window.location.origin:""}/?c=${c.id}`;
 
   const baseStats = [
     { l:"السعة",     v: String(c.cap), u:"شخص",         i:"users" },
