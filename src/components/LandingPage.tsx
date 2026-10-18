@@ -1,6 +1,6 @@
 // صفحة الهبوط العامة لمجموعة ريتام + بوابة "حجزي" للضيف.
 // كل البيانات تمر عبر دوال Supabase آمنة (landing_*) — لا قراءة مباشرة للجداول.
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 export interface LandingChalet {
@@ -41,10 +41,33 @@ const parseISO = (s: string) => { const [y, m, d] = s.split("-").map(Number); re
 const dayName = (s: string) => parseISO(s).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { weekday: "long", day: "numeric", month: "long" });
 const waNumber = (p?: string) => (p || "").replace(/[^0-9]/g, "").replace(/^00/, "").replace(/^0/, "966");
 function stripEmoji(s: string) { return s.replace(/[\p{Extended_Pictographic}️‍]/gu, "").trim(); }
-function amenityList(a?: string): string[] {
+function amenityList(a?: string, max = 6): string[] {
   if (!a) return [];
-  return a.split(/[،,|\n]/).map(stripEmoji).filter(Boolean).slice(0, 6);
+  return a.split(/[،,|\n]/).map(stripEmoji).filter(Boolean).slice(0, max);
 }
+type Photo = { url: string; cat: string };
+function galleryOf(c: LandingChalet): Photo[] {
+  const out: Photo[] = []; const seen = new Set<string>();
+  const add = (url: unknown, cat?: unknown) => { if (typeof url === "string" && url && !seen.has(url)) { seen.add(url); out.push({ url, cat: typeof cat === "string" ? cat.trim() : "" }); } };
+  if (c.gallery) {
+    try {
+      const g = JSON.parse(c.gallery);
+      if (Array.isArray(g)) for (const x of g) { if (typeof x === "string") add(x); else if (x) add(x.url, x.cat); }
+    } catch { /* نص غير JSON */ }
+  }
+  if (c.img && !seen.has(c.img)) out.unshift({ url: c.img, cat: "" });
+  return out;
+}
+const nightPrice = (c: LandingChalet, iso: string) => { const g = parseISO(iso).getDay(); return (g === 5 || g === 6) && c.wprice ? Number(c.wprice) : Number(c.price || 0); };
+const nightsLabel = (n: number) => n === 1 ? "ليلة واحدة" : n === 2 ? "ليلتين" : n + " ليالٍ";
+function chaletHref(id: number | null) {
+  if (typeof window === "undefined") return "#";
+  const u = new URL(window.location.href);
+  if (id == null) u.searchParams.delete("c"); else u.searchParams.set("c", String(id));
+  u.hash = "";
+  return u.pathname + (u.search ? u.search.replace(/=(&|$)/g, "$1") : "");
+}
+const readC = () => { try { const v = new URLSearchParams(window.location.search).get("c"); return v ? Number(v) : null; } catch { return null; } };
 function amenityIcon(t: string): string {
   if (/مسبح|سباح/.test(t)) return "pool";
   if (/شواء|فحم|مشب/.test(t)) return "fire";
@@ -128,6 +151,10 @@ const P: Record<string, React.ReactNode> = {
   insta: <><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></>,
   copy: <><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/></>,
   lock: <><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
+  chevR: <path d="M9 6l6 6-6 6"/>,
+  chevL: <path d="M15 6l-6 6 6 6"/>,
+  grid: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
+  image: <><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></>,
 };
 function I({ n, s = 20, style }: { n: string; s?: number; style?: React.CSSProperties }) {
   return <svg className="lp-i" width={s} height={s} viewBox="0 0 24 24" aria-hidden="true" style={style}>{P[n] || P.check}</svg>;
@@ -181,15 +208,35 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
   const [data, setData] = useState<LandingData | null | undefined>(initial === undefined ? undefined : initial);
   const [menu, setMenu] = useState(false);
   const [capF, setCapF] = useState<"all" | "s" | "m" | "l">("all");
-  const [bookFor, setBookFor] = useState<LandingChalet | null>(null);
+  const [openId, setOpenId] = useState<number | null>(readC);
   const [toast, setToast] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (typeof document !== "undefined") {
-    }
     if (initial === undefined) fetchLanding().then(d => setData(d));
+    const onPop = () => setOpenId(readC());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
   }, []);
-  useEffect(() => { if (data && typeof document !== "undefined") document.title = (data.name || "مجموعة ريتام") + " | شاليهات الأحساء"; }, [data]);
+  const opened = openId != null ? (data?.chalets || []).find(c => c.id === openId) || null : null;
+  useEffect(() => {
+    if (data && typeof document !== "undefined") document.title = (opened ? opened.name + " | " : "") + (data.name || "مجموعة ريتام") + " | شاليهات الأحساء";
+  }, [data, opened]);
+
+  // التنقل بين الصفحة الرئيسية وصفحة الشاليه بدون إعادة تحميل
+  function go(id: number | null, anchor?: string) {
+    try { window.history.pushState({}, "", chaletHref(id) + (anchor ? "#" + anchor : "")); } catch { /* */ }
+    setOpenId(id); setMenu(false);
+    requestAnimationFrame(() => {
+      const el = anchor ? document.getElementById(anchor) : null;
+      if (el) el.scrollIntoView({ behavior: "instant" as ScrollBehavior, block: "start" });
+      else rootRef.current?.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
+    });
+  }
+  const navLink = (anchor: string) => ({
+    href: "#" + anchor,
+    onClick: (e: React.MouseEvent) => { if (opened) { e.preventDefault(); go(null, anchor); } },
+  });
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3800); return () => clearTimeout(t); }, [toast]);
 
   if (data === undefined) return <div className="lp" dir="rtl"><style>{CSS}</style><div className="lp-center">جاري التحميل...</div></div>;
@@ -215,7 +262,7 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
   const wa = waNumber(data.whatsapp || data.phone);
 
   return (
-    <div className="lp" dir="rtl">
+    <div className="lp" dir="rtl" ref={rootRef}>
       <style>{CSS}</style>
       {data.preview && (
         <div className="lp-preview"><I n="lock" s={16}/>معاينة: الصفحة غير منشورة، والزوار ما يشوفونها. انشرها من لوحة التحكم ← الموقع العام.</div>
@@ -223,21 +270,28 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
 
       <header className="lp-top">
         <div className="lp-wrap lp-top-in">
-          <a href="#top" style={{ textDecoration: "none" }} aria-label={data.name || "مجموعة ريتام"}><Brand data={data}/></a>
+          <a {...navLink("top")} style={{ textDecoration: "none" }} aria-label={data.name || "مجموعة ريتام"}><Brand data={data}/></a>
           <nav className={"lp-nav" + (menu ? " open" : "")} aria-label="أقسام الصفحة" onClick={() => setMenu(false)}>
-            <a href="#chalets">الشاليهات</a>
-            <a href="#about">من نحن</a>
-            <a href="#features">المميزات</a>
-            <a href="#how">طريقة الحجز</a>
-            <a href="#mybooking">حجزي</a>
+            <a {...navLink("chalets")}>الشاليهات</a>
+            <a {...navLink("about")}>من نحن</a>
+            <a {...navLink("features")}>المميزات</a>
+            <a {...navLink("how")}>طريقة الحجز</a>
+            <a {...navLink("mybooking")}>حجزي</a>
           </nav>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <a className="lp-btn lp-primary lp-sm lp-desk" href="#chalets">احجز الآن</a>
+            {opened
+              ? <a className="lp-btn lp-primary lp-sm lp-desk" href="#book">احجز {opened.name}</a>
+              : <a className="lp-btn lp-primary lp-sm lp-desk" href="#chalets">احجز الآن</a>}
             <button className="lp-menu" type="button" aria-label="القائمة" aria-expanded={menu} onClick={() => setMenu(m => !m)}><I n="menu"/></button>
           </div>
         </div>
       </header>
 
+      {opened ? (
+        <main id="top">
+          <ChaletPage key={opened.id} c={opened} data={data} onGo={go} onToast={setToast}/>
+        </main>
+      ) : (
       <main id="top">
         {/* الواجهة */}
         <section className="lp-hero">
@@ -280,30 +334,7 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
             )}
             {list.length === 0 ? <p style={{ color: "var(--lp-muted)" }}>لا يوجد شاليه بهذه السعة حالياً</p> : (
               <div className="lp-grid">
-                {list.map(c => {
-                  const img = firstImage(c);
-                  const am = amenityList(c.amenities);
-                  return (
-                    <article key={c.id} className="lp-card">
-                      <div className="lp-card-img">
-                        {img ? <img src={img} alt={c.name} loading="lazy"/> : <div className="lp-ph" style={{ backgroundImage: `url("${CARVE}")` }}/>}
-                        {c.cap ? <span className="lp-badge"><I n="users" s={15}/>{"حتى " + c.cap + " شخص"}</span> : null}
-                      </div>
-                      <div className="lp-card-body">
-                        <div className="lp-card-title">
-                          <div><h3>{c.name}</h3><span className="lp-loc"><I n="pin" s={15}/>{(c.loc ? c.loc + "، " : "") + "الأحساء"}</span></div>
-                          {c.rating ? <span className="lp-rating"><svg viewBox="0 0 24 24" aria-hidden="true">{P.star}</svg>{c.rating}</span> : null}
-                        </div>
-                        {c.description && <p className="lp-desc">{c.description}</p>}
-                        {am.length > 0 && <div className="lp-feats">{am.map((t, i) => <span key={i}><I n={amenityIcon(t)} s={15}/>{t}</span>)}</div>}
-                        <div className="lp-price-row">
-                          <div className="lp-price"><b>{fmt(Number(c.price || 0))}</b> <small>ريال / الليلة</small>{c.wprice ? <span className="lp-wk">{"الويكند " + fmt(Number(c.wprice)) + " ريال"}</span> : null}</div>
-                          <button className="lp-btn lp-primary lp-sm" type="button" onClick={() => setBookFor(c)}>احجز</button>
-                        </div>
-                      </div>
-                    </article>
-                  );
-                })}
+                {list.map(c => <ChaletCard key={c.id} c={c} onGo={go}/>)}
               </div>
             )}
           </div>
@@ -373,15 +404,16 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
           </div>
         </section>
       </main>
+      )}
 
       <footer className="lp-foot">
         <div className="lp-wrap lp-foot-in">
           <div>
-            <a href="#top" style={{ textDecoration: "none" }}><Brand data={data} dark/></a>
+            <a {...navLink("top")} style={{ textDecoration: "none" }}><Brand data={data} dark/></a>
             <p style={{ marginTop: 16, maxWidth: 360 }}>شاليهات عائلية خاصة في الأحساء، بحجز سهل ومتابعة كاملة من جوالك.</p>
             <div style={{ marginTop: 18 }}><Socials data={data} light/></div>
           </div>
-          <div><h4>روابط</h4><a href="#chalets">الشاليهات</a><a href="#features">المميزات</a><a href="#how">طريقة الحجز</a><a href="#mybooking">حجزي</a></div>
+          <div><h4>روابط</h4><a {...navLink("chalets")}>الشاليهات</a><a {...navLink("features")}>المميزات</a><a {...navLink("how")}>طريقة الحجز</a><a {...navLink("mybooking")}>حجزي</a></div>
           <div><h4>تواصل معنا</h4>
             {wa && <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer"><I n="msg" s={18}/>واتساب</a>}
             {data.phone && <a href={`tel:${data.phone}`}><I n="phone" s={18}/><span className="lp-mono">{data.phone}</span></a>}
@@ -395,36 +427,305 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
         </div>
       </footer>
 
-      {bookFor && <BookingSheet chalet={bookFor} data={data} onClose={() => setBookFor(null)} onToast={setToast}/>}
       {toast && <div className="lp-toast" role="status"><I n="check"/>{toast}</div>}
     </div>
   );
 }
 
-/* ───────── نافذة الحجز ───────── */
-function BookingSheet({ chalet, data, onClose, onToast }: { chalet: LandingChalet; data: LandingData; onClose: () => void; onToast: (t: string) => void }) {
-  const t3 = new Date(); t3.setDate(t3.getDate() + 1);
-  const t4 = new Date(); t4.setDate(t4.getDate() + 2);
-  const [from, setFrom] = useState(toISO(t3));
-  const [to, setTo] = useState(toISO(t4));
+/* ───────── بطاقة الشاليه ───────── */
+function ChaletCard({ c, onGo }: { c: LandingChalet; onGo: (id: number | null, anchor?: string) => void }) {
+  const img = firstImage(c);
+  const am = amenityList(c.amenities);
+  const n = galleryOf(c).length;
+  const open = (e: React.MouseEvent, anchor?: string) => { if (e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); onGo(c.id, anchor); };
+  return (
+    <article className="lp-card">
+      <a className="lp-card-img" href={chaletHref(c.id)} onClick={open} aria-label={"تفاصيل " + c.name}>
+        {img ? <img src={img} alt={c.name} loading="lazy"/> : <div className="lp-ph" style={{ backgroundImage: `url("${CARVE}")` }}/>}
+        {c.cap ? <span className="lp-badge"><I n="users" s={15}/>{"حتى " + c.cap + " شخص"}</span> : null}
+        {n > 1 && <span className="lp-badge lp-badge-end"><I n="image" s={15}/>{n + " صورة"}</span>}
+      </a>
+      <div className="lp-card-body">
+        <div className="lp-card-title">
+          <div><h3><a href={chaletHref(c.id)} onClick={open} className="lp-card-link">{c.name}</a></h3><span className="lp-loc"><I n="pin" s={15}/>{(c.loc ? c.loc + "، " : "") + "الأحساء"}</span></div>
+          {c.rating ? <span className="lp-rating"><svg viewBox="0 0 24 24" aria-hidden="true">{P.star}</svg>{c.rating}</span> : null}
+        </div>
+        {c.description && <p className="lp-desc">{c.description}</p>}
+        {am.length > 0 && <div className="lp-feats">{am.map((t, i) => <span key={i}><I n={amenityIcon(t)} s={15}/>{t}</span>)}</div>}
+        <div className="lp-price-row">
+          <div className="lp-price"><b>{fmt(Number(c.price || 0))}</b> <small>ريال / الليلة</small>{c.wprice ? <span className="lp-wk">{"الويكند " + fmt(Number(c.wprice)) + " ريال"}</span> : null}</div>
+          <a className="lp-btn lp-primary lp-sm" href={chaletHref(c.id)} onClick={open}>التفاصيل والحجز</a>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+/* ───────── صفحة الشاليه ───────── */
+function ChaletPage({ c, data, onGo, onToast }: { c: LandingChalet; data: LandingData; onGo: (id: number | null, anchor?: string) => void; onToast: (t: string) => void }) {
+  const photos = useMemo(() => galleryOf(c), [c]);
+  const amen = useMemo(() => amenityList(c.amenities, 40), [c.amenities]);
+  const rooms = useMemo(() => {
+    const m = new Map<string, Photo[]>();
+    for (const p of photos) if (p.cat) { if (!m.has(p.cat)) m.set(p.cat, []); m.get(p.cat)!.push(p); }
+    return [...m.entries()];
+  }, [photos]);
+  const [lb, setLb] = useState<{ list: Photo[]; i: number; title: string } | null>(null);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const others = (data.chalets || []).filter(x => x.id !== c.id).slice(0, 3);
+  const booked = useMemo(() => (data.booked || []).filter(b => b.chalet === c.name), [data.booked, c.name]);
+  const { nights, total } = priceFor(c, from, to);
+  const shown = photos.slice(0, 5);
+
+  return (
+    <>
+      <section className="lp-cd">
+        <div className="lp-wrap">
+          <a className="lp-back" href={chaletHref(null) + "#chalets"} onClick={e => { e.preventDefault(); onGo(null, "chalets"); }}><I n="chevR" s={18}/>كل الشاليهات</a>
+          <div className="lp-cd-head">
+            <div>
+              <h1>{c.name}</h1>
+              <div className="lp-cd-meta">
+                <span><I n="pin" s={17}/>{(c.loc ? c.loc + "، " : "") + "الأحساء"}</span>
+                {c.cap ? <span><I n="users" s={17}/>{"حتى " + c.cap + " شخص"}</span> : null}
+                {c.rating ? <span><svg className="lp-star" viewBox="0 0 24 24" aria-hidden="true">{P.star}</svg><b>{c.rating}</b>{" (" + (c.reviews || 0) + " تقييم)"}</span> : null}
+              </div>
+            </div>
+            {photos.length > 0 && <button type="button" className="lp-btn lp-ghost lp-sm" onClick={() => setLb({ list: photos, i: 0, title: "كل الصور" })}><I n="grid" s={18}/>{"كل الصور (" + photos.length + ")"}</button>}
+          </div>
+
+          {photos.length > 0 ? (
+            <div className="lp-gal" data-n={shown.length}>
+              {photos.map((p, i) => (
+                <button key={p.url} type="button" className={i >= 5 ? "lp-gal-x" : undefined} onClick={() => setLb({ list: photos, i, title: "كل الصور" })} aria-label={"عرض الصورة " + (i + 1)}>
+                  <img src={p.url} alt={p.cat ? c.name + " - " + p.cat : c.name} loading={i < 3 ? "eager" : "lazy"}/>
+                  {p.cat && <span className="lp-gal-cat">{p.cat}</span>}
+                  {i === 4 && photos.length > 5 && <span className="lp-gal-plus">{"+" + (photos.length - 5)}<small>صورة</small></span>}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="lp-gal" data-n={1}><div className="lp-gal-empty" style={{ backgroundImage: `url("${CARVE}")` }}><span>الصور قريباً</span></div></div>
+          )}
+
+          <div className="lp-cd-grid">
+            <div className="lp-cd-main">
+              <div className="lp-facts lp-cd-facts">
+                <div><small>السعة</small><b>{c.cap ? "حتى " + c.cap + " شخص" : "—"}</b></div>
+                <div><small>الأيام العادية</small><b>{fmt(Number(c.price || 0)) + " ريال"}</b></div>
+                <div><small>الجمعة والسبت</small><b>{fmt(Number(c.wprice || c.price || 0)) + " ريال"}</b></div>
+                <div><small>تقييم الضيوف</small><b>{c.rating ? c.rating + " من 5" : "جديد"}</b></div>
+              </div>
+
+              {c.description && (
+                <div className="lp-cd-sec">
+                  <h2>عن الشاليه</h2>
+                  {c.description.split("\n").filter(Boolean).map((t, i) => <p key={i} className="lp-cd-text">{t}</p>)}
+                </div>
+              )}
+
+              {rooms.length > 0 && (
+                <div className="lp-cd-sec">
+                  <h2>المرافق</h2>
+                  <p className="lp-cd-sub">اضغط على أي مرفق وشوف صوره</p>
+                  <div className="lp-rooms">
+                    {rooms.map(([cat, list]) => (
+                      <button key={cat} type="button" className="lp-room" onClick={() => setLb({ list, i: 0, title: cat })}>
+                        <span className="lp-room-img"><img src={list[0].url} alt={cat} loading="lazy"/></span>
+                        <span className="lp-room-t"><b>{cat}</b><small>{list.length === 1 ? "صورة واحدة" : list.length + " صور"}</small></span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {amen.length > 0 && (
+                <div className="lp-cd-sec">
+                  <h2>المميزات</h2>
+                  <div className="lp-amen">
+                    {amen.map((t, i) => <div key={i}><span className="ic"><I n={amenityIcon(t)} s={20}/></span>{t}</div>)}
+                  </div>
+                </div>
+              )}
+
+              <div className="lp-cd-sec" id="avail">
+                <h2>الأيام المتاحة</h2>
+                <p className="lp-cd-sub">اختر يوم الوصول ثم يوم المغادرة من التقويم</p>
+                <AvailCal c={c} booked={booked} from={from} to={to} onPick={(f, t) => { setFrom(f); setTo(t); }}/>
+              </div>
+            </div>
+
+            <aside className="lp-cd-aside" id="book">
+              <BookingPanel chalet={c} data={data} booked={booked} from={from} to={to} setFrom={setFrom} setTo={setTo} onToast={onToast}/>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      {others.length > 0 && (
+        <section className="lp-cd-others">
+          <div className="lp-wrap">
+            <div className="lp-sec-h"><span className="lp-eyebrow">شاليهات ثانية</span><h2>يمكن يعجبك بعد</h2></div>
+            <div className="lp-grid">{others.map(o => <ChaletCard key={o.id} c={o} onGo={onGo}/>)}</div>
+          </div>
+        </section>
+      )}
+
+      <div className="lp-mbar">
+        <div>
+          {nights > 0
+            ? <><b>{fmt(total) + " ريال"}</b><small>{nightsLabel(nights)}</small></>
+            : <><b>{fmt(Number(c.price || 0)) + " ريال"}</b><small>لليلة</small></>}
+        </div>
+        <a className="lp-btn lp-primary" href="#book">{nights > 0 ? "أكمل الحجز" : "اختر التاريخ واحجز"}</a>
+      </div>
+
+      {lb && <Lightbox list={lb.list} start={lb.i} title={lb.title} name={c.name} onClose={() => setLb(null)}/>}
+    </>
+  );
+}
+
+/* ───────── عارض الصور ───────── */
+function Lightbox({ list, start, title, name, onClose }: { list: Photo[]; start: number; title: string; name: string; onClose: () => void }) {
+  const [i, setI] = useState(start);
+  const n = list.length;
+  const next = () => setI(x => (x + 1) % n);
+  const prev = () => setI(x => (x - 1 + n) % n);
+  const touch = useRef<number | null>(null);
+  const thumbs = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      else if (e.key === "ArrowLeft") next();   // اتجاه عربي: اليسار = التالي
+      else if (e.key === "ArrowRight") prev();
+    };
+    window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
+  }, [n]);
+  useEffect(() => { thumbs.current?.querySelector(".on")?.scrollIntoView({ block: "nearest", inline: "center" }); }, [i]);
+  const p = list[i];
+  return (
+    <div className="lp-lb" role="dialog" aria-modal="true" aria-label={"صور " + name}>
+      <div className="lp-lb-top">
+        <div><b>{title}</b><span className="lp-mono">{(i + 1) + " / " + n}</span></div>
+        <button className="lp-lb-x" type="button" aria-label="إغلاق" onClick={onClose}><I n="x"/></button>
+      </div>
+      <div className="lp-lb-stage"
+        onTouchStart={e => { touch.current = e.touches[0].clientX; }}
+        onTouchEnd={e => { if (touch.current == null) return; const dx = e.changedTouches[0].clientX - touch.current; touch.current = null; if (Math.abs(dx) > 40) (dx > 0 ? next() : prev()); }}>
+        {n > 1 && <button className="lp-lb-nav lp-lb-prev" type="button" aria-label="السابقة" onClick={prev}><I n="chevR" s={26}/></button>}
+        <img src={p.url} alt={p.cat ? name + " - " + p.cat : name}/>
+        {n > 1 && <button className="lp-lb-nav lp-lb-next" type="button" aria-label="التالية" onClick={next}><I n="chevL" s={26}/></button>}
+        {p.cat && title !== p.cat && <span className="lp-lb-cat">{p.cat}</span>}
+      </div>
+      {n > 1 && (
+        <div className="lp-lb-thumbs" ref={thumbs}>
+          {list.map((t, j) => <button key={t.url} type="button" className={j === i ? "on" : undefined} onClick={() => setI(j)} aria-label={"الصورة " + (j + 1)}><img src={t.url} alt="" loading="lazy"/></button>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ───────── تقويم الأيام المتاحة ───────── */
+const WEEK = ["سبت", "أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"];
+function bookedNightsOf(booked: { from: string; to: string }[]) {
+  const s = new Set<string>();
+  for (const b of booked) { const d = parseISO(b.from); const e = parseISO(b.to); let guard = 0; while (d < e && guard++ < 400) { s.add(toISO(d)); d.setDate(d.getDate() + 1); } }
+  return s;
+}
+function rangeFree(nightsSet: Set<string>, from: string, to: string) {
+  const d = parseISO(from); const e = parseISO(to);
+  while (d < e) { if (nightsSet.has(toISO(d))) return false; d.setDate(d.getDate() + 1); }
+  return true;
+}
+function AvailCal({ c, booked, from, to, onPick }: { c: LandingChalet; booked: { from: string; to: string }[]; from: string; to: string; onPick: (from: string, to: string) => void }) {
+  const now = new Date();
+  const base = new Date(now.getFullYear(), now.getMonth(), 1);
+  const [off, setOff] = useState(0);
+  const taken = useMemo(() => bookedNightsOf(booked), [booked]);
+  const today = toISO(now);
+  const picking = !!from && !to;
+
+  function click(iso: string) {
+    if (picking && iso > from) {
+      if (rangeFree(taken, from, iso)) { onPick(from, iso); return; }
+    }
+    if (iso < today || taken.has(iso)) return;
+    onPick(iso, "");
+  }
+  function month(k: number) {
+    const m = new Date(base.getFullYear(), base.getMonth() + off + k, 1);
+    const days = new Date(m.getFullYear(), m.getMonth() + 1, 0).getDate();
+    const lead = (m.getDay() + 1) % 7; // الأسبوع يبدأ السبت
+    const cells: React.ReactNode[] = [];
+    for (let i = 0; i < lead; i++) cells.push(<span key={"e" + i}/>);
+    for (let d = 1; d <= days; d++) {
+      const iso = toISO(new Date(m.getFullYear(), m.getMonth(), d));
+      const past = iso < today;
+      const bk = taken.has(iso);
+      const canEnd = picking && iso > from && rangeFree(taken, from, iso);
+      const sel = iso === from || iso === to;
+      const inR = !!from && !!to && iso > from && iso < to;
+      const wk = [5, 6].includes(parseISO(iso).getDay()) && !!c.wprice;
+      const disabled = past || (bk && !canEnd);
+      const cls = "lp-day" + (past ? " past" : bk && !sel ? " bk" : "") + (wk ? " wk" : "") + (sel ? " sel" : inR ? " in" : "") + (canEnd ? " end" : "");
+      cells.push(
+        <button key={iso} type="button" className={cls} disabled={disabled} onClick={() => click(iso)}
+          aria-label={dayName(iso) + (bk ? "، محجوز" : past ? "" : "، متاح " + fmt(nightPrice(c, iso)) + " ريال")} aria-pressed={sel || inR}>
+          <span>{d}</span>
+          {!past && <small>{iso === to ? "مغادرة" : iso === from && !to ? "وصول" : bk ? (canEnd ? "مغادرة" : "محجوز") : fmt(nightPrice(c, iso))}</small>}
+        </button>
+      );
+    }
+    return (
+      <div className={"lp-cal-m" + (k === 1 ? " second" : "")} key={k}>
+        <h4>{m.toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { month: "long", year: "numeric" })}</h4>
+        <div className="lp-cal-w">{WEEK.map(w => <span key={w}>{w}</span>)}</div>
+        <div className="lp-cal-d">{cells}</div>
+      </div>
+    );
+  }
+  const { nights } = priceFor(c, from, to);
+  return (
+    <div className="lp-cal">
+      <div className="lp-cal-nav">
+        <button type="button" className="lp-x" aria-label="الشهر السابق" disabled={off === 0} onClick={() => setOff(o => Math.max(0, o - 1))}><I n="chevR"/></button>
+        <span className="lp-cal-sum">
+          {!from ? "اختر يوم الوصول" : !to ? "الوصول " + dayName(from) + " · اختر يوم المغادرة" : dayName(from) + " ← " + dayName(to) + " · " + nightsLabel(nights)}
+        </span>
+        <button type="button" className="lp-x" aria-label="الشهر التالي" disabled={off >= 11} onClick={() => setOff(o => Math.min(11, o + 1))}><I n="chevL"/></button>
+      </div>
+      <div className="lp-cal-months">{month(0)}{month(1)}</div>
+      <div className="lp-legend">
+        <span><i className="ok"/>متاح (السعر لليلة)</span>
+        <span><i className="bk"/>محجوز</span>
+        <span><i className="sel"/>اختيارك</span>
+        {from && <button type="button" className="lp-link" onClick={() => onPick("", "")}>مسح الاختيار</button>}
+      </div>
+    </div>
+  );
+}
+
+/* ───────── لوحة الحجز ───────── */
+function BookingPanel({ chalet, data, booked, from, to, setFrom, setTo, onToast }: {
+  chalet: LandingChalet; data: LandingData; booked: { from: string; to: string }[];
+  from: string; to: string; setFrom: (v: string) => void; setTo: (v: string) => void; onToast: (t: string) => void;
+}) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<{ id: number; price: number; nights: number } | null>(null);
+  const [done, setDone] = useState<{ id: number; price: number; nights: number; from: string; to: string } | null>(null);
   const { nights, total } = useMemo(() => priceFor(chalet, from, to), [chalet, from, to]);
-  const conflict = useMemo(() => (data.booked || []).some(b => b.chalet === chalet.name && b.from < to && b.to > from), [data.booked, chalet.name, from, to]);
+  const conflict = useMemo(() => !!from && !!to && booked.some(b => b.from < to && b.to > from), [booked, from, to]);
   const wa = waNumber(data.whatsapp || data.phone);
   const today = toISO(new Date());
-
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
-  }, [onClose]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
+    if (!from || !to) { setErr("اختر تاريخ الوصول والمغادرة من التقويم"); return; }
     if (nights <= 0) { setErr("تاريخ المغادرة لازم يكون بعد الوصول"); return; }
     if (conflict) { setErr("التواريخ المختارة محجوزة، اختر تواريخ ثانية"); return; }
     setBusy(true);
@@ -432,49 +733,49 @@ function BookingSheet({ chalet, data, onClose, onToast }: { chalet: LandingChale
     setBusy(false);
     if (error || !r) { setErr("صار خطأ في الاتصال، حاول مرة ثانية"); return; }
     if (!r.ok) { setErr(r.error || "تعذّر إتمام الحجز"); return; }
-    setDone({ id: r.id, price: r.price, nights: r.nights });
+    setDone({ id: r.id, price: r.price, nights: r.nights, from, to });
     onToast("وصلنا طلب حجزك");
   }
 
-  const waMsg = done ? encodeURIComponent(`السلام عليكم، حجزت ${chalet.name} من الموقع\nرقم الحجز: ${done.id}\nمن ${from} إلى ${to}\nالمبلغ: ${fmt(done.price)} ريال\nأرفقت لكم إيصال التحويل`) : "";
-
-  return (
-    <div className="lp-modal" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="lp-sheet" role="dialog" aria-modal="true" aria-labelledby="lp-bt" dir="rtl">
-        <div className="lp-sheet-h"><h3 id="lp-bt">{done ? "تم استلام طلب حجزك" : "حجز " + chalet.name}</h3><button className="lp-x" type="button" aria-label="إغلاق" onClick={onClose}><I n="x"/></button></div>
-        {!done ? (
-          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div className="lp-grid2">
-              <div className="lp-field"><label htmlFor="lp-f1">الوصول</label><input className="lp-input" type="date" id="lp-f1" min={today} value={from} onChange={e => { setFrom(e.target.value); if (e.target.value >= to) { const d = parseISO(e.target.value); d.setDate(d.getDate() + 1); setTo(toISO(d)); } }} required/></div>
-              <div className="lp-field"><label htmlFor="lp-f2">المغادرة</label><input className="lp-input" type="date" id="lp-f2" min={from} value={to} onChange={e => setTo(e.target.value)} required/></div>
-            </div>
-            {conflict && <div className="lp-err">هذي التواريخ محجوزة لهذا الشاليه، جرّب تواريخ ثانية</div>}
-            <div className="lp-field"><label htmlFor="lp-f3">الاسم الكامل</label><input className="lp-input" id="lp-f3" value={name} onChange={e => setName(e.target.value)} placeholder="مثال: خالد العتيبي" autoComplete="name" required/></div>
-            <div className="lp-field"><label htmlFor="lp-f4">رقم الجوال</label><input className="lp-input lp-mono" id="lp-f4" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" placeholder="05XXXXXXXX" autoComplete="tel" style={{ textAlign: "right" }} required/></div>
-            <div className="lp-total"><span>{nights > 0 ? (nights === 1 ? "ليلة واحدة" : nights + " ليالٍ") : "اختر التواريخ"}</span><b>{fmt(total) + " ريال"}</b></div>
-            {err && <div className="lp-err" role="alert">{err}</div>}
-            <button className="lp-btn lp-primary" type="submit" disabled={busy || conflict} style={{ width: "100%" }}>{busy ? "جاري الإرسال..." : "تأكيد طلب الحجز"}</button>
-            <p className="lp-hint" style={{ margin: 0, textAlign: "center" }}>الحجز يتأكد بعد استلام التحويل البنكي</p>
-          </form>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            <div className="lp-sent"><I n="check"/><div><b>{"رقم حجزك " + done.id}</b><span>{chalet.name + " · " + (done.nights === 1 ? "ليلة واحدة" : done.nights + " ليالٍ") + " · " + fmt(done.price) + " ريال"}</span></div></div>
-            {(data.bank_iban || data.bank_name) && (
-              <div className="lp-bank">
-                <b>حوّل المبلغ على الحساب التالي</b>
-                {data.bank_name && <div><small>البنك</small><span>{data.bank_name}</span></div>}
-                {data.bank_account_name && <div><small>اسم صاحب الحساب</small><span>{data.bank_account_name}</span></div>}
-                {data.bank_iban && <div><small>رقم الآيبان</small><span className="lp-mono" style={{ userSelect: "all" }}>{data.bank_iban}</span>
-                  <button type="button" className="lp-btn lp-ghost lp-sm" onClick={async () => { try { await navigator.clipboard.writeText(data.bank_iban || ""); onToast("تم نسخ رقم الآيبان"); } catch { /* */ } }}><I n="copy" s={16}/>نسخ</button></div>}
-              </div>
-            )}
-            {wa && <a className="lp-btn lp-wa" href={`https://wa.me/${wa}?text=${waMsg}`} target="_blank" rel="noreferrer"><I n="msg"/>أرسل إيصال التحويل واتساب</a>}
-            <p className="lp-hint" style={{ margin: 0 }}>بعد تأكيد التحويل يوصلك تأكيد الحجز، وتقدر تتابعه من قسم "حجزي" بجوالك واسم عائلتك.</p>
-            <button className="lp-btn lp-ghost" type="button" onClick={onClose}>تم</button>
+  if (done) {
+    const waMsg = encodeURIComponent(`السلام عليكم، حجزت ${chalet.name} من الموقع\nرقم الحجز: ${done.id}\nمن ${done.from} إلى ${done.to}\nالمبلغ: ${fmt(done.price)} ريال\nأرفقت لكم إيصال التحويل`);
+    return (
+      <div className="lp-book">
+        <h3>تم استلام طلب حجزك</h3>
+        <div className="lp-sent"><I n="check"/><div><b>{"رقم حجزك " + done.id}</b><span>{chalet.name + " · " + nightsLabel(done.nights) + " · " + fmt(done.price) + " ريال"}</span></div></div>
+        {(data.bank_iban || data.bank_name) && (
+          <div className="lp-bank">
+            <b>حوّل المبلغ على الحساب التالي</b>
+            {data.bank_name && <div><small>البنك</small><span>{data.bank_name}</span></div>}
+            {data.bank_account_name && <div><small>اسم صاحب الحساب</small><span>{data.bank_account_name}</span></div>}
+            {data.bank_iban && <div><small>رقم الآيبان</small><span className="lp-mono" style={{ userSelect: "all" }}>{data.bank_iban}</span>
+              <button type="button" className="lp-btn lp-ghost lp-sm" onClick={async () => { try { await navigator.clipboard.writeText(data.bank_iban || ""); onToast("تم نسخ رقم الآيبان"); } catch { /* */ } }}><I n="copy" s={16}/>نسخ</button></div>}
           </div>
         )}
+        {wa && <a className="lp-btn lp-wa" href={`https://wa.me/${wa}?text=${waMsg}`} target="_blank" rel="noreferrer"><I n="msg"/>أرسل إيصال التحويل واتساب</a>}
+        <p className="lp-hint">بعد تأكيد التحويل يوصلك تأكيد الحجز، وتقدر تتابعه من قسم "حجزي" بجوالك واسم عائلتك.</p>
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <form className="lp-book" onSubmit={submit}>
+      <div className="lp-book-h">
+        <div className="lp-price"><b>{fmt(Number(chalet.price || 0))}</b> <small>ريال / الليلة</small></div>
+        {chalet.wprice ? <span className="lp-wk">{"الجمعة والسبت " + fmt(Number(chalet.wprice)) + " ريال"}</span> : null}
+      </div>
+      <div className="lp-grid2">
+        <div className="lp-field"><label htmlFor="lp-f1">الوصول</label><input className="lp-input" type="date" id="lp-f1" min={today} value={from} onChange={e => { const v = e.target.value; setFrom(v); if (v && to && v >= to) { const d = parseISO(v); d.setDate(d.getDate() + 1); setTo(toISO(d)); } }} required/></div>
+        <div className="lp-field"><label htmlFor="lp-f2">المغادرة</label><input className="lp-input" type="date" id="lp-f2" min={from || today} value={to} onChange={e => setTo(e.target.value)} required/></div>
+      </div>
+      {conflict && <div className="lp-err">هذي التواريخ محجوزة لهذا الشاليه، جرّب تواريخ ثانية</div>}
+      <div className="lp-field"><label htmlFor="lp-f3">الاسم الكامل</label><input className="lp-input" id="lp-f3" value={name} onChange={e => setName(e.target.value)} placeholder="مثال: خالد العتيبي" autoComplete="name" required/></div>
+      <div className="lp-field"><label htmlFor="lp-f4">رقم الجوال</label><input className="lp-input lp-mono" id="lp-f4" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" placeholder="05XXXXXXXX" autoComplete="tel" style={{ textAlign: "right" }} required/></div>
+      <div className="lp-total"><span>{nights > 0 ? nightsLabel(nights) : "اختر التواريخ"}</span><b>{fmt(total) + " ريال"}</b></div>
+      {err && <div className="lp-err" role="alert">{err}</div>}
+      <button className="lp-btn lp-primary" type="submit" disabled={busy || conflict} style={{ width: "100%" }}>{busy ? "جاري الإرسال..." : "تأكيد طلب الحجز"}</button>
+      <p className="lp-hint" style={{ textAlign: "center" }}>الحجز يتأكد بعد استلام التحويل البنكي</p>
+    </form>
   );
 }
 
@@ -842,7 +1143,8 @@ textarea.lp-input{min-height:90px;padding:12px 16px;resize:vertical}
 .lp-sheet-h{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}
 .lp-sheet-h h3{font-size:22px;color:var(--lp-espresso)}
 .lp-x{width:42px;height:42px;border-radius:12px;border:1px solid var(--lp-line);background:#fff;color:var(--lp-ink);display:inline-flex;align-items:center;justify-content:center}
-.lp-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.lp-grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px}
+.lp-grid2 .lp-input{min-width:0;padding:0 10px}
 .lp-total{display:flex;justify-content:space-between;align-items:center;background:var(--lp-sand);border-radius:14px;padding:14px 16px}
 .lp-total b{font-family:var(--lp-display);font-size:24px;color:var(--lp-espresso)}
 .lp-bank{background:var(--lp-sand);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px}
@@ -857,4 +1159,120 @@ textarea.lp-input{min-height:90px;padding:12px 16px;resize:vertical}
 .lp-foot a:hover{color:var(--lp-gold)!important}
 .lp-foot-bottom{grid-column:1/-1;border-top:1px solid rgba(205,187,164,.18);padding-top:20px;font-size:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
 @media (max-width:800px){.lp-foot-in{grid-template-columns:1fr}}
+/* صفحة الشاليه */
+.lp-card-img{display:block}
+.lp-card-link{color:inherit!important;text-decoration:none}
+.lp-card-link:hover{color:var(--lp-palm)!important}
+.lp-badge-end{inset-inline-start:auto;inset-inline-end:14px}
+.lp section.lp-cd{padding-block:22px 64px}
+.lp-back{display:inline-flex;align-items:center;gap:4px;color:var(--lp-ink-2)!important;font-size:15px;font-weight:500;text-decoration:none;padding:6px 0}
+.lp-back:hover{color:var(--lp-espresso)!important}
+.lp-cd-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-top:6px}
+.lp-cd-head h1{font-size:clamp(30px,4.5vw,46px);color:var(--lp-espresso)}
+.lp-cd-meta{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--lp-ink-2);font-size:15px;margin-top:8px}
+.lp-cd-meta span{display:inline-flex;align-items:center;gap:6px}
+.lp-star{width:17px;height:17px;fill:var(--lp-gold)}
+.lp-gal{display:grid;gap:10px;border-radius:26px;overflow:hidden;margin-top:22px;grid-template-columns:2fr 1fr 1fr;grid-template-rows:220px 220px}
+.lp-gal>button{border:0;padding:0;margin:0;position:relative;overflow:hidden;background:var(--lp-espresso);cursor:zoom-in;min-width:0}
+.lp-gal>button:first-child{grid-row:span 2}
+.lp-gal img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s}
+.lp-gal>button:hover img{transform:scale(1.04)}
+.lp-gal .lp-gal-x{display:none}
+.lp-gal[data-n="1"]{grid-template-columns:1fr;grid-template-rows:460px}
+.lp-gal[data-n="2"]{grid-template-columns:1.6fr 1fr;grid-template-rows:460px}
+.lp-gal[data-n="1"]>button,.lp-gal[data-n="2"]>button{grid-row:auto}
+.lp-gal[data-n="3"]{grid-template-columns:2fr 1fr}
+.lp-gal[data-n="4"]>button:nth-child(4){grid-column:span 2}
+.lp-gal-cat{position:absolute;bottom:12px;inset-inline-start:12px;background:rgba(31,22,15,.72);color:#FFF6E8;font-size:13px;font-weight:500;padding:4px 12px;border-radius:999px}
+.lp-gal-plus{position:absolute;inset:0;background:rgba(31,22,15,.55);color:#FFF6E8;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--lp-display);font-size:34px;line-height:1.1}
+.lp-gal-plus small{font-family:var(--lp-body);font-size:14px}
+.lp-gal-empty{position:relative;background-color:var(--lp-espresso);background-repeat:repeat;display:flex;align-items:center;justify-content:center;color:#E9DCC8}
+.lp-gal-empty span{background:rgba(31,22,15,.7);padding:8px 18px;border-radius:999px}
+@media (max-width:700px){
+  .lp-gal,.lp-gal[data-n]{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;grid-template-rows:none;border-radius:20px;margin-inline:-18px;padding-inline:18px;gap:8px;scrollbar-width:none}
+  .lp-gal::-webkit-scrollbar{display:none}
+  .lp-gal>button,.lp-gal .lp-gal-x{display:block;flex:0 0 86%;height:270px;scroll-snap-align:center;border-radius:18px}
+  .lp-gal[data-n="1"]>button{flex-basis:100%}
+  .lp-gal-plus{display:none!important}
+  .lp-gal-empty{flex:1;height:240px;border-radius:18px}
+}
+.lp-cd-grid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:40px;align-items:start;margin-top:34px}
+.lp-cd-main{display:flex;flex-direction:column;gap:44px;min-width:0}
+.lp-cd-sec h2{font-size:26px;color:var(--lp-espresso);margin-bottom:6px!important}
+.lp-cd-sub{color:var(--lp-muted);font-size:15px;margin-bottom:16px!important}
+.lp-cd-sec h2+.lp-cd-text,.lp-cd-sec h2+.lp-amen{margin-top:10px}
+.lp-cd-text{color:var(--lp-ink-2);font-size:17px;margin-bottom:8px!important}
+.lp-cd-facts b{color:var(--lp-espresso)}
+.lp-cd-aside{position:sticky;top:96px;scroll-margin-top:96px}
+.lp-book{background:var(--lp-paper);border:1px solid var(--lp-line);border-radius:24px;padding:24px;box-shadow:0 30px 60px -34px rgba(42,30,20,.35);display:flex;flex-direction:column;gap:12px}
+.lp-book h3{font-size:22px;color:var(--lp-espresso)}
+.lp-book-h{padding-bottom:12px;border-bottom:1px dashed var(--lp-line)}
+.lp-book .lp-hint{margin:0}
+@media (max-width:960px){.lp-cd-grid{grid-template-columns:1fr}.lp-cd-aside{position:static}}
+.lp-rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr));gap:12px}
+.lp-room{padding:0;background:var(--lp-paper);border:1px solid var(--lp-line);border-radius:18px;overflow:hidden;text-align:right;color:var(--lp-ink);display:flex;flex-direction:column;transition:transform .2s,box-shadow .2s}
+.lp-room:hover{transform:translateY(-3px);box-shadow:0 18px 30px -20px rgba(42,30,20,.35)}
+.lp-room-img{display:block;aspect-ratio:4/3;background:var(--lp-espresso);overflow:hidden}
+.lp-room-img img{width:100%;height:100%;object-fit:cover;display:block}
+.lp-room-t{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:12px 14px}
+.lp-room-t b{font-size:16px}
+.lp-room-t small{color:var(--lp-muted);font-size:13px;white-space:nowrap}
+.lp-amen{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,180px),1fr));gap:10px}
+.lp-amen div{display:flex;align-items:center;gap:12px;padding:12px 14px;background:var(--lp-paper);border:1px solid var(--lp-line);border-radius:16px;font-weight:500}
+.lp-amen .ic{width:40px;height:40px;border-radius:12px;background:var(--lp-palm-2);color:var(--lp-palm);display:flex;align-items:center;justify-content:center;flex:none}
+.lp-amen div:nth-child(3n+2) .ic{background:var(--lp-gold-2);color:#8A6326}
+.lp-amen div:nth-child(3n) .ic{background:#F6E2D6;color:var(--lp-clay)}
+.lp-cal{background:var(--lp-paper);border:1px solid var(--lp-line);border-radius:22px;padding:20px}
+.lp-cal-nav{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px}
+.lp-cal-nav .lp-x:disabled{opacity:.35;cursor:default}
+.lp-cal-sum{font-size:15px;font-weight:600;color:var(--lp-espresso);text-align:center}
+.lp-cal-months{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px}
+@media (max-width:640px){.lp-cal-months{grid-template-columns:1fr}.lp-cal-m.second{display:none}.lp-cal{padding:14px}}
+.lp-cal-m h4{font-size:17px;text-align:center;margin-bottom:10px!important;color:var(--lp-espresso)}
+.lp-cal-w,.lp-cal-d{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.lp-cal-w span{font-size:12px;color:var(--lp-muted);text-align:center;padding-bottom:4px}
+.lp-day{aspect-ratio:1/1.08;border:0;border-radius:12px;background:var(--lp-ok-bg);color:var(--lp-ink);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:15px;font-weight:600;line-height:1.1;padding:0;font-variant-numeric:tabular-nums;min-width:0}
+.lp-day small{font-size:10px;font-weight:500;color:var(--lp-ok);margin-top:3px;white-space:nowrap}
+.lp-day.wk small{color:var(--lp-clay)}
+.lp-day.past{background:transparent;color:#C9BAA6;cursor:default}
+.lp-day.bk{background:var(--lp-bad-bg);color:var(--lp-bad)}
+.lp-day.bk span{text-decoration:line-through}
+.lp-day.bk small{color:var(--lp-bad)}
+.lp-day.bk:disabled{cursor:not-allowed}
+.lp-day.in{background:var(--lp-gold-2)}
+.lp-day.sel{background:var(--lp-espresso);color:#FFF6E8}
+.lp-day.sel small{color:#E9DCC8}
+.lp-day:not(:disabled):hover{box-shadow:inset 0 0 0 2px var(--lp-gold)}
+.lp-legend{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin-top:16px;font-size:13px;color:var(--lp-ink-2)}
+.lp-legend span{display:inline-flex;align-items:center;gap:6px}
+.lp-legend i{width:14px;height:14px;border-radius:4px;display:inline-block}
+.lp-legend i.ok{background:var(--lp-ok-bg);box-shadow:inset 0 0 0 1px #BFDCC9}
+.lp-legend i.bk{background:var(--lp-bad-bg);box-shadow:inset 0 0 0 1px #EFC3B9}
+.lp-legend i.sel{background:var(--lp-espresso)}
+.lp-link{background:none;border:0;padding:0;color:var(--lp-clay);font-size:13px;font-weight:600;text-decoration:underline;margin-inline-start:auto}
+.lp section.lp-cd-others{padding-block:64px 88px;background:var(--lp-sand-2)}
+.lp-mbar{display:none}
+@media (max-width:960px){
+  .lp-mbar{display:flex;position:sticky;bottom:0;z-index:45;background:var(--lp-paper);border-top:1px solid var(--lp-line);padding:12px 18px calc(12px + env(safe-area-inset-bottom,0px));justify-content:space-between;align-items:center;gap:12px;box-shadow:0 -12px 30px -20px rgba(42,30,20,.35)}
+  .lp-mbar b{font-family:var(--lp-display);font-size:20px;color:var(--lp-espresso);display:block;line-height:1.2}
+  .lp-mbar small{font-size:13px;color:var(--lp-muted)}
+  .lp-mbar .lp-btn{min-height:46px}
+}
+.lp-lb{position:fixed;inset:0;z-index:80;background:rgba(20,14,9,.95);display:flex;flex-direction:column;color:#FFF6E8}
+.lp-lb-top{display:flex;justify-content:space-between;align-items:center;padding:calc(12px + env(safe-area-inset-top,0px)) 18px 12px}
+.lp-lb-top b{font-family:var(--lp-display);font-size:18px;margin-inline-end:12px}
+.lp-lb-top span{font-size:14px;color:#CDBBA4}
+.lp-lb-x{width:44px;height:44px;border-radius:12px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;display:inline-flex;align-items:center;justify-content:center}
+.lp-lb-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;position:relative;padding:0 72px}
+.lp-lb-stage img{max-width:100%;max-height:100%;object-fit:contain;border-radius:12px;user-select:none}
+.lp-lb-nav{position:absolute;top:50%;transform:translateY(-50%);width:52px;height:52px;border-radius:50%;border:0;background:rgba(255,255,255,.14);color:#fff;display:flex;align-items:center;justify-content:center}
+.lp-lb-nav:hover{background:rgba(255,255,255,.26)}
+.lp-lb-prev{inset-inline-start:12px}
+.lp-lb-next{inset-inline-end:12px}
+.lp-lb-cat{position:absolute;bottom:14px;inset-inline:0;margin:0 auto;width:max-content;background:rgba(31,22,15,.8);padding:4px 14px;border-radius:999px;font-size:14px}
+.lp-lb-thumbs{display:flex;gap:8px;overflow-x:auto;padding:12px 18px calc(16px + env(safe-area-inset-bottom,0px));justify-content:safe center}
+.lp-lb-thumbs button{flex:none;width:76px;height:56px;border-radius:10px;overflow:hidden;border:2px solid transparent;opacity:.55;padding:0;background:#000}
+.lp-lb-thumbs button.on{border-color:var(--lp-gold);opacity:1}
+.lp-lb-thumbs img{width:100%;height:100%;object-fit:cover;display:block}
+@media (max-width:700px){.lp-lb-stage{padding:0 8px}.lp-lb-nav{width:42px;height:42px;background:rgba(20,14,9,.6)}}
 `;
