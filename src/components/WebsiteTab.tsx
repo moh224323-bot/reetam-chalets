@@ -1,5 +1,6 @@
-// خانة "الموقع العام" في لوحة التحكم: نشر صفحة الهبوط أو إخفاؤها، رابطها،
-// نصوصها وبيانات التواصل، ومتابعة طلبات الضيوف والحجوزات اللي جات من الموقع.
+// خانة "صفحة الهبوط" في لوحة التحكم:
+// أونلاين / أوفلاين، الشعار والاسم، حسابات التواصل، نصوص الصفحة،
+// ومتابعة طلبات الضيوف والحجوزات اللي جات من الصفحة.
 import { useEffect, useMemo, useState } from "react";
 import { db } from "../lib/db";
 import { Booking } from "../lib/types";
@@ -10,13 +11,19 @@ const SUPA_KEY = process.env.EXPO_PUBLIC_SUPA_KEY!;
 
 interface SiteSettings {
   landing_enabled?: boolean; landing_owner_id?: string | null;
+  landing_name?: string; landing_logo?: string | null;
   landing_tagline?: string; landing_about?: string;
-  contact_phone?: string; contact_whatsapp?: string; instagram_url?: string; tiktok_url?: string;
+  contact_phone?: string; contact_whatsapp?: string;
+  instagram_url?: string; tiktok_url?: string; snapchat_url?: string; x_url?: string;
   location_text?: string; location_url?: string;
 }
 interface GuestRequest { id: number; chalet: string; room: string; type: string; note: string; created_at: string; resolved: boolean; booking_id?: number | null; source?: string }
 
-const SITE_FIELDS: (keyof SiteSettings)[] = ["landing_tagline","landing_about","contact_phone","contact_whatsapp","instagram_url","tiktok_url","location_text","location_url"];
+const TEXT_FIELDS: (keyof SiteSettings)[] = [
+  "landing_name", "landing_tagline", "landing_about",
+  "contact_phone", "contact_whatsapp", "instagram_url", "tiktok_url", "snapchat_url", "x_url",
+  "location_text", "location_url",
+];
 const WEB_NOTE = "حجز من صفحة الموقع";
 
 async function patchSettings(body: Partial<SiteSettings>) {
@@ -28,17 +35,57 @@ async function patchSettings(body: Partial<SiteSettings>) {
   return r.ok;
 }
 
-export default function WebsiteTab({ bookings, ownerId, onReload, onOpenBooking }: {
-  bookings: Booking[]; ownerId: string | null; onReload: () => void | Promise<void>; onOpenBooking: (b: Booking) => void;
+/** يصغّر الشعار إلى 320px كحد أقصى ويحفظه PNG (يحافظ على الشفافية) */
+function logoToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("read"));
+    reader.onload = ev => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("img"));
+      img.onload = () => {
+        const scale = Math.min(1, 320 / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.max(1, Math.round(img.width * scale));
+        c.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = c.getContext("2d");
+        if (!ctx) { reject(new Error("ctx")); return; }
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        resolve(c.toDataURL("image/png"));
+      };
+      img.src = ev.target!.result as string;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+/** يقبل اسم المستخدم أو الرابط كامل ويحوّله لرابط صحيح */
+function normalizeSocial(kind: "instagram" | "tiktok" | "snapchat" | "x", v: string): string {
+  const t = (v || "").trim();
+  if (!t) return "";
+  if (/^https?:\/\//i.test(t)) return t;
+  const u = t.replace(/^@/, "");
+  if (kind === "instagram") return "https://instagram.com/" + u;
+  if (kind === "tiktok") return "https://www.tiktok.com/@" + u;
+  if (kind === "snapchat") return "https://www.snapchat.com/add/" + u;
+  return "https://x.com/" + u;
+}
+
+export default function WebsiteTab({ bookings, ownerId, onReload, onOpenBooking, onStatus }: {
+  bookings: Booking[]; ownerId: string | null; onReload: () => void | Promise<void>;
+  onOpenBooking: (b: Booking) => void; onStatus?: (online: boolean) => void;
 }) {
   const [s, setS] = useState<SiteSettings | null>(null);
   const [draft, setDraft] = useState<SiteSettings>({});
   const [reqs, setReqs] = useState<GuestRequest[]>([]);
+  const [view, setView] = useState<"control" | "requests" | "bookings">("control");
   const [filter, setFilter] = useState<"open" | "all">("open");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [toggling, setToggling] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [logoBusy, setLogoBusy] = useState(false);
+  const [logoErr, setLogoErr] = useState("");
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const siteUrl = origin + "/?site";
@@ -51,7 +98,7 @@ export default function WebsiteTab({ bookings, ownerId, onReload, onOpenBooking 
   }
   useEffect(() => { load(); }, []);
 
-  const published = !!s?.landing_enabled;
+  const online = !!s?.landing_enabled;
   const webBookings = useMemo(() => bookings.filter(b => (b.note || "").startsWith(WEB_NOTE)).sort((a, b) => b.id - a.id), [bookings]);
   const pendingWeb = webBookings.filter(b => b.status === "pending");
   const ym = new Date().toISOString().slice(0, 7);
@@ -59,23 +106,49 @@ export default function WebsiteTab({ bookings, ownerId, onReload, onOpenBooking 
   const openReqs = reqs.filter(r => !r.resolved);
   const shown = filter === "open" ? openReqs : reqs;
   const bookingById = useMemo(() => { const m = new Map<number, Booking>(); bookings.forEach(b => m.set(b.id, b)); return m; }, [bookings]);
-  const dirty = SITE_FIELDS.some(k => (draft[k] || "") !== ((s && s[k]) || ""));
+  const dirty = TEXT_FIELDS.some(k => ((draft[k] as string) || "") !== (((s && s[k]) as string) || ""));
 
-  async function togglePublish() {
-    if (!s) return;
+  async function setOnline(next: boolean) {
+    if (!s || next === online) return;
     setToggling(true);
-    const next = !published;
-    const ok = await patchSettings({ landing_enabled: next, ...(next && ownerId ? { landing_owner_id: ownerId } : {}) });
+    const body: Partial<SiteSettings> = { landing_enabled: next, ...(next && ownerId ? { landing_owner_id: ownerId } : {}) };
+    const ok = await patchSettings(body);
     setToggling(false);
-    if (ok) setS({ ...s, landing_enabled: next, ...(next && ownerId ? { landing_owner_id: ownerId } : {}) });
+    if (ok) { setS({ ...s, ...body }); onStatus?.(next); }
   }
   async function saveTexts() {
     setSaving(true);
     const body: Partial<SiteSettings> = {};
-    SITE_FIELDS.forEach(k => { (body as Record<string, unknown>)[k] = (draft[k] as string || "").trim() || null; });
+    TEXT_FIELDS.forEach(k => {
+      let v = ((draft[k] as string) || "").trim();
+      if (k === "instagram_url") v = normalizeSocial("instagram", v);
+      if (k === "tiktok_url") v = normalizeSocial("tiktok", v);
+      if (k === "snapchat_url") v = normalizeSocial("snapchat", v);
+      if (k === "x_url") v = normalizeSocial("x", v);
+      (body as Record<string, unknown>)[k] = v || null;
+    });
     const ok = await patchSettings(body);
     setSaving(false);
-    if (ok) { setS({ ...(s || {}), ...body }); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+    if (ok) { const merged = { ...(s || {}), ...body }; setS(merged); setDraft(merged); setSaved(true); setTimeout(() => setSaved(false), 2000); }
+  }
+  async function uploadLogo(file?: File) {
+    if (!file) return;
+    setLogoErr("");
+    if (!file.type.startsWith("image/")) { setLogoErr("اختر صورة (PNG أو JPG أو SVG)"); return; }
+    setLogoBusy(true);
+    try {
+      const url = await logoToDataUrl(file);
+      const ok = await patchSettings({ landing_logo: url });
+      if (ok) { setS(p => ({ ...(p || {}), landing_logo: url })); setDraft(p => ({ ...p, landing_logo: url })); }
+      else setLogoErr("ما انحفظ الشعار، حاول مرة ثانية");
+    } catch { setLogoErr("ما قدرنا نقرأ الصورة، جرّب صورة ثانية"); }
+    setLogoBusy(false);
+  }
+  async function removeLogo() {
+    setLogoBusy(true);
+    const ok = await patchSettings({ landing_logo: null });
+    setLogoBusy(false);
+    if (ok) { setS(p => ({ ...(p || {}), landing_logo: null })); setDraft(p => ({ ...p, landing_logo: null })); }
   }
   async function resolve(r: GuestRequest) {
     await db("room_requests", "PATCH", { resolved: true }, r.id);
@@ -91,118 +164,190 @@ export default function WebsiteTab({ bookings, ownerId, onReload, onOpenBooking 
   const kindIcon = (t: string) => t === "صيانة" ? "wrench" : t === "نظافة" ? "broom" : "receipt";
   const kindTone = (t: string): "bad" | "info" | "warn" => t === "صيانة" ? "bad" : t === "نظافة" ? "info" : "warn";
 
-  const field = (k: keyof SiteSettings, label: string, opts?: { area?: boolean; ltr?: boolean; ph?: string; full?: boolean }) => (
-    <div style={{ gridColumn: opts?.full ? "1 / -1" : undefined }}>
-      <label className="lbl" htmlFor={"ws_" + k}>{label}</label>
+  const field = (k: keyof SiteSettings, label: string, opts?: { area?: boolean; ltr?: boolean; ph?: string; full?: boolean; icon?: string }) => (
+    <div style={{ gridColumn: opts?.full ? "1 / -1" : undefined, minWidth: 0 }}>
+      <label className="lbl" htmlFor={"ws_" + k} style={{ display: "flex", alignItems: "center", gap: 6 }}>{opts?.icon && <Icon n={opts.icon} s={15}/>}{label}</label>
       {opts?.area
         ? <textarea id={"ws_" + k} className="x-input" style={{ minHeight: 110, padding: "10px 12px", resize: "vertical" }} value={(draft[k] as string) || ""} placeholder={opts?.ph} onChange={e => setDraft(d => ({ ...d, [k]: e.target.value }))}/>
         : <input id={"ws_" + k} className={"x-input" + (opts?.ltr ? " x-mono" : "")} dir={opts?.ltr ? "ltr" : undefined} style={opts?.ltr ? { textAlign: "left" } : undefined} value={(draft[k] as string) || ""} placeholder={opts?.ph} onChange={e => setDraft(d => ({ ...d, [k]: e.target.value }))}/>}
     </div>
   );
+  const socialStatus = (v?: string) => v ? <Pill tone="ok">مربوط</Pill> : <Pill tone="muted">غير مربوط</Pill>;
 
   return (
     <div className="x-page">
-      <PageHead title="الموقع العام" sub="صفحة الهبوط اللي يشوفها الضيوف: الشاليهات، الحجز، وقسم حجزي">
-        <a className="btn bo" href={siteUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}><Icon n="globe"/>{published ? "فتح الموقع" : "معاينة"}</a>
+      <PageHead title="صفحة الهبوط" sub="تحكم بالصفحة اللي يشوفها الضيوف: الحالة، الهوية، الحسابات، والطلبات">
+        <a className="btn bo" href={siteUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}><Icon n="globe"/>{online ? "فتح الصفحة" : "معاينة"}</a>
       </PageHead>
 
-      <div className="x-card x-pad" style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 18, justifyContent: "space-between", background: published ? "var(--k-green-bg)" : "var(--surface)" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
-          <div className={"x-ic " + (published ? "ok" : "muted")} style={{ width: 52, height: 52 }}><Icon n="globe" s={24}/></div>
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: published ? "var(--k-green)" : "var(--text)" }}>{s === null ? "جاري التحميل..." : published ? "الموقع منشور للعامة" : "الموقع غير منشور"}</div>
-            <div className="x-muted" style={{ fontSize: 14 }}>{published ? "أي زائر يفتح رابط الموقع يشوف الشاليهات ويقدر يحجز ويتابع حجزه" : "ما أحد يشوفه غيرك، تقدر تعاينه من زر المعاينة"}</div>
+      {/* ── الحالة: أونلاين / أوفلاين ── */}
+      <div className="x-card x-pad" style={{ display: "flex", flexDirection: "column", gap: 16, background: online ? "var(--k-green-bg)" : "var(--surface)" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 16, justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+            <span aria-hidden="true" style={{ width: 16, height: 16, borderRadius: "50%", background: online ? "#1E9A57" : "var(--text3)", boxShadow: online ? "0 0 0 6px rgba(30,154,87,.18)" : "none", flex: "none" }}/>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: online ? "var(--k-green)" : "var(--text)" }}>{s === null ? "جاري التحميل..." : online ? "أونلاين" : "أوفلاين"}</div>
+              <div className="x-muted" style={{ fontSize: 14 }}>{online ? "الصفحة ظاهرة للعامة: يشوفون الشاليهات ويحجزون ويتابعون حجوزاتهم" : "الصفحة مخفية عن الزوار، تقدر تعاينها أنت بس"}</div>
+            </div>
+          </div>
+          <div className="x-seg" role="group" aria-label="حالة صفحة الهبوط" style={{ padding: 4 }}>
+            <button type="button" aria-pressed={online} disabled={!s || toggling} onClick={() => setOnline(true)} style={{ minHeight: 42, padding: "0 20px", fontSize: 15 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "#1E9A57" }}/>أونلاين
+            </button>
+            <button type="button" aria-pressed={!online} disabled={!s || toggling} onClick={() => setOnline(false)} style={{ minHeight: 42, padding: "0 20px", fontSize: 15 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--text3)" }}/>أوفلاين
+            </button>
           </div>
         </div>
-        <button type="button" className={"btn " + (published ? "bo" : "bp")} disabled={!s || toggling} onClick={togglePublish}>
-          <Icon n={published ? "x" : "check"}/>{toggling ? "جاري..." : published ? "إيقاف النشر" : "نشر الموقع للعامة"}
-        </button>
-        <div style={{ flexBasis: "100%", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <span className="x-muted" style={{ fontSize: 13 }}>رابط الموقع:</span>
-          <span className="x-mono" style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", fontSize: 13, userSelect: "all", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>{siteUrl}</span>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span className="x-muted" style={{ fontSize: 13 }}>الرابط:</span>
+          <span className="x-mono" style={{ background: "var(--surface)", border: "1px solid var(--border)", borderRadius: 8, padding: "6px 10px", fontSize: 13, userSelect: "all", maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}>{siteUrl}</span>
           <button type="button" className="btn bo bsm" onClick={async () => { try { await navigator.clipboard.writeText(siteUrl); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch { /* */ } }}><Icon n="link" s={15}/>{copied ? "تم النسخ" : "نسخ"}</button>
-          {published && <span className="x-muted" style={{ fontSize: 13 }}>والرابط الرئيسي للموقع يعرض الصفحة للزوار، ودخول الإدارة من أسفل الصفحة.</span>}
+          {online && <span className="x-muted" style={{ fontSize: 13 }}>والرابط الرئيسي للموقع يفتحها للزوار، ودخول الإدارة من أسفلها.</span>}
         </div>
       </div>
 
       <div className="x-kpis">
         <Kpi c={openReqs.length ? "amber" : "green"} label="طلبات الضيوف المفتوحة" value={openReqs.length} sub="مستلزمات ونظافة وصيانة"/>
-        <Kpi c={pendingWeb.length ? "amber" : "teal"} label="حجوزات تنتظر التأكيد" value={pendingWeb.length} sub="من الموقع، بانتظار التحويل"/>
-        <Kpi c="blue" label="حجوزات الموقع هذا الشهر" value={monthWeb.length}/>
+        <Kpi c={pendingWeb.length ? "amber" : "teal"} label="حجوزات تنتظر التأكيد" value={pendingWeb.length} sub="بانتظار التحويل"/>
+        <Kpi c="blue" label="حجوزات الصفحة هذا الشهر" value={monthWeb.length}/>
         <Kpi c="green" label="قيمتها" value={<SAR v={monthWeb.reduce((t, b) => t + Number(b.price || 0), 0)}/>}/>
       </div>
 
-      <div className="x-card">
-        <div className="x-card-h">
-          <h2><Icon n="bell"/>طلبات الضيوف من الموقع</h2>
-          <Seg label="تصفية" value={filter} onChange={setFilter} options={[{ v: "open", l: "المفتوحة", c: openReqs.length }, { v: "all", l: "الكل", c: reqs.length }]}/>
-        </div>
-        {shown.length === 0 ? <Empty>{filter === "open" ? "لا توجد طلبات مفتوحة" : "لا توجد طلبات بعد"}</Empty> : (
-          <div className="x-list">{shown.map(r => {
-            const b = r.booking_id ? bookingById.get(r.booking_id) : undefined;
-            const wa = guestWa(b);
-            return (
-              <div key={r.id} className="x-li">
-                <div className={"x-ic " + (r.resolved ? "muted" : kindTone(r.type))}><Icon n={kindIcon(r.type)}/></div>
-                <div className="meta">
-                  <b>{r.type + ": " + r.note}</b>
-                  <span>{(b ? b.guest : r.room.replace(/^حجزي · /, "")) + " · " + r.chalet + " · " + ago(r.created_at)}</span>
-                </div>
-                {r.resolved ? <Pill tone="ok">تم</Pill> : <Pill tone="warn" dot>مفتوح</Pill>}
-                <div className="acts">
-                  {wa && <a className="btn bshare bsm" href={wa} target="_blank" rel="noreferrer" aria-label="واتساب الضيف"><Icon n="send" s={15}/></a>}
-                  {b && <button type="button" className="btn bo bsm" onClick={() => onOpenBooking(b)}>الحجز</button>}
-                  {!r.resolved && <button type="button" className="btn bp bsm" onClick={() => resolve(r)}><Icon n="check" s={15}/>تم</button>}
-                </div>
-              </div>
-            );
-          })}</div>
-        )}
-      </div>
+      <Seg label="الأقسام" value={view} onChange={setView} options={[
+        { v: "control", l: "التحكم والهوية" },
+        { v: "requests", l: "طلبات الضيوف", c: openReqs.length },
+        { v: "bookings", l: "حجوزات الصفحة", c: pendingWeb.length },
+      ]}/>
 
-      <div className="x-card">
-        <CardHead icon="cal" title="حجوزات من الموقع" sub={webBookings.length ? "الأحدث أولاً" : undefined}/>
-        {webBookings.length === 0 ? <Empty>ما فيه حجوزات من الموقع بعد</Empty> : (
-          <div className="tbl-wrap"><table className="x-tbl">
-            <thead><tr><th>الضيف</th><th>الشاليه</th><th>الفترة</th><th>المبلغ</th><th>الحالة</th><th className="end"></th></tr></thead>
-            <tbody>{webBookings.slice(0, 30).map(b => {
+      {view === "control" && (
+        <>
+          {/* ── الهوية: الشعار والاسم ── */}
+          <div className="x-card">
+            <CardHead icon="image" title="الهوية" sub="الشعار والاسم اللي يظهرون أعلى الصفحة وأسفلها"/>
+            <div className="x-pad" style={{ display: "flex", flexWrap: "wrap", gap: 24, alignItems: "flex-start" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, alignItems: "center" }}>
+                <div style={{ width: 112, height: 112, borderRadius: 24, background: "#3B2A1C", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", border: "1px solid var(--border)" }}>
+                  {s?.landing_logo
+                    ? <img src={s.landing_logo} alt="الشعار الحالي" style={{ width: "100%", height: "100%", objectFit: "contain", padding: 10 }}/>
+                    : <Icon n="image" s={36} style={{ color: "#C9A36A" }}/>}
+                </div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  <label className="btn bo bsm" style={{ cursor: logoBusy ? "wait" : "pointer" }}>
+                    <Icon n="camera" s={15}/>{logoBusy ? "جاري..." : s?.landing_logo ? "تغيير" : "رفع شعار"}
+                    <input type="file" accept="image/*" style={{ display: "none" }} disabled={logoBusy} onChange={e => { uploadLogo(e.target.files?.[0]); e.currentTarget.value = ""; }}/>
+                  </label>
+                  {s?.landing_logo && <button type="button" className="btn bd bsm" aria-label="حذف الشعار" disabled={logoBusy} onClick={removeLogo}><Icon n="trash" s={15}/></button>}
+                </div>
+                {logoErr && <div className="x-neg" style={{ fontSize: 13 }}>{logoErr}</div>}
+              </div>
+              <div style={{ flex: "1 1 280px", display: "grid", gap: 14, minWidth: 0 }}>
+                {field("landing_name", "اسم المنشأة", { ph: "مجموعة ريتام" })}
+                {field("landing_tagline", "النص تحت العنوان الرئيسي", { ph: "شاليهات عائلية بمسابح خاصة وتصميم يجمع روح الأحساء وراحة اليوم..." })}
+                <div className="x-muted" style={{ fontSize: 13 }}>الأفضل شعار بخلفية شفافة (PNG). يتصغّر تلقائياً.</div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── حسابات التواصل الاجتماعي ── */}
+          <div className="x-card">
+            <CardHead icon="share" title="حسابات التواصل" sub="تقدر تكتب اسم الحساب بس، والرابط يتكوّن تلقائياً"/>
+            <div className="x-pad" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,260px),1fr))", gap: 14 }}>
+              {([
+                ["instagram_url", "إنستقرام", "@reetam"],
+                ["tiktok_url", "تيك توك", "@reetam"],
+                ["snapchat_url", "سناب شات", "reetam"],
+                ["x_url", "X (تويتر)", "@reetam"],
+                ["contact_whatsapp", "واتساب", "05XXXXXXXX"],
+                ["contact_phone", "رقم الاتصال", "05XXXXXXXX"],
+              ] as [keyof SiteSettings, string, string][]).map(([k, l, ph]) => (
+                <div key={k} style={{ border: "1px solid var(--border)", borderRadius: 12, padding: 12, display: "flex", flexDirection: "column", gap: 8, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+                    <label className="lbl" htmlFor={"ws_" + k} style={{ margin: 0 }}>{l}</label>
+                    {socialStatus((draft[k] as string) || "")}
+                  </div>
+                  <input id={"ws_" + k} className="x-input x-mono" dir="ltr" style={{ textAlign: "left" }} value={(draft[k] as string) || ""} placeholder={ph} onChange={e => setDraft(d => ({ ...d, [k]: e.target.value }))}/>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── المحتوى والموقع ── */}
+          <div className="x-card">
+            <CardHead icon="edit" title="المحتوى والموقع"/>
+            <div className="x-pad" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,260px),1fr))", gap: 14 }}>
+              {field("landing_about", "نص «من نحن» (كل سطر فقرة)", { area: true, full: true, ph: "مجموعة ريتام شاليهات عائلية في الأحساء..." })}
+              {field("location_text", "الموقع (نص)", { ph: "الأحساء، المملكة العربية السعودية" })}
+              {field("location_url", "رابط الموقع على الخريطة", { ltr: true, ph: "https://maps.google.com/..." })}
+              <div className="x-muted" style={{ fontSize: 13, gridColumn: "1 / -1" }}>الشاليهات وأسعارها وصورها تنسحب تلقائياً من صفحة الشاليهات، والحساب البنكي من الإعدادات.</div>
+            </div>
+          </div>
+
+          <div style={{ position: dirty ? "sticky" : "static", bottom: 12, display: "flex", justifyContent: "flex-start", zIndex: 5 }}>
+            <button type="button" className="btn bp" disabled={saving || !dirty} onClick={saveTexts} style={{ boxShadow: dirty ? "0 10px 24px rgba(23,19,15,.25)" : "none" }}>
+              <Icon n="check"/>{saving ? "جاري الحفظ..." : saved ? "تم الحفظ" : dirty ? "حفظ التغييرات" : "لا توجد تغييرات"}
+            </button>
+          </div>
+        </>
+      )}
+
+      {view === "requests" && (
+        <div className="x-card">
+          <div className="x-card-h">
+            <h2><Icon n="bell"/>طلبات الضيوف من الصفحة</h2>
+            <Seg label="تصفية" value={filter} onChange={setFilter} options={[{ v: "open", l: "المفتوحة", c: openReqs.length }, { v: "all", l: "الكل", c: reqs.length }]}/>
+          </div>
+          {shown.length === 0 ? <Empty>{filter === "open" ? "لا توجد طلبات مفتوحة" : "لا توجد طلبات بعد"}</Empty> : (
+            <div className="x-list">{shown.map(r => {
+              const b = r.booking_id ? bookingById.get(r.booking_id) : undefined;
               const wa = guestWa(b);
               return (
-                <tr key={b.id}>
-                  <td className="strong">{b.guest}<div className="x-mono x-muted" style={{ fontSize: 12, fontWeight: 400, textAlign: "right" }}>{b.phone}</div></td>
-                  <td>{b.chalet}</td>
-                  <td>{b.date_from}<div className="x-muted" style={{ fontSize: 12 }}>{"إلى " + b.date_to}</div></td>
-                  <td className="strong"><SAR v={Number(b.price)}/></td>
-                  <td><Pill tone={b.status === "confirmed" ? "ok" : b.status === "pending" ? "warn" : b.status === "cancelled" ? "bad" : "muted"} dot>{b.status === "confirmed" ? "مؤكد" : b.status === "pending" ? "بانتظار التحويل" : b.status === "cancelled" ? "ملغي" : "مكتمل"}</Pill></td>
-                  <td className="end"><div style={{ display: "inline-flex", gap: 6 }}>
+                <div key={r.id} className="x-li">
+                  <div className={"x-ic " + (r.resolved ? "muted" : kindTone(r.type))}><Icon n={kindIcon(r.type)}/></div>
+                  <div className="meta">
+                    <b>{r.type + ": " + r.note}</b>
+                    <span>{(b ? b.guest : r.room.replace(/^حجزي · /, "")) + " · " + r.chalet + " · " + ago(r.created_at)}</span>
+                  </div>
+                  {r.resolved ? <Pill tone="ok">تم</Pill> : <Pill tone="warn" dot>مفتوح</Pill>}
+                  <div className="acts">
                     {wa && <a className="btn bshare bsm" href={wa} target="_blank" rel="noreferrer" aria-label="واتساب الضيف"><Icon n="send" s={15}/></a>}
-                    {b.status === "pending" && <button type="button" className="btn bp bsm" onClick={() => confirmBooking(b)}><Icon n="check" s={15}/>تأكيد</button>}
-                    <button type="button" className="btn bo bsm" onClick={() => onOpenBooking(b)}>التفاصيل</button>
-                  </div></td>
-                </tr>
+                    {b && <button type="button" className="btn bo bsm" onClick={() => onOpenBooking(b)}>الحجز</button>}
+                    {!r.resolved && <button type="button" className="btn bp bsm" onClick={() => resolve(r)}><Icon n="check" s={15}/>تم</button>}
+                  </div>
+                </div>
               );
-            })}</tbody>
-          </table></div>
-        )}
-      </div>
-
-      <div className="x-card">
-        <CardHead icon="edit" title="محتوى الصفحة وبيانات التواصل" sub="يظهر للزوار مباشرة بعد الحفظ"/>
-        <div className="x-pad" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,240px),1fr))", gap: 14 }}>
-            {field("landing_tagline", "النص تحت العنوان الرئيسي", { full: true, ph: "شاليهات عائلية بمسابح خاصة وتصميم يجمع روح الأحساء وراحة اليوم..." })}
-            {field("landing_about", "نص «من نحن» (كل سطر فقرة)", { area: true, full: true, ph: "مجموعة ريتام شاليهات عائلية في الأحساء..." })}
-            {field("contact_whatsapp", "رقم الواتساب", { ltr: true, ph: "05XXXXXXXX" })}
-            {field("contact_phone", "رقم الاتصال", { ltr: true, ph: "05XXXXXXXX" })}
-            {field("instagram_url", "رابط إنستقرام", { ltr: true, ph: "https://instagram.com/..." })}
-            {field("tiktok_url", "رابط تيك توك", { ltr: true, ph: "https://tiktok.com/@..." })}
-            {field("location_text", "الموقع (نص)", { ph: "الأحساء، المملكة العربية السعودية" })}
-            {field("location_url", "رابط الموقع على الخريطة", { ltr: true, ph: "https://maps.google.com/..." })}
-          </div>
-          <div className="x-muted" style={{ fontSize: 13 }}>الشاليهات وأسعارها وصورها تنسحب تلقائياً من صفحة الشاليهات، والحساب البنكي من الإعدادات.</div>
-          <div><button type="button" className="btn bp" disabled={saving || !dirty} onClick={saveTexts}>{saving ? "جاري الحفظ..." : saved ? "تم الحفظ" : "حفظ"}</button></div>
+            })}</div>
+          )}
         </div>
-      </div>
+      )}
+
+      {view === "bookings" && (
+        <div className="x-card">
+          <CardHead icon="cal" title="حجوزات من الصفحة" sub={webBookings.length ? "الأحدث أولاً" : undefined}/>
+          {webBookings.length === 0 ? <Empty>ما فيه حجوزات من الصفحة بعد</Empty> : (
+            <div className="tbl-wrap"><table className="x-tbl">
+              <thead><tr><th>الضيف</th><th>الشاليه</th><th>الفترة</th><th>المبلغ</th><th>الحالة</th><th className="end"></th></tr></thead>
+              <tbody>{webBookings.slice(0, 50).map(b => {
+                const wa = guestWa(b);
+                return (
+                  <tr key={b.id}>
+                    <td className="strong">{b.guest}<div className="x-mono x-muted" style={{ fontSize: 12, fontWeight: 400, textAlign: "right" }}>{b.phone}</div></td>
+                    <td>{b.chalet}</td>
+                    <td>{b.date_from}<div className="x-muted" style={{ fontSize: 12 }}>{"إلى " + b.date_to}</div></td>
+                    <td className="strong"><SAR v={Number(b.price)}/></td>
+                    <td><Pill tone={b.status === "confirmed" ? "ok" : b.status === "pending" ? "warn" : b.status === "cancelled" ? "bad" : "muted"} dot>{b.status === "confirmed" ? "مؤكد" : b.status === "pending" ? "بانتظار التحويل" : b.status === "cancelled" ? "ملغي" : "مكتمل"}</Pill></td>
+                    <td className="end"><div style={{ display: "inline-flex", gap: 6 }}>
+                      {wa && <a className="btn bshare bsm" href={wa} target="_blank" rel="noreferrer" aria-label="واتساب الضيف"><Icon n="send" s={15}/></a>}
+                      {b.status === "pending" && <button type="button" className="btn bp bsm" onClick={() => confirmBooking(b)}><Icon n="check" s={15}/>تأكيد</button>}
+                      <button type="button" className="btn bo bsm" onClick={() => onOpenBooking(b)}>التفاصيل</button>
+                    </div></td>
+                  </tr>
+                );
+              })}</tbody>
+            </table></div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

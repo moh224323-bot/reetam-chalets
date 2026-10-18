@@ -353,6 +353,10 @@ const CSS = `
   .rs-item:hover{background:var(--side-2)}
   .rs-item.active{background:var(--side-2);color:var(--side-strong);font-weight:600;box-shadow:inset -3px 0 0 var(--gold)}
   .rs-item svg{flex:none;opacity:.9}
+  .rs-site{margin-right:auto;height:22px;padding:0 8px;border-radius:11px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+  .rs-site::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+  .rs-site.on{background:rgba(30,154,87,.18);color:#7FD0A2}
+  .rs-site.off{background:rgba(255,255,255,.08);color:#A8998A}
   .rs-count{margin-right:auto;min-width:24px;height:22px;padding:0 7px;border-radius:11px;background:var(--gold);color:#17130F;font-size:12px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
   .rs-foot{padding:14px 16px;border-top:1px solid var(--side-line);display:flex;flex-direction:column;gap:12px}
   .rs-theme{display:flex;align-items:center;justify-content:space-between;min-height:44px;padding:0 14px;border-radius:10px;border:1px solid #3A3129;background:transparent;color:var(--side-fg);font-size:14px;cursor:pointer;font-family:var(--f-body)}
@@ -2466,6 +2470,11 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [bkStatus,setBkStatus] = useState("الكل");
   const [mStatus,setMStatus]   = useState<string>("open");
   const [walletTab,setWalletTab] = useState<"ins"|"cln"|"obl">("ins");
+  const [siteOnline,setSiteOnline] = useState<boolean|null>(null);
+  useEffect(()=>{
+    if(currentUser.role!=="admin"&&currentUser.role!=="owner") return;
+    db("business_settings","GET",null,"id=eq.1").then(r=>{ if(r&&r[0]) setSiteOnline(!!(r[0] as any).landing_enabled); }).catch(()=>{});
+  },[]);
   const [bkFrom,setBkFrom]     = useState(monthStart());
   const [bkTo,setBkTo]         = useState(monthEnd());
   const [bkLang,setBkLang]     = useState<"ar"|"hi">(()=>{ try{ return (localStorage.getItem("bk_lang") as "ar"|"hi") || "ar"; }catch{ return "ar"; } });
@@ -2851,11 +2860,11 @@ ${poolLine}
     {id:"maintenance",l:"الصيانة",           g:"التشغيل"},
     {id:"cleaning",   l:"النظافة",           g:"التشغيل"},
     {id:"smart",      l:"التحكم الذكي",      g:"التشغيل"},
+    {id:"website",    l:"صفحة الهبوط",       g:"الموقع"},
     {id:"finance",    l:"المالية",           g:"المال"},
     {id:"wallets",    l:"المحافظ",           g:"المال"},
     {id:"investors",  l:"المستثمرون",        g:"المال"},
     {id:"loyalty",    l:"الولاء والتقييمات", g:"العملاء"},
-    {id:"website",    l:"الموقع العام",      g:"العملاء"},
     {id:"settings",   l:"الإعدادات",         g:"النظام"},
   ];
 
@@ -3004,7 +3013,7 @@ ${poolLine}
             <span>{t.l}</span>
             {t.id==="bookings"&&count>0&&<span className="rs-count">{count}</span>}
             {t.id==="maintenance"&&opM>0&&<span className="rs-count">{opM}</span>}
-            {t.id==="website"&&roomReqs.filter((r:any)=>r.source==="landing").length>0&&<span className="rs-count">{roomReqs.filter((r:any)=>r.source==="landing").length}</span>}
+            {t.id==="website"&&siteOnline!==null&&<span className={"rs-site "+(siteOnline?"on":"off")}>{roomReqs.filter((r:any)=>r.source==="landing").length>0?roomReqs.filter((r:any)=>r.source==="landing").length+" · ":""}{siteOnline?"أونلاين":"أوفلاين"}</span>}
           </button>
         </React.Fragment>
       ))}
@@ -3750,7 +3759,7 @@ ${poolLine}
 
           {/* ── Website ── */}
           {tab==="website"&&isAdmin&&(
-            <WebsiteTab bookings={bookings} ownerId={currentUser.owner_id||currentOwnerId} onReload={loadAll} onOpenBooking={b=>setBkDetail(b)}/>
+            <WebsiteTab bookings={bookings} ownerId={currentUser.owner_id||currentOwnerId} onReload={loadAll} onOpenBooking={b=>setBkDetail(b)} onStatus={setSiteOnline}/>
           )}
 
           {/* ── Settings ── */}

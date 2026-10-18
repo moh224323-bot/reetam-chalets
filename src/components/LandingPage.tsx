@@ -10,6 +10,7 @@ export interface LandingChalet {
 }
 export interface LandingData {
   enabled: boolean; preview?: boolean;
+  name?: string; logo?: string | null; snapchat?: string; x?: string;
   about?: string; tagline?: string;
   phone?: string; whatsapp?: string; email?: string; instagram?: string; tiktok?: string;
   location_text?: string; location_url?: string;
@@ -122,6 +123,8 @@ const P: Record<string, React.ReactNode> = {
   phone: <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>,
   door: <><path d="M14 3H6v18h8"/><path d="M14 3l5 2v14l-5 2z"/></>,
   search: <><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></>,
+  snap: <path d="M12 3c3 0 5 2.2 5 5.2v2.3l1.8-.6c.5 0 .8.6.4 1-.6.5-1.6.9-2.2 1.2.4 1.6 1.8 3 3.5 3.5.4.1.4.6 0 .8-.8.4-1.8.5-2.3.6-.2.6-.3 1.1-1 1.1-.7 0-1.5-.4-2.8.2-1 .5-1.6 1.2-2.4 1.2s-1.4-.7-2.4-1.2c-1.3-.6-2.1-.2-2.8-.2-.7 0-.8-.5-1-1.1-.5-.1-1.5-.2-2.3-.6-.4-.2-.4-.7 0-.8 1.7-.5 3.1-1.9 3.5-3.5-.6-.3-1.6-.7-2.2-1.2-.4-.4-.1-1 .4-1l1.8.6V8.2C7 5.2 9 3 12 3z"/>,
+  xlogo: <path d="M4 4l16 16M20 4L4 20"/>,
   insta: <><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></>,
   copy: <><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/></>,
   lock: <><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
@@ -145,6 +148,34 @@ const CARVE = "data:image/svg+xml;utf8," + encodeURIComponent(
 const FROND_BG = "data:image/svg+xml;utf8," + encodeURIComponent(
   `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='28' viewBox='0 0 120 28'><g fill='none' stroke='#C29A5B' stroke-width='1.2' stroke-linecap='round'><path d='M4 14h112'/><path d='M14 14c4-6 10-8 16-8M14 14c4 6 10 8 16 8M34 14c4-6 10-8 16-8M34 14c4 6 10 8 16 8M54 14c4-6 10-8 16-8M54 14c4 6 10 8 16 8M74 14c4-6 10-8 16-8M74 14c4 6 10 8 16 8M94 14c4-6 10-8 16-8M94 14c4 6 10 8 16 8'/></g><circle cx='60' cy='14' r='2.2' fill='#C29A5B'/></svg>`);
 
+/* ───────── الشعار ───────── */
+function Brand({ data, dark }: { data: LandingData; dark?: boolean }) {
+  const name = data.name || "مجموعة ريتام";
+  return (
+    <span className="lp-logo" style={dark ? { color: "#FFF6E8" } : undefined}>
+      {data.logo
+        ? <img className="lp-logo-img" src={data.logo} alt=""/>
+        : <span className="lp-logo-mark" style={dark ? { background: "#3B2A1C" } : undefined}><I n="palm"/></span>}
+      <span><b>{name}</b><small style={dark ? { color: "#A8957E" } : undefined}>شاليهات الأحساء</small></span>
+    </span>
+  );
+}
+function Socials({ data, light }: { data: LandingData; light?: boolean }) {
+  const wa = waNumber(data.whatsapp || data.phone);
+  const items: [string, string, string][] = [];
+  if (data.instagram) items.push([data.instagram, "insta", "إنستقرام"]);
+  if (data.tiktok) items.push([data.tiktok, "music", "تيك توك"]);
+  if (data.snapchat) items.push([data.snapchat, "snap", "سناب شات"]);
+  if (data.x) items.push([data.x, "xlogo", "X"]);
+  if (wa) items.push([`https://wa.me/${wa}`, "msg", "واتساب"]);
+  if (!items.length) return null;
+  return (
+    <div className={"lp-socials" + (light ? " light" : "")}>
+      {items.map(([href, ic, label]) => <a key={label} href={href} target="_blank" rel="noreferrer" aria-label={label} title={label}><I n={ic} s={20}/></a>)}
+    </div>
+  );
+}
+
 /* ───────── الصفحة ───────── */
 export default function LandingPage({ initial }: { initial?: LandingData | null }) {
   const [data, setData] = useState<LandingData | null | undefined>(initial === undefined ? undefined : initial);
@@ -155,10 +186,10 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
 
   useEffect(() => {
     if (typeof document !== "undefined") {
-      document.title = "مجموعة ريتام | شاليهات الأحساء";
     }
     if (initial === undefined) fetchLanding().then(d => setData(d));
   }, []);
+  useEffect(() => { if (data && typeof document !== "undefined") document.title = (data.name || "مجموعة ريتام") + " | شاليهات الأحساء"; }, [data]);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3800); return () => clearTimeout(t); }, [toast]);
 
   if (data === undefined) return <div className="lp" dir="rtl"><style>{CSS}</style><div className="lp-center">جاري التحميل...</div></div>;
@@ -166,9 +197,9 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
     return (
       <div className="lp" dir="rtl"><style>{CSS}</style>
         <div className="lp-center" style={{ flexDirection: "column", gap: 14 }}>
-          <span className="lp-logo-mark"><I n="palm"/></span>
-          <h1 style={{ fontSize: 26 }}>مجموعة ريتام</h1>
-          <p style={{ color: "var(--lp-ink-2)" }}>الموقع غير متاح حالياً</p>
+          {data?.logo ? <img className="lp-logo-img" src={data.logo} alt="" style={{ width: 72, height: 72 }}/> : <span className="lp-logo-mark"><I n="palm"/></span>}
+          <h1 style={{ fontSize: 26 }}>{data?.name || "مجموعة ريتام"}</h1>
+          <p style={{ color: "var(--lp-ink-2)" }}>الموقع غير متاح حالياً، ونرجع قريب</p>
           <a className="lp-btn lp-ghost lp-sm" href="?login=1">دخول الإدارة</a>
         </div>
       </div>
@@ -192,10 +223,7 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
 
       <header className="lp-top">
         <div className="lp-wrap lp-top-in">
-          <a className="lp-logo" href="#top" aria-label="مجموعة ريتام">
-            <span className="lp-logo-mark"><I n="palm"/></span>
-            <span><b>مجموعة ريتام</b><small>شاليهات الأحساء</small></span>
-          </a>
+          <a href="#top" style={{ textDecoration: "none" }} aria-label={data.name || "مجموعة ريتام"}><Brand data={data}/></a>
           <nav className={"lp-nav" + (menu ? " open" : "")} aria-label="أقسام الصفحة" onClick={() => setMenu(false)}>
             <a href="#chalets">الشاليهات</a>
             <a href="#about">من نحن</a>
@@ -228,6 +256,7 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
                 {ratingAvg !== null && <div><b>{ratingAvg}</b><span>{"تقييم الضيوف من " + data.rating!.count}</span></div>}
                 <div><b>من جوالك</b><span>حجز ومتابعة وطلبات</span></div>
               </div>
+              <div style={{ marginTop: 22 }}><Socials data={data}/></div>
             </div>
             <div className="lp-arch-wrap">
               <div className="lp-arch">{heroImg ? <img src={heroImg} alt={heroChalet ? heroChalet.name : "شاليهات ريتام"}/> : <div className="lp-ph" style={{ backgroundImage: `url("${CARVE}")` }}/>}</div>
@@ -348,8 +377,9 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
       <footer className="lp-foot">
         <div className="lp-wrap lp-foot-in">
           <div>
-            <a className="lp-logo" href="#top" style={{ color: "#FFF6E8" }}><span className="lp-logo-mark" style={{ background: "#3B2A1C" }}><I n="palm"/></span><span><b>مجموعة ريتام</b><small style={{ color: "#A8957E" }}>شاليهات الأحساء</small></span></a>
+            <a href="#top" style={{ textDecoration: "none" }}><Brand data={data} dark/></a>
             <p style={{ marginTop: 16, maxWidth: 360 }}>شاليهات عائلية خاصة في الأحساء، بحجز سهل ومتابعة كاملة من جوالك.</p>
+            <div style={{ marginTop: 18 }}><Socials data={data} light/></div>
           </div>
           <div><h4>روابط</h4><a href="#chalets">الشاليهات</a><a href="#features">المميزات</a><a href="#how">طريقة الحجز</a><a href="#mybooking">حجزي</a></div>
           <div><h4>تواصل معنا</h4>
@@ -357,9 +387,11 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
             {data.phone && <a href={`tel:${data.phone}`}><I n="phone" s={18}/><span className="lp-mono">{data.phone}</span></a>}
             {data.instagram && <a href={data.instagram} target="_blank" rel="noreferrer"><I n="insta" s={18}/>إنستقرام</a>}
             {data.tiktok && <a href={data.tiktok} target="_blank" rel="noreferrer"><I n="music" s={18}/>تيك توك</a>}
+            {data.snapchat && <a href={data.snapchat} target="_blank" rel="noreferrer"><I n="snap" s={18}/>سناب شات</a>}
+            {data.x && <a href={data.x} target="_blank" rel="noreferrer"><I n="xlogo" s={18}/>X</a>}
             <a href={data.location_url || "#"} target={data.location_url ? "_blank" : undefined} rel="noreferrer"><I n="pin" s={18}/>{data.location_text || "الأحساء، المملكة العربية السعودية"}</a>
           </div>
-          <div className="lp-foot-bottom"><span>{"© " + new Date().getFullYear() + " مجموعة ريتام"}</span><a href="?login=1" style={{ display: "inline", padding: 0 }}>دخول الإدارة</a></div>
+          <div className="lp-foot-bottom"><span>{"© " + new Date().getFullYear() + " " + (data.name || "مجموعة ريتام")}</span><a href="?login=1" style={{ display: "inline", padding: 0 }}>دخول الإدارة</a></div>
         </div>
       </footer>
 
@@ -658,6 +690,11 @@ html,body{background:#F4ECDF;margin:0}
 .lp-top-in{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:72px;position:relative}
 .lp-logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--lp-espresso)!important}
 .lp-logo-mark{width:42px;height:42px;border-radius:12px;background:var(--lp-espresso);color:var(--lp-gold);display:inline-flex;align-items:center;justify-content:center}
+.lp-logo-img{width:46px;height:46px;object-fit:contain;border-radius:12px;flex:none}
+.lp-socials{display:flex;gap:8px;flex-wrap:wrap}
+.lp-socials a{width:42px;height:42px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;background:var(--lp-paper);border:1px solid var(--lp-line);color:var(--lp-espresso)!important;padding:0!important}
+.lp-socials a:hover{background:var(--lp-espresso);color:#FFF6E8!important}
+.lp-socials.light a{background:rgba(255,255,255,.06);border-color:rgba(205,187,164,.25);color:#E9DCC8!important}
 .lp-logo b{font-family:var(--lp-display);font-size:20px;display:block;line-height:1.1}
 .lp-logo small{font-size:12px;color:var(--lp-muted)}
 .lp-nav{display:flex;gap:4px;align-items:center}
