@@ -365,10 +365,10 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
           )}
         </div>
         <div className="x-kpis" style={{ gridTemplateColumns:"repeat(2,minmax(0,1fr))", alignContent:"start" }}>
-          <Kpi label="متوسط سعر الليلة" value={<SAR v={adr}/>}/>
-          <Kpi label="العائد لكل ليلة متاحة" value={revpar === null ? "—" : <SAR v={revpar}/>}/>
-          <Kpi label="نسبة الإشغال" value={occPct === null ? "—" : <>{occPct}<small>%</small></>}>{occPct !== null && <Track pct={occPct} tone={toneFor(occPct)}/>}</Kpi>
-          <Kpi label="المصاريف ÷ الإيرادات" value={expRatio === null ? "—" : <>{expRatio}<small>%</small></>} tone={expRatio !== null && expRatio > 60 ? "neg" : undefined}/>
+          <Kpi c="blue" label="متوسط سعر الليلة" value={<SAR v={adr}/>}/>
+          <Kpi c="teal" label="العائد لكل ليلة متاحة" value={revpar === null ? "—" : <SAR v={revpar}/>}/>
+          <Kpi c={occPct===null?undefined:occPct>=60?"green":occPct>=40?"amber":"red"} label="نسبة الإشغال" value={occPct === null ? "—" : <>{occPct}<small>%</small></>}>{occPct !== null && <Track pct={occPct} tone={toneFor(occPct)}/>}</Kpi>
+          <Kpi c={expRatio===null?undefined:expRatio>60?"red":expRatio>40?"amber":"green"} label="المصاريف ÷ الإيرادات" value={expRatio === null ? "—" : <>{expRatio}<small>%</small></>} tone={expRatio !== null && expRatio > 60 ? "neg" : undefined}/>
         </div>
       </div>
 
