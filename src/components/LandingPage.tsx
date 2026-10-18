@@ -1,0 +1,823 @@
+// صفحة الهبوط العامة لمجموعة ريتام + بوابة "حجزي" للضيف.
+// كل البيانات تمر عبر دوال Supabase آمنة (landing_*) — لا قراءة مباشرة للجداول.
+import React, { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
+
+export interface LandingChalet {
+  id: number; name: string; loc?: string; cap?: number; price?: number; wprice?: number;
+  description?: string; img?: string; gallery?: string; amenities?: string;
+  rating?: number | null; reviews?: number;
+}
+export interface LandingData {
+  enabled: boolean; preview?: boolean;
+  about?: string; tagline?: string;
+  phone?: string; whatsapp?: string; email?: string; instagram?: string; tiktok?: string;
+  location_text?: string; location_url?: string;
+  bank_name?: string; bank_account_name?: string; bank_iban?: string;
+  chalets?: LandingChalet[];
+  rating?: { avg: number | null; count: number };
+  booked?: { chalet: string; from: string; to: string }[];
+}
+interface GuestBooking {
+  ok: boolean; id: number; chalet: string; guest: string; date_from: string; date_to: string;
+  checkin_time?: string; checkout_time?: string; status: string; price: number; nights: number;
+  stage: "before" | "during" | "after"; map_url?: string; terms?: string; img?: string;
+  tickets: number; free_nights: number; reviewed: boolean;
+  requests: { type: string; note: string; resolved: boolean; at: string }[];
+  whatsapp?: string;
+}
+
+export async function fetchLanding(): Promise<LandingData | null> {
+  const { data, error } = await supabase.rpc("landing_public");
+  if (error) { console.error(error); return null; }
+  return data as LandingData;
+}
+
+/* ───────── أدوات ───────── */
+const fmt = (n: number) => Math.round(Number(n) || 0).toLocaleString("en-US");
+const toISO = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const parseISO = (s: string) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, (m || 1) - 1, d || 1); };
+const dayName = (s: string) => parseISO(s).toLocaleDateString("ar-SA-u-ca-gregory-nu-latn", { weekday: "long", day: "numeric", month: "long" });
+const waNumber = (p?: string) => (p || "").replace(/[^0-9]/g, "").replace(/^00/, "").replace(/^0/, "966");
+function stripEmoji(s: string) { return s.replace(/[\p{Extended_Pictographic}️‍]/gu, "").trim(); }
+function amenityList(a?: string): string[] {
+  if (!a) return [];
+  return a.split(/[،,|\n]/).map(stripEmoji).filter(Boolean).slice(0, 6);
+}
+function amenityIcon(t: string): string {
+  if (/مسبح|سباح/.test(t)) return "pool";
+  if (/شواء|فحم|مشب/.test(t)) return "fire";
+  if (/مكيف|تكييف/.test(t)) return "temp";
+  if (/انترنت|إنترنت|واي/.test(t)) return "wifi";
+  if (/حديقة|نخل|زرع/.test(t)) return "palm";
+  if (/مطبخ/.test(t)) return "plate";
+  if (/جاكوزي|ساونا/.test(t)) return "water";
+  if (/موقف|سيار/.test(t)) return "car";
+  if (/سماع|صوت|شاشة|تلفزيون/.test(t)) return "music";
+  if (/غرف|نوم/.test(t)) return "bed";
+  return "check";
+}
+function firstImage(c: LandingChalet): string | null {
+  if (c.img) return c.img;
+  if (!c.gallery) return null;
+  try {
+    const g = JSON.parse(c.gallery);
+    if (Array.isArray(g)) for (const x of g) { if (typeof x === "string") return x; if (x && typeof x.url === "string") return x.url; }
+  } catch { /* نص غير JSON */ }
+  return null;
+}
+function priceFor(c: LandingChalet, from: string, to: string) {
+  if (!from || !to) return { nights: 0, total: 0 };
+  const a = parseISO(from), b = parseISO(to);
+  const nights = Math.round((b.getTime() - a.getTime()) / 86400000);
+  let total = 0;
+  for (let i = 0; i < nights; i++) {
+    const d = new Date(a); d.setDate(d.getDate() + i);
+    const wk = d.getDay() === 5 || d.getDay() === 6;
+    total += wk && c.wprice ? Number(c.wprice) : Number(c.price || 0);
+  }
+  return { nights: Math.max(0, nights), total };
+}
+const store = {
+  get(k: string) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k: string, v: string) { try { localStorage.setItem(k, v); } catch { /* */ } },
+  del(k: string) { try { localStorage.removeItem(k); } catch { /* */ } },
+};
+
+/* ───────── أيقونات ───────── */
+const P: Record<string, React.ReactNode> = {
+  palm: <><path d="M12 22V11"/><path d="M12 11c-2-4-6-5-9-4 2 1 5 3 5 6"/><path d="M12 11c2-4 6-5 9-4-2 1-5 3-5 6"/><path d="M12 11c-1-4 0-7 3-9"/><path d="M12 11c1-4 0-7-3-9"/></>,
+  pin: <><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></>,
+  users: <><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18.5 14.8c1.6.8 2.6 2.6 3 5.2"/></>,
+  pool: <><path d="M2 18c2 0 2-1.5 4-1.5s2 1.5 4 1.5 2-1.5 4-1.5 2 1.5 4 1.5 2-1.5 4-1.5"/><path d="M8 15V5a2 2 0 0 1 4 0M16 15V5a2 2 0 0 0-4 0M8 9h8"/></>,
+  bed: <><path d="M3 18V7M3 13h18v5M21 13a3 3 0 0 0-3-3h-7v3"/><circle cx="7" cy="10.5" r="1.5"/></>,
+  fire: <path d="M12 22c4 0 7-3 7-7 0-5-5-7-5-12-3 2-5 5-5 8-1-1-2-2-2-4-2 2-2 5-2 8 0 4 3 7 7 7z"/>,
+  temp: <path d="M14 14.8V5a2 2 0 0 0-4 0v9.8a4 4 0 1 0 4 0z"/>,
+  wifi: <><path d="M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0"/><path d="M12 19.5h.01"/></>,
+  car: <><path d="M5 17h14M3 17v-4l2-5h14l2 5v4"/><circle cx="7.5" cy="17" r="1.8"/><circle cx="16.5" cy="17" r="1.8"/></>,
+  music: <><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></>,
+  shield: <><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></>,
+  sparkle: <path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/>,
+  key: <><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M17 6l3 3M15 8l2 2"/></>,
+  gift: <><rect x="3" y="8" width="18" height="5" rx="1"/><path d="M5 13v8h14v-8M12 8v13M12 8c-1.5-3-5-3-5-1s3 1 5 1c2 0 5 1 5-1s-3.5-2-5 1"/></>,
+  star: <path d="M12 3l2.6 5.6 6.1.7-4.5 4.1 1.2 6-5.4-3-5.4 3 1.2-6-4.5-4.1 6.1-.7z"/>,
+  broom: <><path d="M19 3l-7 7"/><path d="M12 10c-3 0-6 2-7 5l-2 6 6-2c3-1 5-4 5-7z"/></>,
+  box: <><path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/></>,
+  wrench: <path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4z"/>,
+  towel: <><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M5 15h14M9 3v12"/></>,
+  water: <path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/>,
+  coal: <path d="M4 18h16M7 18l2-5h6l2 5M10 13c0-2 2-2 2-4M14 13c0-2-2-2-2-4"/>,
+  cup: <path d="M5 8h12v5a6 6 0 0 1-12 0zM17 9h1a3 3 0 0 1 0 6h-1M8 3v2M12 3v2"/>,
+  plate: <><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/></>,
+  soap: <><rect x="6" y="9" width="12" height="12" rx="3"/><path d="M10 9V6h4v3M12 3v3"/></>,
+  tissue: <><path d="M5 9h14v11H5z"/><path d="M9 9c0-3 2-5 3-6 1 1 3 3 3 6"/></>,
+  bug: <><rect x="8" y="7" width="8" height="12" rx="4"/><path d="M4 11h4M16 11h4M4 17h4M16 17h4M9 4l2 3M15 4l-2 3"/></>,
+  bolt: <path d="M13 2L4 14h7l-1 8 9-12h-7z"/>,
+  dots: <path d="M5 12h.01M12 12h.01M19 12h.01"/>,
+  cal: <><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></>,
+  check: <path d="M5 12l5 5 9-10"/>,
+  x: <path d="M6 6l12 12M18 6L6 18"/>,
+  menu: <path d="M4 7h16M4 12h16M4 17h16"/>,
+  msg: <path d="M4 5h16v11H8l-4 4z"/>,
+  phone: <path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>,
+  door: <><path d="M14 3H6v18h8"/><path d="M14 3l5 2v14l-5 2z"/></>,
+  search: <><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></>,
+  insta: <><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><path d="M17.5 6.5h.01"/></>,
+  copy: <><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/></>,
+  lock: <><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
+};
+function I({ n, s = 20, style }: { n: string; s?: number; style?: React.CSSProperties }) {
+  return <svg className="lp-i" width={s} height={s} viewBox="0 0 24 24" aria-hidden="true" style={style}>{P[n] || P.check}</svg>;
+}
+function Frond({ w = 120 }: { w?: number }) {
+  return (
+    <svg width={w} height={28} viewBox="0 0 120 28" aria-hidden="true" style={{ color: "var(--lp-gold)" }}>
+      <g fill="none" stroke="currentColor" strokeWidth={1.2} strokeLinecap="round">
+        <path d="M4 14h112"/>
+        <path d="M14 14c4-6 10-8 16-8M14 14c4 6 10 8 16 8M34 14c4-6 10-8 16-8M34 14c4 6 10 8 16 8M54 14c4-6 10-8 16-8M54 14c4 6 10 8 16 8M74 14c4-6 10-8 16-8M74 14c4 6 10 8 16 8M94 14c4-6 10-8 16-8M94 14c4 6 10 8 16 8"/>
+      </g>
+      <circle cx="60" cy="14" r="2.2" fill="currentColor"/>
+    </svg>
+  );
+}
+const CARVE = "data:image/svg+xml;utf8," + encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='80' height='96' viewBox='0 0 80 96'><g fill='none' stroke='#C29A5B' stroke-width='1.3'><path d='M8 96V40C8 20 24 6 40 2c16 4 32 18 32 38v56'/><path d='M20 96V44c0-13 9-24 20-28 11 4 20 15 20 28v52'/><path d='M40 30c-5 6-5 14 0 20 5-6 5-14 0-20z'/><path d='M40 50v30M32 62c4 0 8 2 8 6M48 62c-4 0-8 2-8 6M30 76c5 0 10 2 10 6M50 76c-5 0-10 2-10 6'/></g></svg>`);
+const FROND_BG = "data:image/svg+xml;utf8," + encodeURIComponent(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='28' viewBox='0 0 120 28'><g fill='none' stroke='#C29A5B' stroke-width='1.2' stroke-linecap='round'><path d='M4 14h112'/><path d='M14 14c4-6 10-8 16-8M14 14c4 6 10 8 16 8M34 14c4-6 10-8 16-8M34 14c4 6 10 8 16 8M54 14c4-6 10-8 16-8M54 14c4 6 10 8 16 8M74 14c4-6 10-8 16-8M74 14c4 6 10 8 16 8M94 14c4-6 10-8 16-8M94 14c4 6 10 8 16 8'/></g><circle cx='60' cy='14' r='2.2' fill='#C29A5B'/></svg>`);
+
+/* ───────── الصفحة ───────── */
+export default function LandingPage({ initial }: { initial?: LandingData | null }) {
+  const [data, setData] = useState<LandingData | null | undefined>(initial === undefined ? undefined : initial);
+  const [menu, setMenu] = useState(false);
+  const [capF, setCapF] = useState<"all" | "s" | "m" | "l">("all");
+  const [bookFor, setBookFor] = useState<LandingChalet | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.title = "مجموعة ريتام | شاليهات الأحساء";
+    }
+    if (initial === undefined) fetchLanding().then(d => setData(d));
+  }, []);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3800); return () => clearTimeout(t); }, [toast]);
+
+  if (data === undefined) return <div className="lp" dir="rtl"><style>{CSS}</style><div className="lp-center">جاري التحميل...</div></div>;
+  if (!data || (!data.enabled && !data.preview)) {
+    return (
+      <div className="lp" dir="rtl"><style>{CSS}</style>
+        <div className="lp-center" style={{ flexDirection: "column", gap: 14 }}>
+          <span className="lp-logo-mark"><I n="palm"/></span>
+          <h1 style={{ fontSize: 26 }}>مجموعة ريتام</h1>
+          <p style={{ color: "var(--lp-ink-2)" }}>الموقع غير متاح حالياً</p>
+          <a className="lp-btn lp-ghost lp-sm" href="?login=1">دخول الإدارة</a>
+        </div>
+      </div>
+    );
+  }
+
+  const chalets = data.chalets || [];
+  const capOk = (c: LandingChalet) => { const n = Number(c.cap || 0); return capF === "all" || (capF === "s" && n <= 15) || (capF === "m" && n > 15 && n <= 25) || (capF === "l" && n > 25); };
+  const list = chalets.filter(capOk);
+  const heroImg = chalets.map(firstImage).find(Boolean) || null;
+  const heroChalet = chalets.find(c => firstImage(c) === heroImg);
+  const ratingAvg = data.rating && data.rating.count > 0 ? data.rating.avg : null;
+  const wa = waNumber(data.whatsapp || data.phone);
+
+  return (
+    <div className="lp" dir="rtl">
+      <style>{CSS}</style>
+      {data.preview && (
+        <div className="lp-preview"><I n="lock" s={16}/>معاينة: الصفحة غير منشورة، والزوار ما يشوفونها. انشرها من لوحة التحكم ← الموقع العام.</div>
+      )}
+
+      <header className="lp-top">
+        <div className="lp-wrap lp-top-in">
+          <a className="lp-logo" href="#top" aria-label="مجموعة ريتام">
+            <span className="lp-logo-mark"><I n="palm"/></span>
+            <span><b>مجموعة ريتام</b><small>شاليهات الأحساء</small></span>
+          </a>
+          <nav className={"lp-nav" + (menu ? " open" : "")} aria-label="أقسام الصفحة" onClick={() => setMenu(false)}>
+            <a href="#chalets">الشاليهات</a>
+            <a href="#about">من نحن</a>
+            <a href="#features">المميزات</a>
+            <a href="#how">طريقة الحجز</a>
+            <a href="#mybooking">حجزي</a>
+          </nav>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <a className="lp-btn lp-primary lp-sm lp-desk" href="#chalets">احجز الآن</a>
+            <button className="lp-menu" type="button" aria-label="القائمة" aria-expanded={menu} onClick={() => setMenu(m => !m)}><I n="menu"/></button>
+          </div>
+        </div>
+      </header>
+
+      <main id="top">
+        {/* الواجهة */}
+        <section className="lp-hero">
+          <div className="lp-hero-bg" aria-hidden="true" style={{ backgroundImage: `url("${CARVE}")` }}/>
+          <div className="lp-wrap lp-hero-in">
+            <div>
+              <span className="lp-eyebrow">شاليهات خاصة في الأحساء</span>
+              <h1 style={{ marginTop: 14 }}>بين النخيل،<br/><em>راحتك أقرب</em></h1>
+              <p className="lp-lead">{data.tagline || "شاليهات عائلية بمسابح خاصة وتصميم يجمع روح الأحساء وراحة اليوم. احجز في دقائق، وتابع حجزك وطلباتك من جوالك."}</p>
+              <div className="lp-ctas">
+                <a className="lp-btn lp-primary" href="#chalets"><I n="cal"/>شوف الشاليهات واحجز</a>
+                <a className="lp-btn lp-ghost" href="#mybooking"><I n="key"/>إدارة حجزي</a>
+              </div>
+              <div className="lp-stats">
+                <div><b>{chalets.length}</b><span>{chalets.length === 1 ? "شاليه" : "شاليهات"}</span></div>
+                {ratingAvg !== null && <div><b>{ratingAvg}</b><span>{"تقييم الضيوف من " + data.rating!.count}</span></div>}
+                <div><b>من جوالك</b><span>حجز ومتابعة وطلبات</span></div>
+              </div>
+            </div>
+            <div className="lp-arch-wrap">
+              <div className="lp-arch">{heroImg ? <img src={heroImg} alt={heroChalet ? heroChalet.name : "شاليهات ريتام"}/> : <div className="lp-ph" style={{ backgroundImage: `url("${CARVE}")` }}/>}</div>
+              {heroChalet && <div className="lp-arch-tag"><span className="lp-dot"><I n="pool"/></span><div><b>{heroChalet.name}</b><span>{(heroChalet.loc || "الأحساء") + " · مسبح خاص"}</span></div></div>}
+            </div>
+          </div>
+        </section>
+
+        <div className="lp-frond" aria-hidden="true" style={{ backgroundImage: `url("${FROND_BG}")` }}/>
+
+        {/* الشاليهات */}
+        <section id="chalets">
+          <div className="lp-wrap">
+            <div className="lp-sec-h"><span className="lp-eyebrow">شاليهاتنا</span><h2>اختر الشاليه اللي يناسب جمعتك</h2><p>كل شاليه بمسبح خاص ونظافة كاملة قبل وصولك.</p></div>
+            {chalets.length > 3 && (
+              <div className="lp-filters" role="group" aria-label="تصفية حسب السعة">
+                {([["all", "الكل"], ["s", "حتى 15 شخص"], ["m", "16 إلى 25"], ["l", "أكثر من 25"]] as const).map(([k, l]) => (
+                  <button key={k} className="lp-chip" type="button" aria-pressed={capF === k} onClick={() => setCapF(k)}>{l}</button>
+                ))}
+              </div>
+            )}
+            {list.length === 0 ? <p style={{ color: "var(--lp-muted)" }}>لا يوجد شاليه بهذه السعة حالياً</p> : (
+              <div className="lp-grid">
+                {list.map(c => {
+                  const img = firstImage(c);
+                  const am = amenityList(c.amenities);
+                  return (
+                    <article key={c.id} className="lp-card">
+                      <div className="lp-card-img">
+                        {img ? <img src={img} alt={c.name} loading="lazy"/> : <div className="lp-ph" style={{ backgroundImage: `url("${CARVE}")` }}/>}
+                        {c.cap ? <span className="lp-badge"><I n="users" s={15}/>{"حتى " + c.cap + " شخص"}</span> : null}
+                      </div>
+                      <div className="lp-card-body">
+                        <div className="lp-card-title">
+                          <div><h3>{c.name}</h3><span className="lp-loc"><I n="pin" s={15}/>{(c.loc ? c.loc + "، " : "") + "الأحساء"}</span></div>
+                          {c.rating ? <span className="lp-rating"><svg viewBox="0 0 24 24" aria-hidden="true">{P.star}</svg>{c.rating}</span> : null}
+                        </div>
+                        {c.description && <p className="lp-desc">{c.description}</p>}
+                        {am.length > 0 && <div className="lp-feats">{am.map((t, i) => <span key={i}><I n={amenityIcon(t)} s={15}/>{t}</span>)}</div>}
+                        <div className="lp-price-row">
+                          <div className="lp-price"><b>{fmt(Number(c.price || 0))}</b> <small>ريال / الليلة</small>{c.wprice ? <span className="lp-wk">{"الويكند " + fmt(Number(c.wprice)) + " ريال"}</span> : null}</div>
+                          <button className="lp-btn lp-primary lp-sm" type="button" onClick={() => setBookFor(c)}>احجز</button>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* من نحن */}
+        <section className="lp-about" id="about">
+          <div className="lp-about-pat" aria-hidden="true" style={{ backgroundImage: `url("${CARVE}")` }}/>
+          <div className="lp-wrap lp-about-in">
+            <div className="lp-sec-h" style={{ marginBottom: 0 }}>
+              <span className="lp-eyebrow">من نحن</span>
+              <h2>ضيافة أحسائية، بمعايير اليوم</h2>
+              {(data.about || "مجموعة ريتام شاليهات عائلية في الأحساء، بنيناها لتكون مكان تجتمع فيه العائلة والأصحاب براحة وخصوصية. نهتم بالتفاصيل: نظافة قبل كل وصول، مسبح جاهز على موعدك، وفريق يرد عليك بسرعة.\nوصممنا تجربة الحجز كلها لتكون من جوالك: تحجز، تستلم رابط الدخول، وتطلب اللي تحتاجه وأنت في الشاليه.")
+                .split("\n").filter(Boolean).map((p, i) => <p key={i}>{p}</p>)}
+            </div>
+            <div className="lp-values">
+              <div className="lp-value"><b>الخصوصية</b><span>أسوار عالية ومسبح خاص لكل شاليه</span></div>
+              <div className="lp-value"><b>النظافة</b><span>تنظيف وتعقيم كامل بعد كل حجز</span></div>
+              <div className="lp-value"><b>السرعة</b><span>طلبك يوصل للفريق مباشرة ويرد عليك</span></div>
+              <div className="lp-value"><b>الضيافة</b><span>تفاصيل أحسائية في المكان والاستقبال</span></div>
+            </div>
+          </div>
+        </section>
+
+        {/* المميزات */}
+        <section id="features">
+          <div className="lp-wrap">
+            <div className="lp-sec-h lp-center-h"><span className="lp-eyebrow">ليش ريتام</span><h2>مميزات تحس فيها من أول دقيقة</h2></div>
+            <div className="lp-features">
+              {[
+                ["pool", "مسبح خاص ومجهّز", "نجهّز المسبح على موعد وصولك، وتقدر تطلب تجهيزه مع رسالة الوصول."],
+                ["temp", "مكيفات ذكية", "نشغّل التكييف قبل وصولك بحيث تدخل والمكان بارد وجاهز."],
+                ["key", "دخول إلكتروني", "يوصلك رابط تسجيل الدخول والشروط على واتساب قبل الموعد."],
+                ["sparkle", "نظافة بعد كل حجز", "فريق نظافة يتابع كل غرفة ويتأكد منها المشرف قبل استلامك."],
+                ["msg", "طلباتك من جوالك", "مستلزمات أو نظافة أو صيانة؟ اطلبها من قسم حجزي وتوصل للفريق فوراً."],
+                ["gift", "برنامج ولاء", "كل تقييم يعطيك تذكرة، و3 تذاكر تساوي ليلة مجانية."],
+              ].map(([i, t, d]) => (
+                <div key={t} className="lp-feature"><span className="lp-fic"><I n={i} s={26}/></span><h3>{t}</h3><p>{d}</p></div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* طريقة الحجز */}
+        <section id="how" style={{ paddingTop: 0 }}>
+          <div className="lp-wrap">
+            <div className="lp-divider" aria-hidden="true"><span/><Frond/><span/></div>
+            <div className="lp-sec-h lp-center-h"><span className="lp-eyebrow">طريقة الحجز</span><h2>أربع خطوات وتكون في الشاليه</h2></div>
+            <div className="lp-steps">
+              {[
+                ["اختر الشاليه والتاريخ", "اضغط احجز على الشاليه واختر تاريخ الوصول والمغادرة."],
+                ["أكّد بياناتك", "اكتب اسمك وجوالك، وحوّل المبلغ على الحساب البنكي."],
+                ["يوصلك رابط الدخول", "بعد تأكيد التحويل نرسل لك الموقع والشروط ورابط تسجيل الدخول."],
+                ["استمتع وقيّم", "اطلب اللي تحتاجه من قسم حجزي، وبعد الإقامة قيّم تجربتك."],
+              ].map(([t, d], i) => (
+                <div key={t} className="lp-step"><span className="lp-n">{i + 1}</span><h3>{t}</h3><p>{d}</p></div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* حجزي */}
+        <section className="lp-portal" id="mybooking">
+          <div className="lp-wrap">
+            <div className="lp-sec-h lp-center-h"><span className="lp-eyebrow">حجزي</span><h2>تابع حجزك واطلب اللي تحتاجه</h2><p>اكتب رقم جوالك واسم عائلتك اللي حجزت فيه.</p></div>
+            <Portal onToast={setToast} fallbackWa={wa}/>
+          </div>
+        </section>
+      </main>
+
+      <footer className="lp-foot">
+        <div className="lp-wrap lp-foot-in">
+          <div>
+            <a className="lp-logo" href="#top" style={{ color: "#FFF6E8" }}><span className="lp-logo-mark" style={{ background: "#3B2A1C" }}><I n="palm"/></span><span><b>مجموعة ريتام</b><small style={{ color: "#A8957E" }}>شاليهات الأحساء</small></span></a>
+            <p style={{ marginTop: 16, maxWidth: 360 }}>شاليهات عائلية خاصة في الأحساء، بحجز سهل ومتابعة كاملة من جوالك.</p>
+          </div>
+          <div><h4>روابط</h4><a href="#chalets">الشاليهات</a><a href="#features">المميزات</a><a href="#how">طريقة الحجز</a><a href="#mybooking">حجزي</a></div>
+          <div><h4>تواصل معنا</h4>
+            {wa && <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer"><I n="msg" s={18}/>واتساب</a>}
+            {data.phone && <a href={`tel:${data.phone}`}><I n="phone" s={18}/><span className="lp-mono">{data.phone}</span></a>}
+            {data.instagram && <a href={data.instagram} target="_blank" rel="noreferrer"><I n="insta" s={18}/>إنستقرام</a>}
+            {data.tiktok && <a href={data.tiktok} target="_blank" rel="noreferrer"><I n="music" s={18}/>تيك توك</a>}
+            <a href={data.location_url || "#"} target={data.location_url ? "_blank" : undefined} rel="noreferrer"><I n="pin" s={18}/>{data.location_text || "الأحساء، المملكة العربية السعودية"}</a>
+          </div>
+          <div className="lp-foot-bottom"><span>{"© " + new Date().getFullYear() + " مجموعة ريتام"}</span><a href="?login=1" style={{ display: "inline", padding: 0 }}>دخول الإدارة</a></div>
+        </div>
+      </footer>
+
+      {bookFor && <BookingSheet chalet={bookFor} data={data} onClose={() => setBookFor(null)} onToast={setToast}/>}
+      {toast && <div className="lp-toast" role="status"><I n="check"/>{toast}</div>}
+    </div>
+  );
+}
+
+/* ───────── نافذة الحجز ───────── */
+function BookingSheet({ chalet, data, onClose, onToast }: { chalet: LandingChalet; data: LandingData; onClose: () => void; onToast: (t: string) => void }) {
+  const t3 = new Date(); t3.setDate(t3.getDate() + 1);
+  const t4 = new Date(); t4.setDate(t4.getDate() + 2);
+  const [from, setFrom] = useState(toISO(t3));
+  const [to, setTo] = useState(toISO(t4));
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<{ id: number; price: number; nights: number } | null>(null);
+  const { nights, total } = useMemo(() => priceFor(chalet, from, to), [chalet, from, to]);
+  const conflict = useMemo(() => (data.booked || []).some(b => b.chalet === chalet.name && b.from < to && b.to > from), [data.booked, chalet.name, from, to]);
+  const wa = waNumber(data.whatsapp || data.phone);
+  const today = toISO(new Date());
+
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", k); return () => window.removeEventListener("keydown", k);
+  }, [onClose]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr("");
+    if (nights <= 0) { setErr("تاريخ المغادرة لازم يكون بعد الوصول"); return; }
+    if (conflict) { setErr("التواريخ المختارة محجوزة، اختر تواريخ ثانية"); return; }
+    setBusy(true);
+    const { data: r, error } = await supabase.rpc("landing_create_booking", { p_chalet_id: chalet.id, p_name: name, p_phone: phone, p_from: from, p_to: to });
+    setBusy(false);
+    if (error || !r) { setErr("صار خطأ في الاتصال، حاول مرة ثانية"); return; }
+    if (!r.ok) { setErr(r.error || "تعذّر إتمام الحجز"); return; }
+    setDone({ id: r.id, price: r.price, nights: r.nights });
+    onToast("وصلنا طلب حجزك");
+  }
+
+  const waMsg = done ? encodeURIComponent(`السلام عليكم، حجزت ${chalet.name} من الموقع\nرقم الحجز: ${done.id}\nمن ${from} إلى ${to}\nالمبلغ: ${fmt(done.price)} ريال\nأرفقت لكم إيصال التحويل`) : "";
+
+  return (
+    <div className="lp-modal" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="lp-sheet" role="dialog" aria-modal="true" aria-labelledby="lp-bt" dir="rtl">
+        <div className="lp-sheet-h"><h3 id="lp-bt">{done ? "تم استلام طلب حجزك" : "حجز " + chalet.name}</h3><button className="lp-x" type="button" aria-label="إغلاق" onClick={onClose}><I n="x"/></button></div>
+        {!done ? (
+          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="lp-grid2">
+              <div className="lp-field"><label htmlFor="lp-f1">الوصول</label><input className="lp-input" type="date" id="lp-f1" min={today} value={from} onChange={e => { setFrom(e.target.value); if (e.target.value >= to) { const d = parseISO(e.target.value); d.setDate(d.getDate() + 1); setTo(toISO(d)); } }} required/></div>
+              <div className="lp-field"><label htmlFor="lp-f2">المغادرة</label><input className="lp-input" type="date" id="lp-f2" min={from} value={to} onChange={e => setTo(e.target.value)} required/></div>
+            </div>
+            {conflict && <div className="lp-err">هذي التواريخ محجوزة لهذا الشاليه، جرّب تواريخ ثانية</div>}
+            <div className="lp-field"><label htmlFor="lp-f3">الاسم الكامل</label><input className="lp-input" id="lp-f3" value={name} onChange={e => setName(e.target.value)} placeholder="مثال: خالد العتيبي" autoComplete="name" required/></div>
+            <div className="lp-field"><label htmlFor="lp-f4">رقم الجوال</label><input className="lp-input lp-mono" id="lp-f4" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" placeholder="05XXXXXXXX" autoComplete="tel" style={{ textAlign: "right" }} required/></div>
+            <div className="lp-total"><span>{nights > 0 ? (nights === 1 ? "ليلة واحدة" : nights + " ليالٍ") : "اختر التواريخ"}</span><b>{fmt(total) + " ريال"}</b></div>
+            {err && <div className="lp-err" role="alert">{err}</div>}
+            <button className="lp-btn lp-primary" type="submit" disabled={busy || conflict} style={{ width: "100%" }}>{busy ? "جاري الإرسال..." : "تأكيد طلب الحجز"}</button>
+            <p className="lp-hint" style={{ margin: 0, textAlign: "center" }}>الحجز يتأكد بعد استلام التحويل البنكي</p>
+          </form>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div className="lp-sent"><I n="check"/><div><b>{"رقم حجزك " + done.id}</b><span>{chalet.name + " · " + (done.nights === 1 ? "ليلة واحدة" : done.nights + " ليالٍ") + " · " + fmt(done.price) + " ريال"}</span></div></div>
+            {(data.bank_iban || data.bank_name) && (
+              <div className="lp-bank">
+                <b>حوّل المبلغ على الحساب التالي</b>
+                {data.bank_name && <div><small>البنك</small><span>{data.bank_name}</span></div>}
+                {data.bank_account_name && <div><small>اسم صاحب الحساب</small><span>{data.bank_account_name}</span></div>}
+                {data.bank_iban && <div><small>رقم الآيبان</small><span className="lp-mono" style={{ userSelect: "all" }}>{data.bank_iban}</span>
+                  <button type="button" className="lp-btn lp-ghost lp-sm" onClick={async () => { try { await navigator.clipboard.writeText(data.bank_iban || ""); onToast("تم نسخ رقم الآيبان"); } catch { /* */ } }}><I n="copy" s={16}/>نسخ</button></div>}
+              </div>
+            )}
+            {wa && <a className="lp-btn lp-wa" href={`https://wa.me/${wa}?text=${waMsg}`} target="_blank" rel="noreferrer"><I n="msg"/>أرسل إيصال التحويل واتساب</a>}
+            <p className="lp-hint" style={{ margin: 0 }}>بعد تأكيد التحويل يوصلك تأكيد الحجز، وتقدر تتابعه من قسم "حجزي" بجوالك واسم عائلتك.</p>
+            <button className="lp-btn lp-ghost" type="button" onClick={onClose}>تم</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ───────── بوابة حجزي ───────── */
+const SUPPLIES: [string, string][] = [["towel", "مناشف"], ["water", "مياه شرب"], ["coal", "فحم"], ["cup", "أكواب وأدوات قهوة"], ["plate", "صحون وأدوات مطبخ"], ["bed", "مفارش"], ["soap", "صابون وشامبو"], ["tissue", "مناديل"]];
+const CLEANING: [string, string][] = [["broom", "تنظيف عام"], ["water", "دورات المياه"], ["pool", "المسبح"], ["box", "رفع النفايات"], ["bug", "حشرات"]];
+const MAINT: [string, string][] = [["temp", "المكيف"], ["water", "السباكة والمياه"], ["bolt", "الكهرباء والإنارة"], ["pool", "المسبح"], ["door", "الأبواب والأقفال"]];
+
+function Portal({ onToast, fallbackWa }: { onToast: (t: string) => void; fallbackWa: string }) {
+  const [phone, setPhone] = useState(store.get("lp_phone") || "");
+  const [family, setFamily] = useState(store.get("lp_family") || "");
+  const [bk, setBk] = useState<GuestBooking | null>(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [tab, setTab] = useState<"supplies" | "cleaning" | "maintenance" | "review" | "details">("supplies");
+  const [picks, setPicks] = useState<string[]>([]);
+  const [note, setNote] = useState("");
+  const [when, setWhen] = useState("الآن");
+  const [stars, setStars] = useState(0);
+  const [sending, setSending] = useState(false);
+
+  async function lookup(ph = phone, fam = family, silent = false) {
+    if (!silent) { setErr(""); setBusy(true); }
+    const { data, error } = await supabase.rpc("landing_guest_booking", { p_phone: ph, p_family: fam });
+    if (!silent) setBusy(false);
+    if (error) { if (!silent) setErr("صار خطأ في الاتصال، حاول مرة ثانية"); return; }
+    if (!data?.ok) { if (!silent) setErr("ما لقينا حجز بهذا الجوال واسم العائلة. تأكد من الرقم اللي حجزت فيه واسم العائلة، أو تواصل معنا."); setBk(null); return; }
+    setBk(data as GuestBooking);
+    store.set("lp_phone", ph); store.set("lp_family", fam);
+  }
+  useEffect(() => { if (phone && family) lookup(phone, family, true); }, []);
+
+  function logout() { store.del("lp_phone"); store.del("lp_family"); setBk(null); setPhone(""); setFamily(""); setPicks([]); setNote(""); setStars(0); setTab("supplies"); }
+  function toggle(v: string) { setPicks(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v]); }
+
+  async function sendRequest() {
+    if (!bk || !picks.length) return;
+    setSending(true);
+    const items = picks.join("، ") + (tab === "cleaning" ? " (الوقت: " + when + ")" : "");
+    const { data, error } = await supabase.rpc("landing_guest_request", { p_booking: bk.id, p_phone: phone, p_kind: tab, p_items: items, p_note: note });
+    setSending(false);
+    if (error || !data?.ok) { onToast(data?.error || "تعذّر إرسال الطلب، حاول مرة ثانية"); return; }
+    setPicks([]); setNote("");
+    onToast("وصل طلبك للفريق، وبنبلغك أول ما يتم");
+    lookup(phone, family, true);
+  }
+  async function sendReview() {
+    if (!bk || !stars) return;
+    setSending(true);
+    const { data, error } = await supabase.rpc("landing_guest_review", { p_booking: bk.id, p_phone: phone, p_rating: stars, p_comment: note });
+    setSending(false);
+    if (error || !data?.ok) { onToast(data?.error || "تعذّر إرسال التقييم"); return; }
+    setNote(""); onToast("شكراً على تقييمك");
+    lookup(phone, family, true);
+  }
+
+  return (
+    <div className="lp-portal-card">
+      <div className="lp-portal-head">
+        <span className="lp-pic"><I n="key" s={26}/></span>
+        <div><h3>{bk ? "أهلاً " + bk.guest.split(" ")[0] : "الدخول إلى حجزي"}</h3><p>{bk ? "حجزك في " + bk.chalet : "بدون كلمة مرور، فقط جوالك واسم العائلة"}</p></div>
+      </div>
+      <div className="lp-portal-body">
+        {!bk ? (
+          <>
+            <form className="lp-form" onSubmit={e => { e.preventDefault(); lookup(); }}>
+              <div className="lp-field"><label htmlFor="lp-p1">رقم الجوال</label><input className="lp-input lp-mono" id="lp-p1" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" placeholder="05XXXXXXXX" autoComplete="tel" style={{ textAlign: "right" }} required/></div>
+              <div className="lp-field"><label htmlFor="lp-p2">اسم العائلة</label><input className="lp-input" id="lp-p2" value={family} onChange={e => setFamily(e.target.value)} placeholder="مثال: العتيبي" autoComplete="family-name" required/></div>
+              <button className="lp-btn lp-primary" type="submit" disabled={busy}><I n="search"/>{busy ? "جاري البحث..." : "عرض حجزي"}</button>
+            </form>
+            {err && <div className="lp-err" role="alert" style={{ marginTop: 14 }}>{err}</div>}
+          </>
+        ) : (
+          <div className="lp-bk">
+            <div className="lp-bk-top">
+              <div><h4>{bk.chalet}</h4><span>{dayName(bk.date_from) + " ← " + dayName(bk.date_to) + " · " + bk.nights + (bk.nights === 1 ? " ليلة" : " ليالٍ")}</span></div>
+              <span className={"lp-pill " + (bk.status === "confirmed" ? "ok" : bk.status === "pending" ? "warn" : "muted")}><span className="d"/>{bk.status === "confirmed" ? "مؤكد" : bk.status === "pending" ? "بانتظار تأكيد التحويل" : "مكتمل"}</span>
+            </div>
+            <div className="lp-facts">
+              <div><small>الدخول</small><b>{bk.checkin_time || "حسب التعليمات"}</b></div>
+              <div><small>الخروج</small><b>{bk.checkout_time || "حسب التعليمات"}</b></div>
+              <div><small>الإجمالي</small><b>{fmt(bk.price) + " ريال"}</b></div>
+              <div><small>بطاقة الولاء</small><b>{bk.free_nights > 0 ? bk.free_nights + " ليلة مجانية" : bk.tickets + " من 3 تذاكر"}</b></div>
+            </div>
+            <div className="lp-tabs" role="tablist">
+              {([["supplies", "box", "مستلزمات"], ["cleaning", "broom", "نظافة"], ["maintenance", "wrench", "صيانة"], ["review", "star", "تقييم"], ["details", "cal", "تفاصيل الحجز"]] as const).map(([k, i, l]) => (
+                <button key={k} type="button" role="tab" className="lp-tab" aria-selected={tab === k} onClick={() => { setTab(k); setPicks([]); setNote(""); }}><I n={i} s={18}/>{l}</button>
+              ))}
+            </div>
+
+            {(tab === "supplies" || tab === "cleaning" || tab === "maintenance") && (
+              bk.stage === "after" ? <p className="lp-muted">انتهت إقامتك، ونتمنى نشوفك قريب. تقدر تقيّم تجربتك من تبويب التقييم.</p> : (
+              <div className="lp-panel">
+                <p className="lp-muted">{tab === "supplies" ? "وش ينقصك؟ اختر واحد أو أكثر ونوصله لك." : tab === "cleaning" ? "اختر نوع التنظيف والوقت المناسب، ويجيك العامل." : "فيه شي خربان أو ما يشتغل؟ اختر واكتب لنا ونرسل الفني."}</p>
+                <div className="lp-opts">
+                  {(tab === "supplies" ? SUPPLIES : tab === "cleaning" ? CLEANING : MAINT).map(([i, l]) => (
+                    <button key={l} type="button" className="lp-opt" aria-pressed={picks.includes(l)} onClick={() => toggle(l)}><I n={i} s={22}/>{l}</button>
+                  ))}
+                </div>
+                {tab === "cleaning" && (
+                  <div className="lp-field"><label htmlFor="lp-when">الوقت المناسب</label>
+                    <select className="lp-input" id="lp-when" value={when} onChange={e => setWhen(e.target.value)}>{["الآن", "بعد ساعة", "العصر", "المغرب", "قبل الخروج"].map(w => <option key={w}>{w}</option>)}</select>
+                  </div>
+                )}
+                <div className="lp-field"><label htmlFor="lp-note">{tab === "maintenance" ? "وصف المشكلة" : "ملاحظة (اختياري)"}</label>
+                  <textarea className="lp-input" id="lp-note" value={note} onChange={e => setNote(e.target.value)} placeholder={tab === "maintenance" ? "مثال: مكيف الغرفة الثانية ما يبرد" : tab === "supplies" ? "مثال: 6 مناشف للمسبح" : ""}/>
+                </div>
+                <div><button className="lp-btn lp-primary" type="button" disabled={!picks.length || sending} onClick={sendRequest}>{sending ? "جاري الإرسال..." : (tab === "maintenance" ? "إرسال البلاغ" : tab === "cleaning" ? "طلب التنظيف" : "إرسال الطلب") + (picks.length ? " (" + picks.length + ")" : "")}</button></div>
+              </div>)
+            )}
+            {(tab === "supplies" || tab === "cleaning" || tab === "maintenance") && bk.requests.length > 0 && (
+              <div className="lp-timeline">
+                <b style={{ fontSize: 15 }}>طلباتك</b>
+                {bk.requests.map((r, i) => (
+                  <div key={i} className={"lp-tl" + (r.resolved ? " done" : "")}><span className="dot"/><div><b>{r.type + ": " + r.note}</b><span>{r.resolved ? "تم" : "وصل للفريق · قيد التنفيذ"}</span></div></div>
+                ))}
+              </div>
+            )}
+
+            {tab === "review" && (
+              bk.reviewed ? <div className="lp-sent"><I n="check"/><div><b>شكراً على تقييمك</b><span>تقييمك يساعدنا نخدمك أفضل، وأضفنا لك تذكرة في بطاقة الولاء.</span></div></div>
+              : bk.stage === "before" ? <p className="lp-muted">التقييم يفتح بعد وصولك للشاليه.</p>
+              : (
+                <div className="lp-panel">
+                  <p className="lp-muted">{"كيف كانت إقامتك في " + bk.chalet + "؟"}</p>
+                  <div className="lp-stars" role="radiogroup" aria-label="التقييم">
+                    {[1, 2, 3, 4, 5].map(i => (
+                      <button key={i} type="button" role="radio" aria-checked={stars === i} aria-label={i + " من 5"} className={i <= stars ? "on" : ""} onClick={() => setStars(i)}><svg viewBox="0 0 24 24" aria-hidden="true">{P.star}</svg></button>
+                    ))}
+                  </div>
+                  <div className="lp-field"><label htmlFor="lp-rv">تعليقك (اختياري)</label><textarea className="lp-input" id="lp-rv" value={note} onChange={e => setNote(e.target.value)} placeholder="وش عجبك؟ وش نحسّن؟"/></div>
+                  <div><button className="lp-btn lp-primary" type="button" disabled={!stars || sending} onClick={sendReview}>{sending ? "جاري الإرسال..." : "إرسال التقييم"}</button></div>
+                </div>
+              )
+            )}
+
+            {tab === "details" && (
+              <div className="lp-panel">
+                <div className="lp-timeline">
+                  <div className={"lp-tl" + (bk.status !== "pending" ? " done" : "")}><span className="dot"/><div><b>{bk.status === "pending" ? "بانتظار تأكيد التحويل" : "تم تأكيد الحجز"}</b><span>{bk.status === "pending" ? "أرسل إيصال التحويل واتساب لتأكيد حجزك" : "استلمنا المبلغ"}</span></div></div>
+                  <div className={"lp-tl" + (bk.stage !== "before" ? " done" : "")}><span className="dot"/><div><b>الدخول</b><span>{dayName(bk.date_from) + (bk.checkin_time ? " · " + bk.checkin_time : "")}</span></div></div>
+                  <div className={"lp-tl" + (bk.stage === "after" ? " done" : "")}><span className="dot"/><div><b>الخروج</b><span>{dayName(bk.date_to) + (bk.checkout_time ? " · " + bk.checkout_time : "")}</span></div></div>
+                </div>
+                <div className="lp-row">
+                  {bk.map_url && <a className="lp-btn lp-ghost lp-sm" href={bk.map_url} target="_blank" rel="noreferrer"><I n="pin" s={18}/>موقع الشاليه</a>}
+                  <a className="lp-btn lp-ghost lp-sm" href={`?guest=1&m=loyalty&phone=${encodeURIComponent(phone)}`}><I n="gift" s={18}/>بطاقة الولاء</a>
+                </div>
+                {bk.terms && <details className="lp-terms"><summary>الشروط والتعليمات</summary><p>{bk.terms}</p></details>}
+              </div>
+            )}
+
+            <div className="lp-row" style={{ borderTop: "1px solid var(--lp-line)", paddingTop: 18 }}>
+              {(waNumber(bk.whatsapp) || fallbackWa) && <a className="lp-btn lp-wa lp-sm" href={`https://wa.me/${waNumber(bk.whatsapp) || fallbackWa}?text=${encodeURIComponent("السلام عليكم، بخصوص حجزي رقم " + bk.id + " في " + bk.chalet)}`} target="_blank" rel="noreferrer"><I n="msg" s={18}/>تواصل معنا واتساب</a>}
+              <button className="lp-btn lp-ghost lp-sm" type="button" onClick={logout}>خروج من حجزي</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ───────── التنسيق ───────── */
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap');
+.lp{
+  --lp-sand:#F4ECDF; --lp-sand-2:#EADFCB; --lp-paper:#FFFBF4; --lp-line:#E3D5BE;
+  --lp-ink:#2A1E14; --lp-ink-2:#5E4E3E; --lp-muted:#857360;
+  --lp-espresso:#3B2A1C; --lp-palm:#2F5240; --lp-palm-2:#E3EDE5; --lp-gold:#C29A5B; --lp-gold-2:#F3E6CF; --lp-clay:#B4643C;
+  --lp-ok:#1E6B45; --lp-ok-bg:#E3F1E8; --lp-warn:#8A5A00; --lp-warn-bg:#FBEFD2; --lp-bad:#A3311F; --lp-bad-bg:#FBE4DF;
+  --lp-display:'Reem Kufi','Noto Kufi Arabic',Tahoma,sans-serif;
+  --lp-body:'IBM Plex Sans Arabic',system-ui,'Segoe UI',Tahoma,sans-serif;
+  background:var(--lp-sand);color:var(--lp-ink);font-family:var(--lp-body);font-size:16px;line-height:1.7;color-scheme:light;
+  position:fixed;inset:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;scroll-behavior:smooth;
+}
+@media (prefers-reduced-motion: reduce){.lp{scroll-behavior:auto}}
+html,body{background:#F4ECDF;margin:0}
+.lp *,.lp *::before,.lp *::after{box-sizing:border-box}
+.lp h1,.lp h2,.lp h3,.lp h4{font-family:var(--lp-display);font-weight:700;line-height:1.3;margin:0;text-wrap:balance}
+.lp p{margin:0}
+.lp a{color:var(--lp-palm)}
+.lp button{font-family:inherit;cursor:pointer}
+.lp :focus-visible{outline:2px solid var(--lp-gold);outline-offset:3px}
+.lp-i{flex:none;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.lp-mono{direction:ltr;unicode-bidi:isolate;font-variant-numeric:tabular-nums}
+.lp-muted{color:var(--lp-ink-2)}
+.lp-center{min-height:100%;display:flex;align-items:center;justify-content:center;color:var(--lp-muted)}
+@media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}.lp *{transition:none!important}}
+
+.lp-wrap{max-width:1180px;margin:0 auto;padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px))}
+.lp section{padding-block:88px}
+.lp-eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:14px;font-weight:600;color:var(--lp-clay)}
+.lp-eyebrow::before{content:"";width:22px;height:2px;background:currentColor;border-radius:2px}
+.lp-sec-h{display:flex;flex-direction:column;gap:12px;max-width:640px;margin-bottom:40px}
+.lp-sec-h h2{font-size:clamp(28px,4vw,40px);color:var(--lp-espresso)}
+.lp-sec-h p{color:var(--lp-ink-2);font-size:17px}
+.lp-center-h{text-align:center;margin-inline:auto;align-items:center}
+.lp-preview{display:flex;align-items:center;justify-content:center;gap:8px;background:#FBEFD2;color:#6E4A00;font-size:14px;padding:10px 16px;text-align:center}
+
+.lp-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 22px;border-radius:999px;border:1.5px solid transparent;font-size:16px;font-weight:600;text-decoration:none;white-space:nowrap;transition:transform .15s,background .15s}
+.lp-btn:active{transform:scale(.98)}
+.lp-btn:disabled{opacity:.5;cursor:not-allowed}
+.lp-primary{background:var(--lp-espresso);color:#FFF6E8!important}
+.lp-primary:hover{background:#2A1E14}
+.lp-ghost{background:transparent;border-color:var(--lp-espresso);color:var(--lp-espresso)!important}
+.lp-wa{background:#1F8A4C;color:#fff!important}
+.lp-sm{min-height:40px;padding:0 16px;font-size:14px}
+.lp-frond{height:28px;background-repeat:repeat-x;background-position:center}
+.lp-divider{display:flex;align-items:center;justify-content:center;gap:14px;margin:0 auto 48px}
+.lp-divider span{height:1px;width:80px;background:var(--lp-gold);opacity:.5}
+
+.lp-top{position:sticky;top:0;z-index:40;background:rgba(244,236,223,.94);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border-bottom:1px solid var(--lp-line);padding-top:env(safe-area-inset-top,0px)}
+.lp-top-in{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:72px;position:relative}
+.lp-logo{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--lp-espresso)!important}
+.lp-logo-mark{width:42px;height:42px;border-radius:12px;background:var(--lp-espresso);color:var(--lp-gold);display:inline-flex;align-items:center;justify-content:center}
+.lp-logo b{font-family:var(--lp-display);font-size:20px;display:block;line-height:1.1}
+.lp-logo small{font-size:12px;color:var(--lp-muted)}
+.lp-nav{display:flex;gap:4px;align-items:center}
+.lp-nav a{color:var(--lp-ink-2);text-decoration:none;font-size:15px;font-weight:500;padding:8px 12px;border-radius:999px}
+.lp-nav a:hover{background:var(--lp-sand-2);color:var(--lp-ink)}
+.lp-menu{display:none;width:44px;height:44px;border-radius:12px;border:1px solid var(--lp-line);background:var(--lp-paper);color:var(--lp-espresso);align-items:center;justify-content:center}
+@media (max-width:900px){
+  .lp-nav{display:none;position:absolute;top:100%;inset-inline:-18px;flex-direction:column;align-items:stretch;background:var(--lp-paper);border-bottom:1px solid var(--lp-line);padding:10px 18px 18px;gap:2px}
+  .lp-nav.open{display:flex}
+  .lp-nav a{padding:12px}
+  .lp-menu{display:inline-flex}
+  .lp-desk{display:none!important}
+}
+
+.lp-hero{padding-block:56px 72px!important;position:relative;overflow:hidden}
+.lp-hero-bg{position:absolute;inset:0;opacity:.18;pointer-events:none;background-repeat:repeat}
+.lp-hero-in{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center;position:relative}
+.lp-hero h1{font-size:clamp(36px,6vw,64px);color:var(--lp-espresso)}
+.lp-hero h1 em{font-style:normal;color:var(--lp-palm)}
+.lp-lead{font-size:clamp(17px,2vw,19px);color:var(--lp-ink-2);margin-top:18px!important;max-width:520px}
+.lp-ctas{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+.lp-stats{display:flex;flex-wrap:wrap;gap:28px;margin-top:40px;padding-top:24px;border-top:1px solid var(--lp-line)}
+.lp-stats b{font-family:var(--lp-display);font-size:26px;color:var(--lp-espresso);display:block;line-height:1.2}
+.lp-stats span{font-size:14px;color:var(--lp-muted)}
+.lp-arch-wrap{position:relative;max-width:460px;margin-inline:auto;width:100%}
+.lp-arch-wrap::before{content:"";position:absolute;inset:-14px -14px 14px 14px;border:1.5px solid var(--lp-gold);border-radius:999px 999px 28px 28px;opacity:.7}
+.lp-arch{position:relative;aspect-ratio:4/5;max-width:100%;border-radius:999px 999px 24px 24px;overflow:hidden;background:var(--lp-espresso);box-shadow:0 30px 60px -20px rgba(42,30,20,.35)}
+.lp-arch img{width:100%;height:100%;object-fit:cover;display:block}
+.lp-ph{position:absolute;inset:0;background-repeat:repeat;background-position:center;opacity:.5}
+.lp-arch-tag{position:absolute;bottom:22px;inset-inline-start:-18px;background:var(--lp-paper);border-radius:16px;padding:12px 16px;box-shadow:0 14px 30px -12px rgba(42,30,20,.3);display:flex;align-items:center;gap:12px}
+.lp-dot{width:40px;height:40px;border-radius:12px;background:var(--lp-palm-2);color:var(--lp-palm);display:flex;align-items:center;justify-content:center}
+.lp-arch-tag b{display:block;font-size:15px}
+.lp-arch-tag span{font-size:13px;color:var(--lp-muted)}
+@media (max-width:900px){.lp-hero-in{grid-template-columns:1fr;gap:40px}.lp-arch-wrap{max-width:340px}.lp-arch-tag{inset-inline-start:0}}
+
+.lp-filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:28px}
+.lp-chip{border:1.5px solid var(--lp-line);background:var(--lp-paper);color:var(--lp-ink-2);min-height:40px;padding:0 16px;border-radius:999px;font-size:14px;font-weight:500}
+.lp-chip[aria-pressed="true"]{background:var(--lp-espresso);border-color:var(--lp-espresso);color:#FFF6E8}
+.lp-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,330px),1fr));gap:24px}
+.lp-card{background:var(--lp-paper);border-radius:24px;overflow:hidden;border:1px solid var(--lp-line);display:flex;flex-direction:column;transition:transform .2s,box-shadow .2s}
+.lp-card:hover{transform:translateY(-4px);box-shadow:0 24px 40px -24px rgba(42,30,20,.35)}
+.lp-card-img{position:relative;aspect-ratio:16/11;background:var(--lp-espresso);overflow:hidden}
+.lp-card-img img{width:100%;height:100%;object-fit:cover;display:block}
+.lp-badge{position:absolute;top:14px;inset-inline-start:14px;background:rgba(255,251,244,.94);color:var(--lp-espresso);font-size:13px;font-weight:600;padding:5px 12px;border-radius:999px;display:inline-flex;align-items:center;gap:6px}
+.lp-card-body{padding:20px 22px 22px;display:flex;flex-direction:column;gap:12px;flex:1}
+.lp-card-title{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.lp-card-title h3{font-size:22px;color:var(--lp-espresso)}
+.lp-loc{display:flex;align-items:center;gap:4px;font-size:14px;color:var(--lp-muted)}
+.lp-rating{display:inline-flex;align-items:center;gap:4px;font-size:14px;font-weight:600;color:var(--lp-ink-2);white-space:nowrap}
+.lp-rating svg{width:16px;height:16px;fill:var(--lp-gold)}
+.lp-desc{font-size:14px;color:var(--lp-ink-2);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.lp-feats{display:flex;flex-wrap:wrap;gap:6px}
+.lp-feats span{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--lp-ink-2);background:var(--lp-sand);padding:4px 10px;border-radius:999px}
+.lp-price-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-top:auto;padding-top:14px;border-top:1px dashed var(--lp-line)}
+.lp-price b{font-family:var(--lp-display);font-size:26px;color:var(--lp-espresso)}
+.lp-price small{font-size:13px;color:var(--lp-muted)}
+.lp-wk{display:block;font-size:13px;color:var(--lp-muted)}
+
+.lp-about{background:var(--lp-espresso);color:#F4E8D6;position:relative;overflow:hidden}
+.lp-about-pat{position:absolute;inset:0;opacity:.09;pointer-events:none;background-repeat:repeat}
+.lp-about-in{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;position:relative}
+.lp-about h2{color:#FFF6E8!important}
+.lp-about .lp-sec-h p{color:#D8C7B0}
+.lp-about .lp-eyebrow{color:var(--lp-gold)}
+.lp-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.lp-value{border:1px solid rgba(194,154,91,.35);border-radius:20px;padding:22px;display:flex;flex-direction:column;gap:8px}
+.lp-value b{font-family:var(--lp-display);font-size:20px;color:var(--lp-gold)}
+.lp-value span{font-size:15px;color:#D8C7B0}
+@media (max-width:900px){.lp-about-in{grid-template-columns:1fr;gap:32px}}
+@media (max-width:480px){.lp-values{grid-template-columns:1fr}}
+
+.lp-features{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,260px),1fr));gap:18px}
+.lp-feature{background:var(--lp-paper);border:1px solid var(--lp-line);border-radius:22px;padding:26px;display:flex;flex-direction:column;gap:12px}
+.lp-fic{width:52px;height:52px;border-radius:16px 16px 16px 4px;display:flex;align-items:center;justify-content:center;background:var(--lp-palm-2);color:var(--lp-palm)}
+.lp-feature:nth-child(3n+2) .lp-fic{background:var(--lp-gold-2);color:#8A6326}
+.lp-feature:nth-child(3n) .lp-fic{background:#F6E2D6;color:var(--lp-clay)}
+.lp-feature h3{font-size:20px;color:var(--lp-espresso)}
+.lp-feature p{color:var(--lp-ink-2);font-size:15px}
+
+.lp-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
+.lp-step{display:flex;flex-direction:column;gap:12px;padding:26px 22px;background:var(--lp-paper);border-radius:22px;border:1px solid var(--lp-line)}
+.lp-n{width:48px;height:56px;display:flex;align-items:center;justify-content:center;font-family:var(--lp-display);font-size:22px;color:#FFF6E8;background:var(--lp-palm);border-radius:999px 999px 10px 10px}
+.lp-step h3{font-size:19px;color:var(--lp-espresso)}
+.lp-step p{font-size:15px;color:var(--lp-ink-2)}
+@media (max-width:900px){.lp-steps{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:520px){.lp-steps{grid-template-columns:1fr}}
+
+.lp-portal{background:var(--lp-sand-2)}
+.lp-portal-card{background:var(--lp-paper);border-radius:28px;border:1px solid var(--lp-line);box-shadow:0 30px 60px -30px rgba(42,30,20,.3);overflow:hidden;max-width:880px;margin:0 auto}
+.lp-portal-head{background:var(--lp-palm);color:#F1F6F2;padding:28px 32px;display:flex;align-items:center;gap:16px}
+.lp-portal-head h3{font-size:24px;color:#fff}
+.lp-portal-head p{font-size:15px;opacity:.85}
+.lp-pic{width:52px;height:52px;border-radius:16px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex:none}
+.lp-portal-body{padding:28px 32px 32px}
+.lp-form{display:grid;grid-template-columns:1fr 1fr auto;gap:14px;align-items:end}
+.lp-field{display:flex;flex-direction:column;gap:6px}
+.lp-field label{font-size:14px;font-weight:600;color:var(--lp-ink-2)}
+.lp-input{min-height:50px;border-radius:14px;border:1.5px solid var(--lp-line);background:#fff;padding:0 16px;font:inherit;font-size:16px;color:var(--lp-ink);width:100%}
+.lp-input:focus{border-color:var(--lp-gold);outline:none;box-shadow:0 0 0 4px rgba(194,154,91,.18)}
+textarea.lp-input{min-height:90px;padding:12px 16px;resize:vertical}
+.lp-hint{font-size:13px;color:var(--lp-muted)}
+.lp-err{background:var(--lp-bad-bg);color:var(--lp-bad);padding:12px 16px;border-radius:12px;font-size:15px}
+@media (max-width:700px){.lp-form{grid-template-columns:1fr}.lp-portal-head,.lp-portal-body{padding-left:20px;padding-right:20px}}
+.lp-bk{display:flex;flex-direction:column;gap:22px}
+.lp-bk-top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:14px}
+.lp-bk-top h4{font-size:24px;color:var(--lp-espresso)}
+.lp-bk-top span{color:var(--lp-muted);font-size:15px}
+.lp-pill{display:inline-flex;align-items:center;gap:6px;min-height:30px;padding:0 12px;border-radius:999px;font-size:14px;font-weight:600}
+.lp-pill.ok{background:var(--lp-ok-bg);color:var(--lp-ok)} .lp-pill.warn{background:var(--lp-warn-bg);color:var(--lp-warn)} .lp-pill.muted{background:var(--lp-sand);color:var(--lp-ink-2)}
+.lp-pill .d{width:7px;height:7px;border-radius:50%;background:currentColor}
+.lp-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.lp-facts div{background:var(--lp-sand);border-radius:14px;padding:12px 14px;min-width:0}
+.lp-facts small{display:block;font-size:13px;color:var(--lp-muted)}
+.lp-facts b{font-size:15px}
+@media (max-width:700px){.lp-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.lp-tabs{display:flex;gap:6px;flex-wrap:wrap;border-bottom:1px solid var(--lp-line);padding-bottom:12px}
+.lp-tab{display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:0 16px;border-radius:999px;border:1.5px solid var(--lp-line);background:#fff;color:var(--lp-ink-2);font-size:15px;font-weight:500}
+.lp-tab[aria-selected="true"]{background:var(--lp-espresso);border-color:var(--lp-espresso);color:#FFF6E8}
+.lp-panel{display:flex;flex-direction:column;gap:16px}
+.lp-opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,150px),1fr));gap:10px}
+.lp-opt{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:14px;border-radius:16px;border:1.5px solid var(--lp-line);background:#fff;color:var(--lp-ink);font-size:15px;font-weight:500;text-align:right;min-height:84px}
+.lp-opt svg{color:var(--lp-palm)}
+.lp-opt[aria-pressed="true"]{border-color:var(--lp-palm);background:var(--lp-palm-2)}
+.lp-stars{display:flex;gap:6px;direction:ltr;justify-content:flex-end}
+.lp-stars button{background:none;border:0;padding:4px;color:var(--lp-line)}
+.lp-stars button svg{width:36px;height:36px;fill:currentColor}
+.lp-stars button.on{color:var(--lp-gold)}
+.lp-row{display:flex;gap:10px;flex-wrap:wrap}
+.lp-sent{display:flex;gap:14px;align-items:flex-start;background:var(--lp-ok-bg);color:var(--lp-ok);padding:16px 18px;border-radius:16px}
+.lp-sent b{display:block}
+.lp-sent span{font-size:14px;color:var(--lp-ink-2)}
+.lp-timeline{display:flex;flex-direction:column}
+.lp-tl{display:flex;gap:14px;padding:10px 0}
+.lp-tl .dot{width:12px;height:12px;border-radius:50%;background:var(--lp-gold);margin-top:8px;flex:none;box-shadow:0 0 0 4px var(--lp-gold-2)}
+.lp-tl.done .dot{background:var(--lp-ok);box-shadow:0 0 0 4px var(--lp-ok-bg)}
+.lp-tl b{display:block;font-size:15px}
+.lp-tl span{font-size:13px;color:var(--lp-muted)}
+.lp-terms{background:var(--lp-sand);border-radius:14px;padding:12px 16px}
+.lp-terms summary{cursor:pointer;font-weight:600}
+.lp-terms p{margin-top:10px!important;white-space:pre-line;font-size:14px;color:var(--lp-ink-2)}
+
+.lp-modal{position:fixed;inset:0;z-index:60;background:rgba(42,30,20,.55);display:flex;align-items:flex-end;justify-content:center;padding:16px}
+@media (min-width:700px){.lp-modal{align-items:center}}
+.lp-sheet{background:var(--lp-paper);border-radius:26px;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;padding:26px}
+.lp-sheet-h{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:18px}
+.lp-sheet-h h3{font-size:22px;color:var(--lp-espresso)}
+.lp-x{width:42px;height:42px;border-radius:12px;border:1px solid var(--lp-line);background:#fff;color:var(--lp-ink);display:inline-flex;align-items:center;justify-content:center}
+.lp-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.lp-total{display:flex;justify-content:space-between;align-items:center;background:var(--lp-sand);border-radius:14px;padding:14px 16px}
+.lp-total b{font-family:var(--lp-display);font-size:24px;color:var(--lp-espresso)}
+.lp-bank{background:var(--lp-sand);border-radius:16px;padding:16px;display:flex;flex-direction:column;gap:10px}
+.lp-bank > div{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.lp-bank small{color:var(--lp-muted);font-size:13px;min-width:110px}
+.lp-toast{position:fixed;bottom:calc(20px + env(safe-area-inset-bottom,0px));inset-inline:0;margin:0 auto;width:max-content;max-width:calc(100% - 32px);background:var(--lp-espresso);color:#FFF6E8;padding:12px 20px;border-radius:999px;font-size:15px;z-index:70;display:flex;align-items:center;gap:10px;box-shadow:0 14px 30px -10px rgba(0,0,0,.4)}
+
+.lp-foot{background:#1F160F;color:#CDBBA4;padding-block:56px calc(28px + env(safe-area-inset-bottom,0px))}
+.lp-foot-in{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:40px}
+.lp-foot h4{color:#FFF6E8;font-size:18px;margin:0 0 14px!important}
+.lp-foot a{color:#CDBBA4!important;text-decoration:none;display:flex;align-items:center;gap:8px;padding:4px 0}
+.lp-foot a:hover{color:var(--lp-gold)!important}
+.lp-foot-bottom{grid-column:1/-1;border-top:1px solid rgba(205,187,164,.18);padding-top:20px;font-size:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+@media (max-width:800px){.lp-foot-in{grid-template-columns:1fr}}
+`;

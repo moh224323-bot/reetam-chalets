@@ -15,6 +15,8 @@ import type {
 import FinancialTab   from "../components/FinancialTab";
 import ChaletsTab     from "../components/ChaletsTab";
 import SettingsTab    from "../components/SettingsTab";
+import LandingPage, { fetchLanding, type LandingData } from "../components/LandingPage";
+import WebsiteTab     from "../components/WebsiteTab";
 import { Icon, Pill, SAR, PageHead, Kpi, Seg, CardHead, Track, toneFor, Empty } from "../components/ds";
 import { nextDueInfo, formatDueDate, RENT_REMINDER_DAYS } from "../lib/dueDate";
 
@@ -747,7 +749,7 @@ function Logo({size}) {
 }
 
 // أيقونات القائمة الجانبية — من نظام التصميم الموحّد
-const NAV_ICON: Record<string,string> = { dashboard:"dashboard", chalets:"home", bookings:"cal", finance:"money", investors:"users", maintenance:"wrench", wallets:"wallet", cleaning:"broom", smart:"temp", loyalty:"trophy", settings:"gear", sun:"sun", moon:"moon", menu:"menu" };
+const NAV_ICON: Record<string,string> = { website:"globe", dashboard:"dashboard", chalets:"home", bookings:"cal", finance:"money", investors:"users", maintenance:"wrench", wallets:"wallet", cleaning:"broom", smart:"temp", loyalty:"trophy", settings:"gear", sun:"sun", moon:"moon", menu:"menu" };
 function NavIcon({id,size=18}:{id:string;size?:number}) {
   return <Icon n={NAV_ICON[id]||id} s={size}/>;
 }
@@ -1726,6 +1728,9 @@ function GuestInfoPage({bookingId}:{bookingId: string | null}) {
    صفحة طلب الغرفة — تُفتح بمسح الباركود
 ══════════════════════════════════════════════════════ */
 const ROOM_REQUEST_TYPES = [
+  { val:"مستلزمات", icon:"📦", label:"مستلزمات من الضيف", color:"#8A5A00" },
+  { val:"نظافة",    icon:"🧹", label:"طلب نظافة من الضيف", color:"#2F5D7C" },
+  { val:"صيانة",    icon:"🔧", label:"بلاغ صيانة من الضيف", color:"#A63A2A" },
   { val:"مفارش", icon:"🛏", label:"تغيير المفارش",    color:"#4338CA" },
   { val:"صابون",  icon:"🧴", label:"صابون / شامبو",    color:"#0284C7" },
   { val:"منديل",  icon:"🧻", label:"مناديل / ورق حمام",color:"#059669" },
@@ -2345,9 +2350,13 @@ function AppWrapper() {
   const [showSignup,setShowSignup]   = useState(false);
   const [showForgot,setShowForgot]   = useState(false);
   const [isRecovery,setIsRecovery]   = useState(false);
+  // صفحة الهبوط العامة: ?site يعرضها دائماً، والرابط الرئيسي يعرضها للزوار إذا كانت منشورة
+  const [site,setSite]               = useState<LandingData|null|undefined>(undefined);
+  const [forceSite,setForceSite]     = useState(false);
 
   useEffect(()=>{
     const p = new URLSearchParams(window.location.search);
+    if(p.has("site")){ setForceSite(true); setReady(true); return; }
     if(p.get("guest")==="1"){
       setGuestParams({bookingId:p.get("b"),mode:p.get("m")||"checkin",chalet:p.get("ch"),room:p.get("rm")});
       setIsGuest(true);
@@ -2367,6 +2376,9 @@ function AppWrapper() {
           setCurrentOwnerId(profile.owner_id as string);
           setCurrentUser(profile as unknown as AppUser);
         }
+      } else if(!p.has("login")) {
+        const d = await fetchLanding();
+        if(d && d.enabled) setSite(d);
       }
       setReady(true);
     })();
@@ -2374,6 +2386,7 @@ function AppWrapper() {
   },[]);
 
   if(!ready) return null;
+  if(forceSite) return <LandingPage/>;
   if(isRecovery){
     return <ResetPasswordPage onDone={()=>{
       supabase.auth.signOut();
@@ -2399,6 +2412,7 @@ function AppWrapper() {
     return <GuestPageEmbed bookingId={guestParams.bookingId} mode={guestParams.mode}/>;
   }
   if(!currentUser){
+    if(site) return <LandingPage initial={site}/>;
     if(showSignup) return <SignupPage onSignedUp={u=>setCurrentUser(u)} onBack={()=>setShowSignup(false)}/>;
     if(showForgot) return <ForgotPasswordPage onBack={()=>setShowForgot(false)}/>;
     return <LoginPage onLogin={u=>setCurrentUser(u)} onShowSignup={()=>setShowSignup(true)} onShowForgot={()=>setShowForgot(true)}/>;
@@ -2841,6 +2855,7 @@ ${poolLine}
     {id:"wallets",    l:"المحافظ",           g:"المال"},
     {id:"investors",  l:"المستثمرون",        g:"المال"},
     {id:"loyalty",    l:"الولاء والتقييمات", g:"العملاء"},
+    {id:"website",    l:"الموقع العام",      g:"العملاء"},
     {id:"settings",   l:"الإعدادات",         g:"النظام"},
   ];
 
@@ -2989,6 +3004,7 @@ ${poolLine}
             <span>{t.l}</span>
             {t.id==="bookings"&&count>0&&<span className="rs-count">{count}</span>}
             {t.id==="maintenance"&&opM>0&&<span className="rs-count">{opM}</span>}
+            {t.id==="website"&&roomReqs.filter((r:any)=>r.source==="landing").length>0&&<span className="rs-count">{roomReqs.filter((r:any)=>r.source==="landing").length}</span>}
           </button>
         </React.Fragment>
       ))}
@@ -3123,7 +3139,7 @@ ${poolLine}
               const rt=ROOM_REQUEST_TYPES.find(x=>x.val===r.type)||{label:r.type};
               const ago=Math.round((Date.now()-new Date(r.created_at).getTime())/60000);
               const agoStr=ago<1?"الآن":ago<60?`منذ ${ago} د`:`منذ ${Math.round(ago/60)} س`;
-              items.push({key:"rr"+r.id,tone:"muted",icon:"bell",title:"طلب غرفة: "+rt.label,desc:<>{r.chalet+" · "+r.room+" · "+agoStr}{r.note&&<> · «{r.note}»</>}</>,acts:[{label:"تم",onClick:async()=>{await db("room_requests","PATCH",{resolved:true},r.id);await loadAll();}}]});
+              items.push({key:"rr"+r.id,tone:r.type==="صيانة"?"bad":r.source==="landing"?"info":"muted",icon:r.type==="صيانة"?"wrench":r.type==="نظافة"?"broom":"bell",title:(r.source==="landing"?rt.label:"طلب غرفة: "+rt.label),desc:<>{r.chalet+" · "+r.room+" · "+agoStr}{r.note&&<> · «{r.note}»</>}</>,acts:[{label:"تم",onClick:async()=>{await db("room_requests","PATCH",{resolved:true},r.id);await loadAll();}}]});
             });
             scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx)})).filter(x=>x.info&&x.info.daysUntil<=RENT_REMINDER_DAYS).sort((a,b)=>a.info!.daysUntil-b.info!.daysUntil).forEach(({fx,info})=>{
               const d=info!.daysUntil;
@@ -3730,6 +3746,11 @@ ${poolLine}
               reviews={(isAdmin||isStaff)?reviews:reviews.filter(r=>isChaletMgr&&r.chalet===currentUser.chalet)}
               onReload={loadAll}
             />
+          )}
+
+          {/* ── Website ── */}
+          {tab==="website"&&isAdmin&&(
+            <WebsiteTab bookings={bookings} ownerId={currentUser.owner_id||currentOwnerId} onReload={loadAll} onOpenBooking={b=>setBkDetail(b)}/>
           )}
 
           {/* ── Settings ── */}
