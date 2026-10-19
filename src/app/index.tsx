@@ -121,6 +121,15 @@ function galleryUrl(g: unknown): string | null {
   if (g && typeof g === "object" && typeof (g as { url?: unknown }).url === "string") return (g as { url: string }).url;
   return null;
 }
+function galleryCat(g: unknown): string {
+  return g && typeof g === "object" && typeof (g as { cat?: unknown }).cat === "string" ? (g as { cat: string }).cat : "";
+}
+
+// قائمة جاهزة تطابق الكلمات المفتاحية اللي تحدد أيقونة الميزة تلقائياً في صفحة الهبوط (amenityIcon بـ LandingPage.tsx)،
+// عشان اختيار ميزة من القائمة يضمن ظهورها بالأيقونة الصحيحة للزبون.
+const AMENITY_PRESETS = ["مسبح خاص","واي فاي","تكييف مركزي","مطبخ مجهز","موقف سيارات","شواية/مشب","جاكوزي","حديقة ونخيل","شاشة وصوت","غرف نوم مجهزة"];
+// أقسام صور المعرض — نفس التصنيفات تظهر للزبون في قسم "المرافق" (صفحة الهبوط تجمّع الصور حسب القسم).
+const PHOTO_CATEGORIES = ["مجلس","غرفة نوم","دورة مياه","المسبح","المطبخ","الجلسة الخارجية","أخرى"];
 
 /** يضغط الصورة قبل الرفع (أقصى بعد 1600px، جودة JPEG 82%) ليحافظ على وضوح جيد بأقل مساحة تخزين ممكنة. */
 function compressImageFile(file: File, maxPx = 1600, quality = 0.82): Promise<Blob> {
@@ -3806,8 +3815,23 @@ ${poolLine}
               <textarea className="inp" rows={3} value={cMdl.terms||""} onChange={e=>setCMdl(p=>({...p,terms:e.target.value}))} placeholder="تُضاف لرسالة ما قبل الوصول تلقائياً..."/>
             </div>
             <div style={{gridColumn:"span 2"}}>
-              <label className="lbl">المميزات (افصل بفاصلة)</label>
-              <input className="inp" value={cMdl.amenities||""} onChange={e=>setCMdl(p=>({...p,amenities:e.target.value}))} placeholder="مسبح خاص، واي فاي، مطبخ مجهز، موقف سيارات"/>
+              <label className="lbl">المميزات</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:9}}>
+                {AMENITY_PRESETS.map(a=>{
+                  const list = (cMdl.amenities||"").split(/[،,]/).map(s=>s.trim()).filter(Boolean);
+                  const active = list.includes(a);
+                  return (
+                    <button key={a} type="button" onClick={()=>{
+                      const next = active ? list.filter(x=>x!==a) : [...list,a];
+                      setCMdl(p=>({...p,amenities:next.join("، ")}));
+                    }} className="btn bsm" style={{
+                      background: active ? B : SL, color: active ? S : B,
+                      border: active ? "none" : "1px solid rgba(201,163,106,.3)",
+                    }}>{active?"✓ ":""}{a}</button>
+                  );
+                })}
+              </div>
+              <input className="inp" value={cMdl.amenities||""} onChange={e=>setCMdl(p=>({...p,amenities:e.target.value}))} placeholder="اضغط لاختيار أعلاه، أو اكتب مميزات إضافية هنا، افصل بفاصلة"/>
             </div>
             <div style={{gridColumn:"span 2"}}>
               <label className="lbl">صورة الشاليه</label>
@@ -3824,20 +3848,33 @@ ${poolLine}
               </label>
             </div>
             <div style={{gridColumn:"span 2"}}>
-              <label className="lbl">معرض الصور (تظهر للزبون في رابط الشاليه)</label>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8,marginBottom:8}}>
+              <label className="lbl">معرض الصور (تظهر للزبون مجمّعة حسب القسم في "المرافق")</label>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:10,marginBottom:8}}>
                 {(()=>{
                   let gal: unknown[] = [];
                   try { gal = cMdl.gallery ? JSON.parse(cMdl.gallery as string) : []; } catch { gal = []; }
-                  return gal.map((g,i)=>(
-                    <div key={i} style={{position:"relative",height:70}}>
-                      <img src={galleryUrl(g)||""} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:7}}/>
-                      <button type="button" onClick={()=>{
-                        const next = gal.filter((_,gi)=>gi!==i);
-                        setCMdl(p=>({...p,gallery:JSON.stringify(next)}));
-                      }} style={{position:"absolute",top:2,left:2,background:"rgba(166,58,42,.85)",color:"#fff",border:"none",borderRadius:4,width:18,height:18,fontSize:11,cursor:"pointer",lineHeight:1}}>✕</button>
-                    </div>
-                  ));
+                  return gal.map((g,i)=>{
+                    const url = galleryUrl(g)||"";
+                    const cat = galleryCat(g);
+                    return (
+                      <div key={i} style={{display:"flex",flexDirection:"column",gap:4}}>
+                        <div style={{position:"relative",height:70}}>
+                          <img src={url} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:7}}/>
+                          <button type="button" onClick={()=>{
+                            const next = gal.filter((_,gi)=>gi!==i);
+                            setCMdl(p=>({...p,gallery:JSON.stringify(next)}));
+                          }} style={{position:"absolute",top:2,left:2,background:"rgba(166,58,42,.85)",color:"#fff",border:"none",borderRadius:4,width:18,height:18,fontSize:11,cursor:"pointer",lineHeight:1}}>✕</button>
+                        </div>
+                        <select className="inp" style={{fontSize:10.5,padding:"4px 6px"}} value={cat} onChange={e=>{
+                          const next = gal.map((x,gi)=>gi===i?{url,cat:e.target.value}:x);
+                          setCMdl(p=>({...p,gallery:JSON.stringify(next)}));
+                        }}>
+                          <option value="">بدون قسم</option>
+                          {PHOTO_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    );
+                  });
                 })()}
                 <label style={{height:70,border:"2px dashed rgba(201,163,106,.5)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",background:SL,fontSize:imgUploading?12:22,color:T,textAlign:"center"}}>
                   {imgUploading?"⏳":"+"}
@@ -3849,7 +3886,7 @@ ${poolLine}
                     setImgUploading(true);
                     for(const file of files){
                       const url = await uploadChaletImage(file);
-                      if(url) gal = [...gal, url];
+                      if(url) gal = [...gal, {url,cat:""}];
                     }
                     setImgUploading(false);
                     setCMdl(p=>({...p,gallery:JSON.stringify(gal)}));
