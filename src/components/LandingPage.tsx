@@ -225,7 +225,7 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
 
   // التنقل بين الصفحة الرئيسية وصفحة الشاليه بدون إعادة تحميل
   function go(id: number | null, anchor?: string) {
-    try { window.history.pushState({}, "", chaletHref(id) + (anchor ? "#" + anchor : "")); } catch { /* */ }
+    try { window.history.pushState({}, "", chaletHref(id)); } catch { /* */ }
     setOpenId(id); setMenu(false);
     requestAnimationFrame(() => {
       const el = anchor ? document.getElementById(anchor) : null;
@@ -233,10 +233,22 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
       else rootRef.current?.scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
     });
   }
-  const navLink = (anchor: string) => ({
-    href: "#" + anchor,
-    onClick: (e: React.MouseEvent) => { if (opened) { e.preventDefault(); go(null, anchor); } },
-  });
+  const navLink = (anchor: string) => ({ href: "#" + anchor });
+  // كل روابط الأقسام (#...) تنزل للقسم مباشرة بدون تغيير الرابط،
+  // لأن تغيير الرابط يخلي موجّه التطبيق يعيد رسم الصفحة ويرجعها لأعلى
+  function onAnchor(e: React.MouseEvent) {
+    const a = (e.target as HTMLElement).closest("a");
+    const h = a?.getAttribute("href") || "";
+    if (!h.startsWith("#")) return;
+    e.preventDefault();
+    setMenu(false);
+    const id = h.slice(1) || "top";
+    const homeOnly = ["top", "chalets", "about", "features", "how", "mybooking"];
+    if (opened && homeOnly.includes(id)) { go(null, id === "top" ? undefined : id); return; }
+    const el = id === "top" ? null : document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    else rootRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3800); return () => clearTimeout(t); }, [toast]);
 
   if (data === undefined) return <div className="lp" dir="rtl"><style>{CSS}</style><div className="lp-center">جاري التحميل...</div></div>;
@@ -262,7 +274,7 @@ export default function LandingPage({ initial }: { initial?: LandingData | null 
   const wa = waNumber(data.whatsapp || data.phone);
 
   return (
-    <div className="lp" dir="rtl" ref={rootRef}>
+    <div className="lp" dir="rtl" ref={rootRef} onClick={onAnchor}>
       <style>{CSS}</style>
       {data.preview && (
         <div className="lp-preview"><I n="lock" s={16}/>معاينة: الصفحة غير منشورة، والزوار ما يشوفونها. انشرها من لوحة التحكم ← الموقع العام.</div>
@@ -965,6 +977,7 @@ html,body{background:#F4ECDF;margin:0}
 .lp-center{min-height:100%;display:flex;align-items:center;justify-content:center;color:var(--lp-muted)}
 @media (prefers-reduced-motion: reduce){html{scroll-behavior:auto}.lp *{transition:none!important}}
 
+.lp [id]{scroll-margin-top:84px}
 .lp-wrap{max-width:1180px;margin:0 auto;padding-left:max(18px,env(safe-area-inset-left,0px));padding-right:max(18px,env(safe-area-inset-right,0px))}
 .lp section{padding-block:88px}
 .lp-eyebrow{display:inline-flex;align-items:center;gap:10px;font-size:14px;font-weight:600;color:var(--lp-clay)}
