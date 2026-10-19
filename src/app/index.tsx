@@ -2865,6 +2865,7 @@ ${poolLine}
     {id:"wallets",    l:"المحافظ",           g:"المال"},
     {id:"investors",  l:"المستثمرون",        g:"المال"},
     {id:"loyalty",    l:"الولاء والتقييمات", g:"العملاء"},
+    {id:"marketing",  l:"التسويق",           g:"التسويق"},
     {id:"settings",   l:"الإعدادات",         g:"النظام"},
   ];
 
@@ -3760,6 +3761,11 @@ ${poolLine}
           {/* ── Website ── */}
           {tab==="website"&&isAdmin&&(
             <WebsiteTab bookings={bookings} ownerId={currentUser.owner_id||currentOwnerId} onReload={loadAll} onOpenBooking={b=>setBkDetail(b)} onStatus={setSiteOnline}/>
+          )}
+
+          {/* ── Marketing ── */}
+          {tab==="marketing"&&(
+            <MarketingTab supabase={supabase}/>
           )}
 
           {/* ── Settings ── */}
