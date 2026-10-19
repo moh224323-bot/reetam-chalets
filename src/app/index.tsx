@@ -18,7 +18,7 @@ import SettingsTab    from "../components/SettingsTab";
 import LandingPage, { fetchLanding, type LandingData } from "../components/LandingPage";
 import WebsiteTab     from "../components/WebsiteTab";
 import { Icon, Pill, SAR, PageHead, Kpi, Seg, CardHead, Track, toneFor, Empty } from "../components/ds";
-import { nextDueInfo, formatDueDate, RENT_REMINDER_DAYS } from "../lib/dueDate";
+import { rentCycleInfo, formatDueDate, RENT_REMINDER_DAYS, MONTH_NAMES } from "../lib/dueDate";
 
 const SUPA_URL = process.env.EXPO_PUBLIC_SUPA_URL!;
 const SUPA_KEY = process.env.EXPO_PUBLIC_SUPA_KEY!;
@@ -121,6 +121,15 @@ function galleryUrl(g: unknown): string | null {
   if (g && typeof g === "object" && typeof (g as { url?: unknown }).url === "string") return (g as { url: string }).url;
   return null;
 }
+function galleryCat(g: unknown): string {
+  return g && typeof g === "object" && typeof (g as { cat?: unknown }).cat === "string" ? (g as { cat: string }).cat : "";
+}
+
+// قائمة جاهزة تطابق الكلمات المفتاحية اللي تحدد أيقونة الميزة تلقائياً في صفحة الهبوط (amenityIcon بـ LandingPage.tsx)،
+// عشان اختيار ميزة من القائمة يضمن ظهورها بالأيقونة الصحيحة للزبون.
+const AMENITY_PRESETS = ["مسبح خاص","واي فاي","تكييف مركزي","مطبخ مجهز","موقف سيارات","شواية/مشب","جاكوزي","حديقة ونخيل","شاشة وصوت","غرف نوم مجهزة"];
+// أقسام صور المعرض — نفس التصنيفات تظهر للزبون في قسم "المرافق" (صفحة الهبوط تجمّع الصور حسب القسم).
+const PHOTO_CATEGORIES = ["مجلس","غرفة نوم","دورة مياه","المسبح","المطبخ","الجلسة الخارجية","أخرى"];
 
 /** يضغط الصورة قبل الرفع (أقصى بعد 1600px، جودة JPEG 82%) ليحافظ على وضوح جيد بأقل مساحة تخزين ممكنة. */
 function compressImageFile(file: File, maxPx = 1600, quality = 0.82): Promise<Blob> {
@@ -650,30 +659,6 @@ function UnpaidFixedBanner({unpaid,total,onPay}:{unpaid:FixedExpense[];total:num
           ))}
         </div>
       )}
-    </div>
-  );
-}
-/** تذكير إيجار بسيط — ليس مصروفاً ولا يسجّل أي دفعة، فقط قائمة هادئة يتم تأكيد الاطلاع عليها. */
-function RentDueBanner({items,onAcknowledge}:{items:{fx:FixedExpense;info:ReturnType<typeof nextDueInfo>}[];onAcknowledge:(fx:FixedExpense)=>Promise<void>}) {
-  return (
-    <div className="card" style={{marginBottom:20,padding:"12px 16px"}}>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-        <span style={{fontSize:15}}>🏠</span>
-        <span style={{fontWeight:800,color:B,fontSize:13.5}}>تذكير بموعد الإيجار</span>
-      </div>
-      {items.map(({fx,info},i)=>(
-        <div key={fx.id} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 0",borderTop:i>0?"1px solid rgba(201,163,106,.15)":"none"}}>
-          <div style={{flex:1}}>
-            <div style={{fontWeight:700,color:B,fontSize:13}}>{fx.chalet} · {fx.name}</div>
-            <div style={{fontSize:11,color:info!.daysUntil<0?"#A63A2A":T,marginTop:2,fontWeight:info!.daysUntil<0?700:400}}>
-              {formatDueDate(info!.nextDue)}
-              {" · "}
-              {info!.daysUntil<0?`متأخر ${Math.abs(info!.daysUntil)} يوم`:info!.daysUntil===0?"يستحق اليوم":`باقي ${info!.daysUntil} يوم`}
-            </div>
-          </div>
-          <SaveBtn label="✓ تم" onClick={()=>onAcknowledge(fx)} style={{padding:"6px 14px",fontSize:12}}/>
-        </div>
-      ))}
     </div>
   );
 }
@@ -2469,7 +2454,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [fch,setFch]           = useState("الكل");
   const [bkStatus,setBkStatus] = useState("الكل");
   const [mStatus,setMStatus]   = useState<string>("open");
-  const [walletTab,setWalletTab] = useState<"ins"|"cln"|"obl">("ins");
+  const [walletTab,setWalletTab] = useState<"ins"|"rent"|"cln"|"obl">("ins");
   const [siteOnline,setSiteOnline] = useState<boolean|null>(null);
   useEffect(()=>{
     if(currentUser.role!=="admin"&&currentUser.role!=="owner") return;
@@ -2489,6 +2474,8 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [cMdl,setCMdl]       = useState<Partial<Chalet> | null>(null);
   const [imgUploading,setImgUploading] = useState(false);
   const [iMdl,setIMdl]       = useState(false);
+  const [rentDepMdl,setRentDepMdl] = useState(false);
+  const [rentPayMdl,setRentPayMdl] = useState<{fx:FixedExpense; amount:string} | null>(null);
   const [wMdl,setWMdl]       = useState<Partial<WalletTransaction> | null>(null);
   const [coMdl,setCoMdl]     = useState<Booking | null>(null);
   const [exMdl,setExMdl]     = useState<Partial<Expense> | null>(null);
@@ -2583,7 +2570,8 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const scNames    = isChaletMgr ? scChalets.map(c=>c.name) : names;
 
   const totRev   = useMemo(()=>{const br=scBookings.filter(b=>b.status==="completed"||b.status==="confirmed").reduce((s,b)=>s+Number(b.price),0);const pr=scChalets.reduce((s,c)=>s+Number(c.prev_revenue||0),0);return br+pr;},[scBookings,scChalets]);
-  const walletBal  = useMemo(()=>scWallet.reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[scWallet]);
+  const walletBal  = useMemo(()=>scWallet.filter(t=>t.cat!=="إيجار").reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[scWallet]);
+  const rentWalletBal = useMemo(()=>scWallet.filter(t=>t.cat==="إيجار").reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[scWallet]);
   const cleaningBal= useMemo(()=>cleaning.reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[cleaning]);
   const actB     = scBookings.filter(b=>b.status==="confirmed"||b.status==="pending").length;
   const opM      = scMaint.filter(m=>m.status==="open").length;
@@ -2812,8 +2800,17 @@ ${poolLine}
   async function svAC(chalet: string, field: string, value: unknown, roomId: number | null = null): Promise<void> {if(roomId){const room=rooms.find(r=>r.id===roomId);const body={chalet,room_id:roomId,room_name:room?.name||"",ac_on:field==="ac_on"?value:(room?._acOn||false),ac_temp:field==="ac_temp"?value:(room?._acTemp||22),ac_mode:field==="ac_mode"?value:(room?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(room?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(room?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,room._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setRooms(p=>p.map(x=>x.id===roomId?{...x,_sdId:(res[0] as Room).id}:x));}await sendACCommand(roomId,field,value);}else{const ch=chalets.find(x=>x.name===chalet);const body={chalet,ac_on:field==="ac_on"?value:(ch?._acOn||false),ac_temp:field==="ac_temp"?value:(ch?._acTemp||22),ac_mode:field==="ac_mode"?value:(ch?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(ch?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(ch?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,ch._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setChalets(p=>p.map(x=>x.name===chalet?{...x,_sdId:(res[0] as Chalet).id}:x));}}}
   async function svCln(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("cleaning","POST",{trans_date:td(),type:"إيداع",chalet,amount:amt,note:note||"إيداع نظافة"});await loadAll();setClnMdl(false);}
   async function payFixedExpense(fx: FixedExpense): Promise<void> {await db("expenses","POST",{chalet:fx.chalet,category:fx.category||"مصروف ثابت",amount:Number(fx.amount),note:fx.name,expense_date:td()});await loadAll();}
-  // تأكيد الاطلاع على تذكير الإيجار ينقله للشهر القادم فقط — بدون أي تسجيل مالي في جدول المصاريف.
-  async function acknowledgeRent(fx: FixedExpense): Promise<void> {await db("fixed_expenses","PATCH",{last_acknowledged:td()},fx.id);await loadAll();}
+  // دفع إيجار (كامل أو جزئي): يُسجَّل كسحب من محفظة الإيجار، ولو وصل مجموع المسحوب لهذه الدورة
+  // للمبلغ الكامل تتقدّم last_acknowledged لدورة السنة القادمة — دفعة جزئية تبقي التذكير شغّال بالمتبقي.
+  async function payRent(fx: FixedExpense, amount: number): Promise<void> {
+    const info = rentCycleInfo(fx, scWallet);
+    if (!info || !amount || amount<=0) return;
+    await db("wallet","POST",{trans_date:td(),type:"سحب إيجار",chalet:fx.chalet,cat:"إيجار",amount,note:fx.name+" · "+formatDueDate(info.nextDue)});
+    if (info.paid + amount >= info.totalDue) await db("fixed_expenses","PATCH",{last_acknowledged:info.nextDue},fx.id);
+    await loadAll();
+    setRentPayMdl(null);
+  }
+  async function svRentDeposit(chalet: string, month: string, amount: string | number): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"إيجار",amount:amt,note:"إيداع إيجار شهر "+month});await loadAll();setRentDepMdl(false);}
   async function svI(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"تأمين",amount:amt,note:note||"إيداع تأمين"});await loadAll();setIMdl(false);}
   async function handleCheckout(booking: Booking, amt: number, pay: string, receivedBy: string): Promise<void> {
     await db("bookings","PATCH",{status:"completed",price:amt,received_by:receivedBy||null},booking.id);
@@ -2908,6 +2905,24 @@ ${poolLine}
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
           <button className="btn bo" onClick={()=>setIMdl(false)}>إلغاء</button>
           <button className="btn bp" onClick={()=>svI(ch,amt,nt)}>حفظ وإضافة</button>
+        </div>
+      </Mdl>
+    );
+  }
+
+  function RentDepMdl(){
+    const [ch,setCh]=useState(names[0]||"");
+    const [month,setMonth]=useState(MONTH_NAMES[new Date().getMonth()]);
+    const [amt,setAmt]=useState("");
+    return (
+      <Mdl onClose={()=>setRentDepMdl(false)} title="إيداع في محفظة الإيجار">
+        <p style={{color:T,fontSize:13,marginBottom:16}}>المبلغ سيُضاف فوراً لمحفظة الإيجار، مرتبط بالشاليه والشهر</p>
+        <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={ch} onChange={e=>setCh(e.target.value)}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+        <div style={{marginBottom:12}}><label className="lbl">الشهر</label><select className="inp" value={month} onChange={e=>setMonth(e.target.value)}>{MONTH_NAMES.map(m=><option key={m} value={m}>{m}</option>)}</select></div>
+        <div style={{marginBottom:20}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={amt} onChange={e=>setAmt(e.target.value)} placeholder="0"/></div>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <button className="btn bo" onClick={()=>setRentDepMdl(false)}>إلغاء</button>
+          <button className="btn bp" onClick={()=>svRentDeposit(ch,month,amt)}>حفظ وإضافة</button>
         </div>
       </Mdl>
     );
@@ -3151,9 +3166,9 @@ ${poolLine}
               const agoStr=ago<1?"الآن":ago<60?`منذ ${ago} د`:`منذ ${Math.round(ago/60)} س`;
               items.push({key:"rr"+r.id,tone:r.type==="صيانة"?"bad":r.source==="landing"?"info":"muted",icon:r.type==="صيانة"?"wrench":r.type==="نظافة"?"broom":"bell",title:(r.source==="landing"?rt.label:"طلب غرفة: "+rt.label),desc:<>{r.chalet+" · "+r.room+" · "+agoStr}{r.note&&<> · «{r.note}»</>}</>,acts:[{label:"تم",onClick:async()=>{await db("room_requests","PATCH",{resolved:true},r.id);await loadAll();}}]});
             });
-            scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:nextDueInfo(fx)})).filter(x=>x.info&&x.info.daysUntil<=RENT_REMINDER_DAYS).sort((a,b)=>a.info!.daysUntil-b.info!.daysUntil).forEach(({fx,info})=>{
+            scFixedExpenses.filter(fx=>fx.active&&fx.category==="إيجار").map(fx=>({fx,info:rentCycleInfo(fx,scWallet)})).filter(x=>x.info&&!x.info.fullyPaid&&x.info.daysUntil<=RENT_REMINDER_DAYS).sort((a,b)=>a.info!.daysUntil-b.info!.daysUntil).forEach(({fx,info})=>{
               const d=info!.daysUntil;
-              items.push({key:"rn"+fx.id,tone:d<0?"bad":"warn",icon:"home",title:d<0?"إيجار متأخر "+Math.abs(d)+" يوم":d===0?"الإيجار يستحق اليوم":"الإيجار يستحق بعد "+d+" يوم",desc:fx.chalet+" · "+fx.name+" · "+Number(fx.amount).toLocaleString("en-US")+" ر.س · "+formatDueDate(info!.nextDue),acts:[{label:"تم",onClick:()=>acknowledgeRent(fx)}]});
+              items.push({key:"rn"+fx.id,tone:d<0?"bad":"warn",icon:"home",title:d<0?"إيجار متأخر "+Math.abs(d)+" يوم":d===0?"الإيجار يستحق اليوم":"الإيجار يستحق بعد "+d+" يوم",desc:fx.chalet+" · "+fx.name+" · متبقي "+info!.remaining.toLocaleString("en-US")+" من "+info!.totalDue.toLocaleString("en-US")+" ر.س · "+formatDueDate(info!.nextDue),acts:[{label:"دفع",primary:true,onClick:()=>setRentPayMdl({fx,amount:String(info!.remaining)})}]});
             });
             {
               const thisYM=`${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
@@ -3230,7 +3245,7 @@ ${poolLine}
                     <tbody>{cStats.map(c=>{
                       const net=c.monthRev-c.monthExp;
                       const gp=c.goal>0?Math.round(net/c.goal*100):null;
-                      const rentDue=scFixedExpenses.some(fx=>fx.chalet===c.name&&fx.active&&fx.category==="إيجار"&&(()=>{const i=nextDueInfo(fx);return !!i&&i.daysUntil<=RENT_REMINDER_DAYS;})());
+                      const rentDue=scFixedExpenses.some(fx=>fx.chalet===c.name&&fx.active&&fx.category==="إيجار"&&(()=>{const i=rentCycleInfo(fx,scWallet);return !!i&&!i.fullyPaid&&i.daysUntil<=RENT_REMINDER_DAYS;})());
                       return (
                         <tr key={c.id}>
                           <td className="strong">{c.name}</td>
@@ -3256,6 +3271,7 @@ ${poolLine}
               rooms={rooms}
               loading={loading}
               fixedExpenses={scFixedExpenses}
+              wallet={scWallet}
               onAdd={()=>setCMdl({...eC})}
               onEdit={c=>setCMdl({...c})}
               onDelete={dlC}
@@ -3265,9 +3281,9 @@ ${poolLine}
                 setChalets(p=>p.map(x=>x.id===id?{...x,img:dataUrl}:x));
                 await db("chalets","PATCH",{img:dataUrl},id);
               }}
-              onAddRent={chalet=>setFxMdl({chalet,name:"إيجار",amount:0,frequency:"monthly",category:"إيجار",active:true})}
+              onAddRent={chalet=>setFxMdl({chalet,name:"إيجار",amount:0,frequency:"yearly",category:"إيجار",active:true})}
               onEditRent={fx=>setFxMdl({...fx})}
-              onAcknowledgeRent={acknowledgeRent}
+              onPayRent={fx=>{const info=rentCycleInfo(fx,scWallet);setRentPayMdl({fx,amount:String(info?.remaining||fx.amount||0)});}}
             />
           )}
 
@@ -3520,22 +3536,26 @@ ${poolLine}
 
           {/* ── Wallets: التأمين + النظافة ── */}
           {tab==="wallets"&&isAdmin&&(()=>{
-            const insIn=wallet.filter(t=>t.type==="إيداع").reduce((s,t)=>s+t.amount,0), insOut=wallet.filter(t=>t.type!=="إيداع").reduce((s,t)=>s+t.amount,0);
+            const insIn=wallet.filter(t=>t.type==="إيداع"&&t.cat!=="إيجار").reduce((s,t)=>s+t.amount,0), insOut=wallet.filter(t=>t.type!=="إيداع"&&t.cat!=="إيجار").reduce((s,t)=>s+t.amount,0);
+            const rentIn=wallet.filter(t=>t.cat==="إيجار"&&t.type==="إيداع").reduce((s,t)=>s+t.amount,0), rentOut=wallet.filter(t=>t.cat==="إيجار"&&t.type!=="إيداع").reduce((s,t)=>s+t.amount,0);
             const clIn=cleaning.filter(t=>t.type==="إيداع").reduce((s,t)=>s+t.amount,0), clOut=cleaning.filter(t=>t.type!=="إيداع").reduce((s,t)=>s+t.amount,0);
             const clBal=(n:string)=>cleaning.filter(t=>t.chalet===n).reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0);
+            const rentBal=(n:string)=>wallet.filter(t=>t.chalet===n&&t.cat==="إيجار").reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0);
             const lowIns=cStats.filter(c=>c.ins<500);
             const ym=td().slice(0,7);
             const clExpMonth=clExp.filter(e=>e.expense_date?.startsWith(ym)).reduce((s,e)=>s+Number(e.amount),0);
-            const ledger=walletTab==="ins"?[...wallet].reverse():[...cleaning].reverse();
+            const ledger=walletTab==="ins"?[...wallet.filter(t=>t.cat!=="إيجار")].reverse():walletTab==="rent"?[...wallet.filter(t=>t.cat==="إيجار")].reverse():[...cleaning].reverse();
             return (
             <div className="x-page">
-              <PageHead title="المحافظ" sub="محفظة التأمين ومحفظة النظافة">
+              <PageHead title="المحافظ" sub="محفظة التأمين ومحفظة الإيجار ومحفظة النظافة">
                 <button className="btn bo" onClick={()=>setClExpMdl({chalet:names[0]||"",category:"رواتب",amount:"",note:"",expense_date:td()})}><Icon n="receipt"/>التزام نظافة</button>
                 <button className="btn bo" onClick={()=>setClnMdl(true)}><Icon n="plus"/>رصيد نظافة</button>
+                <button className="btn bo" onClick={()=>setRentDepMdl(true)}><Icon n="plus"/>إيداع إيجار</button>
                 <button className="btn bp" onClick={()=>setIMdl(true)}><Icon n="plus"/>إضافة تأمين</button>
               </PageHead>
               <div className="x-kpis">
                 <Kpi hero label="محفظة التأمين" value={<SAR v={walletBal}/>} sub={"إيداعات "+insIn.toLocaleString("en-US")+" · صرف "+insOut.toLocaleString("en-US")}/>
+                <Kpi c="gold" label="محفظة الإيجار" value={<SAR v={rentWalletBal}/>} sub={"إيداعات "+rentIn.toLocaleString("en-US")+" · صرف "+rentOut.toLocaleString("en-US")}/>
                 <Kpi c="teal" label="محفظة النظافة" value={<SAR v={cleaningBal}/>} sub={"إيداعات "+clIn.toLocaleString("en-US")+" · صرف "+clOut.toLocaleString("en-US")}/>
                 <Kpi c="amber" label="التزامات النظافة هذا الشهر" value={<SAR v={clExpMonth}/>}/>
                 <Kpi label="تأمين منخفض" value={<>{lowIns.length}<small> شاليه</small></>} tone={lowIns.length?"neg":"pos"} sub={lowIns.length?lowIns.map(c=>c.name).join("، "):"كل الأرصدة فوق 500 ر.س"}/>
@@ -3543,16 +3563,16 @@ ${poolLine}
               <div className="x-card">
                 <CardHead icon="home" title="الرصيد لكل شاليه"/>
                 <div className="tbl-wrap"><table className="x-tbl">
-                  <thead><tr><th>الشاليه</th><th>التأمين</th><th>النظافة</th><th>طلبات الصيانة</th><th>الحالة</th></tr></thead>
+                  <thead><tr><th>الشاليه</th><th>التأمين</th><th>الإيجار</th><th>النظافة</th><th>طلبات الصيانة</th><th>الحالة</th></tr></thead>
                   <tbody>{cStats.map(c=>(
-                    <tr key={c.id}><td className="strong">{c.name}</td><td className={c.ins<500?"x-neg strong":""}><SAR v={c.ins} unit={false}/></td><td><SAR v={clBal(c.name)} unit={false}/></td><td>{c.mtot}</td><td>{c.ins<500?<Pill tone="bad">تأمين منخفض</Pill>:<Pill tone="ok">جيد</Pill>}</td></tr>
+                    <tr key={c.id}><td className="strong">{c.name}</td><td className={c.ins<500?"x-neg strong":""}><SAR v={c.ins} unit={false}/></td><td><SAR v={rentBal(c.name)} unit={false}/></td><td><SAR v={clBal(c.name)} unit={false}/></td><td>{c.mtot}</td><td>{c.ins<500?<Pill tone="bad">تأمين منخفض</Pill>:<Pill tone="ok">جيد</Pill>}</td></tr>
                   ))}</tbody>
                 </table></div>
               </div>
               <div className="x-card">
                 <div className="x-card-h">
                   <h2><Icon n="receipt"/>سجل الحركات</h2>
-                  <Seg label="المحفظة" value={walletTab} onChange={v=>setWalletTab(v)} options={[{v:"ins",l:"التأمين",c:wallet.length},{v:"cln",l:"النظافة",c:cleaning.length},{v:"obl",l:"التزامات النظافة",c:clExp.length}]}/>
+                  <Seg label="المحفظة" value={walletTab} onChange={v=>setWalletTab(v)} options={[{v:"ins",l:"التأمين",c:wallet.filter(t=>t.cat!=="إيجار").length},{v:"rent",l:"الإيجار",c:wallet.filter(t=>t.cat==="إيجار").length},{v:"cln",l:"النظافة",c:cleaning.length},{v:"obl",l:"التزامات النظافة",c:clExp.length}]}/>
                 </div>
                 {walletTab!=="obl" ? (ledger.length===0?<Empty>لا توجد حركات</Empty>:
                   <div className="tbl-wrap"><table className="x-tbl">
@@ -3564,8 +3584,8 @@ ${poolLine}
                         <td className={"strong "+(t.type==="إيداع"?"x-pos":"x-neg")}><span dir="ltr" style={{unicodeBidi:"isolate"}}>{(t.type==="إيداع"?"+":"−")+t.amount.toLocaleString("en-US")}</span></td>
                         <td className="x-muted">{t.note||"-"}</td>
                         <td className="end"><div style={{display:"inline-flex",gap:6}}>
-                          <button className="btn bo bsm" aria-label="تعديل" onClick={()=>walletTab==="ins"?setWMdl({...t}):setClMdl({...t})}><Icon n="edit" s={15}/></button>
-                          <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(window.confirm("حذف هذا الصف؟")){await db(walletTab==="ins"?"wallet":"cleaning","DELETE",null,t.id);await loadAll();}}}><Icon n="trash" s={15}/></button>
+                          <button className="btn bo bsm" aria-label="تعديل" onClick={()=>walletTab==="cln"?setClMdl({...t}):setWMdl({...t})}><Icon n="edit" s={15}/></button>
+                          <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(window.confirm("حذف هذا الصف؟")){await db(walletTab==="cln"?"cleaning":"wallet","DELETE",null,t.id);await loadAll();}}}><Icon n="trash" s={15}/></button>
                         </div></td>
                       </tr>
                     ))}</tbody>
@@ -3812,8 +3832,23 @@ ${poolLine}
               <textarea className="inp" rows={3} value={cMdl.terms||""} onChange={e=>setCMdl(p=>({...p,terms:e.target.value}))} placeholder="تُضاف لرسالة ما قبل الوصول تلقائياً..."/>
             </div>
             <div style={{gridColumn:"span 2"}}>
-              <label className="lbl">المميزات (افصل بفاصلة)</label>
-              <input className="inp" value={cMdl.amenities||""} onChange={e=>setCMdl(p=>({...p,amenities:e.target.value}))} placeholder="مسبح خاص، واي فاي، مطبخ مجهز، موقف سيارات"/>
+              <label className="lbl">المميزات</label>
+              <div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:9}}>
+                {AMENITY_PRESETS.map(a=>{
+                  const list = (cMdl.amenities||"").split(/[،,]/).map(s=>s.trim()).filter(Boolean);
+                  const active = list.includes(a);
+                  return (
+                    <button key={a} type="button" onClick={()=>{
+                      const next = active ? list.filter(x=>x!==a) : [...list,a];
+                      setCMdl(p=>({...p,amenities:next.join("، ")}));
+                    }} className="btn bsm" style={{
+                      background: active ? B : SL, color: active ? S : B,
+                      border: active ? "none" : "1px solid rgba(201,163,106,.3)",
+                    }}>{active?"✓ ":""}{a}</button>
+                  );
+                })}
+              </div>
+              <input className="inp" value={cMdl.amenities||""} onChange={e=>setCMdl(p=>({...p,amenities:e.target.value}))} placeholder="اضغط لاختيار أعلاه، أو اكتب مميزات إضافية هنا، افصل بفاصلة"/>
             </div>
             <div style={{gridColumn:"span 2"}}>
               <label className="lbl">صورة الشاليه</label>
@@ -3830,20 +3865,33 @@ ${poolLine}
               </label>
             </div>
             <div style={{gridColumn:"span 2"}}>
-              <label className="lbl">معرض الصور (تظهر للزبون في رابط الشاليه)</label>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(90px,1fr))",gap:8,marginBottom:8}}>
+              <label className="lbl">معرض الصور (تظهر للزبون مجمّعة حسب القسم في "المرافق")</label>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:10,marginBottom:8}}>
                 {(()=>{
                   let gal: unknown[] = [];
                   try { gal = cMdl.gallery ? JSON.parse(cMdl.gallery as string) : []; } catch { gal = []; }
-                  return gal.map((g,i)=>(
-                    <div key={i} style={{position:"relative",height:70}}>
-                      <img src={galleryUrl(g)||""} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:7}}/>
-                      <button type="button" onClick={()=>{
-                        const next = gal.filter((_,gi)=>gi!==i);
-                        setCMdl(p=>({...p,gallery:JSON.stringify(next)}));
-                      }} style={{position:"absolute",top:2,left:2,background:"rgba(166,58,42,.85)",color:"#fff",border:"none",borderRadius:4,width:18,height:18,fontSize:11,cursor:"pointer",lineHeight:1}}>✕</button>
-                    </div>
-                  ));
+                  return gal.map((g,i)=>{
+                    const url = galleryUrl(g)||"";
+                    const cat = galleryCat(g);
+                    return (
+                      <div key={i} style={{display:"flex",flexDirection:"column",gap:4}}>
+                        <div style={{position:"relative",height:70}}>
+                          <img src={url} style={{width:"100%",height:"100%",objectFit:"cover",borderRadius:7}}/>
+                          <button type="button" onClick={()=>{
+                            const next = gal.filter((_,gi)=>gi!==i);
+                            setCMdl(p=>({...p,gallery:JSON.stringify(next)}));
+                          }} style={{position:"absolute",top:2,left:2,background:"rgba(166,58,42,.85)",color:"#fff",border:"none",borderRadius:4,width:18,height:18,fontSize:11,cursor:"pointer",lineHeight:1}}>✕</button>
+                        </div>
+                        <select className="inp" style={{fontSize:10.5,padding:"4px 6px"}} value={cat} onChange={e=>{
+                          const next = gal.map((x,gi)=>gi===i?{url,cat:e.target.value}:x);
+                          setCMdl(p=>({...p,gallery:JSON.stringify(next)}));
+                        }}>
+                          <option value="">بدون قسم</option>
+                          {PHOTO_CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                    );
+                  });
                 })()}
                 <label style={{height:70,border:"2px dashed rgba(201,163,106,.5)",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",background:SL,fontSize:imgUploading?12:22,color:T,textAlign:"center"}}>
                   {imgUploading?"⏳":"+"}
@@ -3855,7 +3903,7 @@ ${poolLine}
                     setImgUploading(true);
                     for(const file of files){
                       const url = await uploadChaletImage(file);
-                      if(url) gal = [...gal, url];
+                      if(url) gal = [...gal, {url,cat:""}];
                     }
                     setImgUploading(false);
                     setCMdl(p=>({...p,gallery:JSON.stringify(gal)}));
@@ -4032,31 +4080,44 @@ ${poolLine}
         <Mdl onClose={()=>setFxMdl(null)} title={fxMdl.id?"تعديل المصروف الثابت":"إضافة مصروف ثابت"}>
           <div style={{marginBottom:12}}><label className="lbl">اسم المصروف</label><input className="inp" value={fxMdl.name||""} onChange={e=>setFxMdl(p=>({...p,name:e.target.value}))} placeholder="مثال: كهرباء، ماء، إنترنت"/></div>
           <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={fxMdl.chalet} onChange={e=>setFxMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-          <div style={{marginBottom:12}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={fxMdl.amount||""} onChange={e=>setFxMdl(p=>({...p,amount:Number(e.target.value)}))} placeholder="0"/></div>
-          <div style={{marginBottom:12}}>
-            <label className="lbl">التكرار</label>
-            <div style={{display:"flex",gap:6}}>
-              {([["monthly","شهري"],["quarterly","ربع سنوي"],["yearly","سنوي"]] as [string,string][]).map(([v,l])=>(
-                <button key={v} className="btn" onClick={()=>setFxMdl(p=>({...p,frequency:v as "monthly"|"quarterly"|"yearly"}))} style={{padding:"8px 16px",fontSize:13,background:fxMdl.frequency===v?"#5B4636":"#FAF6F0",color:fxMdl.frequency===v?"#fff":"#5B4636",border:"1.5px solid rgba(201,163,106,.3)"}}>{l}</button>
-              ))}
+          <div style={{marginBottom:12}}><label className="lbl">{fxMdl.category==="إيجار"?"المبلغ السنوي (ريال)":"المبلغ (ريال)"}</label><input className="inp" type="number" value={fxMdl.amount||""} onChange={e=>setFxMdl(p=>({...p,amount:Number(e.target.value)}))} placeholder="0"/></div>
+          {fxMdl.category!=="إيجار"&&(
+            <div style={{marginBottom:12}}>
+              <label className="lbl">التكرار</label>
+              <div style={{display:"flex",gap:6}}>
+                {([["monthly","شهري"],["quarterly","ربع سنوي"],["yearly","سنوي"]] as [string,string][]).map(([v,l])=>(
+                  <button key={v} className="btn" onClick={()=>setFxMdl(p=>({...p,frequency:v as "monthly"|"quarterly"|"yearly"}))} style={{padding:"8px 16px",fontSize:13,background:fxMdl.frequency===v?"#5B4636":"#FAF6F0",color:fxMdl.frequency===v?"#fff":"#5B4636",border:"1.5px solid rgba(201,163,106,.3)"}}>{l}</button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
           <div style={{marginBottom:12}}>
             <label className="lbl">الفئة</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {["إيجار","تنظيف","صيانة","إدارة","كهرباء","اشتراكات","غيره"].map(cat=>(
-                <button key={cat} className="btn" onClick={()=>setFxMdl(p=>({...p,category:cat}))} style={{padding:"7px 14px",fontSize:13,background:fxMdl.category===cat?"#5B4636":"#FAF6F0",color:fxMdl.category===cat?"#fff":"#5B4636",border:"1.5px solid rgba(201,163,106,.3)"}}>{cat}</button>
+                <button key={cat} className="btn" onClick={()=>setFxMdl(p=>({...p,category:cat,...(cat==="إيجار"?{frequency:"yearly" as const}:{})}))} style={{padding:"7px 14px",fontSize:13,background:fxMdl.category===cat?"#5B4636":"#FAF6F0",color:fxMdl.category===cat?"#fff":"#5B4636",border:"1.5px solid rgba(201,163,106,.3)"}}>{cat}</button>
               ))}
             </div>
           </div>
-          <div style={{marginBottom:20}}>
-            <label className="lbl">يوم الاستحقاق من الشهر (اختياري — لتفعيل تذكير الاستحقاق)</label>
-            <input className="inp" type="number" min={1} max={31} value={fxMdl.due_day||""} onChange={e=>setFxMdl(p=>({...p,due_day:e.target.value?Number(e.target.value):undefined}))} placeholder="مثال: 5"/>
-          </div>
+          {fxMdl.category==="إيجار"?(
+            <div style={{marginBottom:20}}>
+              <label className="lbl">شهر الاستحقاق (إيجار سنوي — بدون يوم محدد)</label>
+              <select className="inp" value={fxMdl.due_month||""} onChange={e=>setFxMdl(p=>({...p,due_month:e.target.value?Number(e.target.value):undefined}))}>
+                <option value="">اختر الشهر...</option>
+                {MONTH_NAMES.map((m,i)=><option key={m} value={i+1}>{m}</option>)}
+              </select>
+            </div>
+          ):(
+            <div style={{marginBottom:20}}>
+              <label className="lbl">يوم الاستحقاق من الشهر (اختياري — لتفعيل تذكير الاستحقاق)</label>
+              <input className="inp" type="number" min={1} max={31} value={fxMdl.due_day||""} onChange={e=>setFxMdl(p=>({...p,due_day:e.target.value?Number(e.target.value):undefined}))} placeholder="مثال: 5"/>
+            </div>
+          )}
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setFxMdl(null)}>إلغاء</button>
             <SaveBtn label={fxMdl.id?"حفظ التعديلات":"حفظ المصروف الثابت"} disabled={!fxMdl.name||!fxMdl.chalet||!fxMdl.amount} onClick={async()=>{
-              const body={chalet:fxMdl.chalet,name:fxMdl.name,amount:Number(fxMdl.amount),frequency:fxMdl.frequency||"monthly",category:fxMdl.category||"إيجار",active:fxMdl.active!==false,due_day:fxMdl.due_day?Number(fxMdl.due_day):null};
+              const isRent=fxMdl.category==="إيجار";
+              const body={chalet:fxMdl.chalet,name:fxMdl.name,amount:Number(fxMdl.amount),frequency:isRent?"yearly":(fxMdl.frequency||"monthly"),category:fxMdl.category||"إيجار",active:fxMdl.active!==false,due_day:isRent?null:(fxMdl.due_day?Number(fxMdl.due_day):null),due_month:isRent?(fxMdl.due_month?Number(fxMdl.due_month):null):null};
               if(fxMdl.id) await db("fixed_expenses","PATCH",body,fxMdl.id);
               else await db("fixed_expenses","POST",body);
               await loadAll();setFxMdl(null);
@@ -4291,7 +4352,7 @@ ${poolLine}
         <Mdl onClose={()=>setWMdl(null)} title="تعديل معاملة التأمين">
           <div style={{marginBottom:12}}><label className="lbl">التاريخ</label><input className="inp" type="date" value={wMdl.trans_date||""} onChange={e=>setWMdl(p=>({...p,trans_date:e.target.value}))}/></div>
           <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={wMdl.chalet||""} onChange={e=>setWMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-          <div style={{marginBottom:12}}><label className="lbl">النوع</label><select className="inp" value={wMdl.type||"إيداع"} onChange={e=>setWMdl(p=>({...p,type:e.target.value}))}><option value="إيداع">إيداع</option><option value="سحب صيانة">سحب صيانة</option></select></div>
+          <div style={{marginBottom:12}}><label className="lbl">النوع</label><select className="inp" value={wMdl.type||"إيداع"} onChange={e=>setWMdl(p=>({...p,type:e.target.value}))}><option value="إيداع">إيداع</option><option value="سحب صيانة">سحب صيانة</option><option value="سحب إيجار">سحب إيجار</option></select></div>
           <div style={{marginBottom:12}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={wMdl.amount||""} onChange={e=>setWMdl(p=>({...p,amount:Number(e.target.value)}))}/></div>
           <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={wMdl.note||""} onChange={e=>setWMdl(p=>({...p,note:e.target.value}))}/></div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
@@ -4301,6 +4362,30 @@ ${poolLine}
         </Mdl>
       )}
       {iMdl&&<InsMdl/>}
+      {rentDepMdl&&<RentDepMdl/>}
+
+      {rentPayMdl&&(()=>{
+        const info=rentCycleInfo(rentPayMdl.fx,scWallet);
+        return (
+        <Mdl onClose={()=>setRentPayMdl(null)} title={"دفع إيجار — "+rentPayMdl.fx.chalet}>
+          <p style={{color:T,fontSize:13,marginBottom:16}}>المبلغ يُسجَّل كسحب من محفظة الإيجار، وتقدر تدفع جزء أو المبلغ كامل</p>
+          {info&&(
+            <div style={{marginBottom:16,background:SL,borderRadius:10,padding:"10px 14px",fontSize:13,color:B,display:"flex",justifyContent:"space-between"}}>
+              <span>الإيجار السنوي: <b><SAR v={info.totalDue}/></b></span>
+              <span>مدفوع سابقاً: <b><SAR v={info.paid}/></b></span>
+            </div>
+          )}
+          <div style={{marginBottom:20}}>
+            <label className="lbl">المبلغ المدفوع الآن (ريال)</label>
+            <input className="inp" type="number" value={rentPayMdl.amount} onChange={e=>setRentPayMdl(p=>p&&({...p,amount:e.target.value}))} placeholder="0"/>
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <button className="btn bo" onClick={()=>setRentPayMdl(null)}>إلغاء</button>
+            <SaveBtn label="تأكيد الدفع" disabled={!Number(rentPayMdl.amount)} onClick={()=>payRent(rentPayMdl.fx,Number(rentPayMdl.amount))}/>
+          </div>
+        </Mdl>
+        );
+      })()}
       {addRoomMdl&&<AddRoomMdl/>}
 
       {cwMdl&&(
