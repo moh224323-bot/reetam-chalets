@@ -731,6 +731,26 @@ function Mdl({onClose,title,children}) {
     </div>
   );
 }
+/** شريط صغير لصافي حركة المحفظة (إيداعات − مسحوبات) لآخر 6 أشهر، لإعطاء إحساس سريع بقوة المحفظة واتجاهها */
+function WalletSpark({tx}:{tx:{trans_date:string;type:string;amount:number}[]}) {
+  const months = Array.from({length:6},(_,i)=>{const d=new Date();d.setMonth(d.getMonth()-(5-i));return d.toISOString().slice(0,7);});
+  const net = months.map(m=>tx.filter(t=>t.trans_date?.startsWith(m)).reduce((s,t)=>s+(t.type==="إيداع"?t.amount:-t.amount),0));
+  const max = Math.max(1,...net.map(n=>Math.abs(n)));
+  const W=128,H=34,slot=W/6,bw=slot-4;
+  const total = net.reduce((s,n)=>s+n,0);
+  return (
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img"
+      aria-label={"صافي آخر 6 أشهر: "+(total>=0?"+":"−")+Math.abs(total).toLocaleString("en-US")+" ر.س"}>
+      <line x1={0} y1={H/2} x2={W} y2={H/2} stroke="var(--line)" strokeWidth={1}/>
+      {net.map((n,i)=>{
+        const h = n===0 ? 2 : Math.max(3,Math.abs(n)/max*(H/2-3));
+        const x = i*slot+2;
+        const y = n>=0 ? H/2-h : H/2;
+        return <rect key={i} x={x} y={y} width={bw} height={h} rx={2} fill={n>=0?"var(--ok)":"var(--bad)"} opacity={n===0?.3:1}/>;
+      })}
+    </svg>
+  );
+}
 const logoImg = require("../../assets/logo-reetam.png");
 function Logo({size}) {
   const s = size||40;
@@ -2454,7 +2474,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [fch,setFch]           = useState("الكل");
   const [bkStatus,setBkStatus] = useState("الكل");
   const [mStatus,setMStatus]   = useState<string>("open");
-  const [walletTab,setWalletTab] = useState<"ins"|"rent"|"cln"|"obl">("ins");
+  const [walletTab,setWalletTab] = useState<"ins"|"rent"|"cln"|null>(null);
   const [siteOnline,setSiteOnline] = useState<boolean|null>(null);
   useEffect(()=>{
     if(currentUser.role!=="admin"&&currentUser.role!=="owner") return;
@@ -2570,7 +2590,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const scNames    = isChaletMgr ? scChalets.map(c=>c.name) : names;
 
   const totRev   = useMemo(()=>{const br=scBookings.filter(b=>b.status==="completed"||b.status==="confirmed").reduce((s,b)=>s+Number(b.price),0);const pr=scChalets.reduce((s,c)=>s+Number(c.prev_revenue||0),0);return br+pr;},[scBookings,scChalets]);
-  const walletBal  = useMemo(()=>scWallet.filter(t=>t.cat!=="إيجار").reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[scWallet]);
+  const walletBal  = useMemo(()=>scWallet.filter(t=>t.cat==="تأمين").reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[scWallet]);
   const rentWalletBal = useMemo(()=>scWallet.filter(t=>t.cat==="إيجار").reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[scWallet]);
   const cleaningBal= useMemo(()=>cleaning.reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0),[cleaning]);
   const actB     = scBookings.filter(b=>b.status==="confirmed"||b.status==="pending").length;
@@ -2812,6 +2832,19 @@ ${poolLine}
   }
   async function svRentDeposit(chalet: string, month: string, amount: string | number): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"إيجار",amount:amt,note:"إيداع إيجار شهر "+month});await loadAll();setRentDepMdl(false);}
   async function svI(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"تأمين",amount:amt,note:note||"إيداع تأمين"});await loadAll();setIMdl(false);}
+  // تسجيل مصروف إيجار/تنظيف/تأمين يغذّي تلقائياً نفس المحفظة (إيداع بنفس المبلغ، مُجمّع من كل الشاليهات) —
+  // طريقة التغذية الثانية جنب الإيداع اليدوي من داخل المحفظة نفسها.
+  async function svExpense(f: Partial<Expense>): Promise<void> {
+    const amount=Number(f.amount)||0, chalet=f.chalet||"", date=f.expense_date||td();
+    await db("expenses","POST",{chalet,category:f.category,amount,note:f.note||"",expense_date:date});
+    if(amount>0&&chalet){
+      const src=f.note?": "+f.note:"";
+      if(f.category==="تنظيف")      await db("cleaning","POST",{trans_date:date,type:"إيداع",chalet,amount,note:"من مصروف نظافة"+src});
+      else if(f.category==="إيجار") await db("wallet","POST",{trans_date:date,type:"إيداع",chalet,cat:"إيجار",amount,note:"من مصروف إيجار"+src});
+      else if(f.category==="تأمين") await db("wallet","POST",{trans_date:date,type:"إيداع",chalet,cat:"تأمين",amount,note:"من مصروف تأمين"+src});
+    }
+    await loadAll();
+  }
   async function handleCheckout(booking: Booking, amt: number, pay: string, receivedBy: string): Promise<void> {
     await db("bookings","PATCH",{status:"completed",price:amt,received_by:receivedBy||null},booking.id);
     // مهمة تنظيف تلقائية بعد الخروج — جدول cleaning_tasks ما فيه عمود note، إرساله كان يفشّل كل عملية الإضافة بصمت
@@ -3536,77 +3569,110 @@ ${poolLine}
 
           {/* ── Wallets: التأمين + النظافة ── */}
           {tab==="wallets"&&isAdmin&&(()=>{
-            const insIn=wallet.filter(t=>t.type==="إيداع"&&t.cat!=="إيجار").reduce((s,t)=>s+t.amount,0), insOut=wallet.filter(t=>t.type!=="إيداع"&&t.cat!=="إيجار").reduce((s,t)=>s+t.amount,0);
-            const rentIn=wallet.filter(t=>t.cat==="إيجار"&&t.type==="إيداع").reduce((s,t)=>s+t.amount,0), rentOut=wallet.filter(t=>t.cat==="إيجار"&&t.type!=="إيداع").reduce((s,t)=>s+t.amount,0);
-            const clIn=cleaning.filter(t=>t.type==="إيداع").reduce((s,t)=>s+t.amount,0), clOut=cleaning.filter(t=>t.type!=="إيداع").reduce((s,t)=>s+t.amount,0);
-            const clBal=(n:string)=>cleaning.filter(t=>t.chalet===n).reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0);
-            const rentBal=(n:string)=>wallet.filter(t=>t.chalet===n&&t.cat==="إيجار").reduce((s,t)=>t.type==="إيداع"?s+t.amount:s-t.amount,0);
+            const insTx=wallet.filter(t=>t.cat==="تأمين"), rentTx=wallet.filter(t=>t.cat==="إيجار"), clnTx=cleaning;
+            const insIn=insTx.filter(t=>t.type==="إيداع").reduce((s,t)=>s+t.amount,0), insOut=insTx.filter(t=>t.type!=="إيداع").reduce((s,t)=>s+t.amount,0);
+            const rentIn=rentTx.filter(t=>t.type==="إيداع").reduce((s,t)=>s+t.amount,0), rentOut=rentTx.filter(t=>t.type!=="إيداع").reduce((s,t)=>s+t.amount,0);
+            const clIn=clnTx.filter(t=>t.type==="إيداع").reduce((s,t)=>s+t.amount,0), clOut=clnTx.filter(t=>t.type!=="إيداع").reduce((s,t)=>s+t.amount,0);
             const lowIns=cStats.filter(c=>c.ins<500);
             const ym=td().slice(0,7);
             const clExpMonth=clExp.filter(e=>e.expense_date?.startsWith(ym)).reduce((s,e)=>s+Number(e.amount),0);
-            const ledger=walletTab==="ins"?[...wallet.filter(t=>t.cat!=="إيجار")].reverse():walletTab==="rent"?[...wallet.filter(t=>t.cat==="إيجار")].reverse():[...cleaning].reverse();
+
+            // ── عرض محفظة واحدة بالتفصيل ──
+            if(walletTab){
+              const info = walletTab==="ins"
+                ? {label:"محفظة التأمين", bal:walletBal, in:insIn, out:insOut, tx:insTx, table:"wallet" as const}
+                : walletTab==="rent"
+                ? {label:"محفظة الإيجار", bal:rentWalletBal, in:rentIn, out:rentOut, tx:rentTx, table:"wallet" as const}
+                : {label:"محفظة النظافة", bal:cleaningBal, in:clIn, out:clOut, tx:clnTx, table:"cleaning" as const};
+              const ledger=[...info.tx].reverse();
+              return (
+              <div className="x-page">
+                <PageHead title={info.label} sub={"الرصيد الحالي: "+info.bal.toLocaleString("en-US")+" ر.س"} back={{label:"المحافظ",onClick:()=>setWalletTab(null)}}>
+                  {walletTab==="ins"&&<button className="btn bp" onClick={()=>setIMdl(true)}><Icon n="plus"/>إيداع تأمين</button>}
+                  {walletTab==="rent"&&<button className="btn bp" onClick={()=>setRentDepMdl(true)}><Icon n="plus"/>إيداع إيجار</button>}
+                  {walletTab==="cln"&&(<>
+                    <button className="btn bo" onClick={()=>setClExpMdl({chalet:names[0]||"",category:"رواتب",amount:"",note:"",expense_date:td()})}><Icon n="receipt"/>صرف (راتب/مواد)</button>
+                    <button className="btn bp" onClick={()=>setClnMdl(true)}><Icon n="plus"/>إيداع نظافة</button>
+                  </>)}
+                </PageHead>
+                <div className="x-kpis">
+                  <Kpi hero label={info.label} value={<SAR v={info.bal}/>} sub={"إيداعات "+info.in.toLocaleString("en-US")+" · صرف "+info.out.toLocaleString("en-US")}/>
+                </div>
+                {walletTab==="ins"&&(
+                  <div className="x-card">
+                    <CardHead icon="home" title="رصيد التأمين لكل شاليه"/>
+                    <div className="tbl-wrap"><table className="x-tbl">
+                      <thead><tr><th>الشاليه</th><th>التأمين</th><th>الحالة</th></tr></thead>
+                      <tbody>{cStats.map(c=>(
+                        <tr key={c.id}><td className="strong">{c.name}</td><td className={c.ins<500?"x-neg strong":""}><SAR v={c.ins} unit={false}/></td><td>{c.ins<500?<Pill tone="bad">منخفض</Pill>:<Pill tone="ok">جيد</Pill>}</td></tr>
+                      ))}</tbody>
+                    </table></div>
+                  </div>
+                )}
+                {walletTab==="cln"&&clExp.length>0&&(
+                  <div className="x-card">
+                    <div className="x-card-h"><h2><Icon n="receipt"/>الالتزامات (رواتب، مواد، معدات)</h2><span className="x-sub">هذا الشهر: {clExpMonth.toLocaleString("en-US")} ر.س</span></div>
+                    <div className="tbl-wrap"><table className="x-tbl">
+                      <thead><tr><th>التاريخ</th><th>الشاليه</th><th>الفئة</th><th>المبلغ</th><th>ملاحظة</th><th className="end"></th></tr></thead>
+                      <tbody>{[...clExp].reverse().map((e,i)=>(
+                        <tr key={e.id||i}>
+                          <td>{fd(e.expense_date)}</td><td className="strong">{e.chalet}</td><td><Pill tone="muted">{e.category}</Pill></td>
+                          <td className="strong x-neg"><span dir="ltr" style={{unicodeBidi:"isolate"}}>{"−"+Number(e.amount).toLocaleString("en-US")}</span></td>
+                          <td className="x-muted">{e.note||"-"}</td>
+                          <td className="end"><div style={{display:"inline-flex",gap:6}}>
+                            <button className="btn bo bsm" aria-label="تعديل" onClick={()=>setClExpMdl({...e})}><Icon n="edit" s={15}/></button>
+                            <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(window.confirm("حذف؟")){await db("cleaning_expenses","DELETE",null,e.id);await loadAll();}}}><Icon n="trash" s={15}/></button>
+                          </div></td>
+                        </tr>
+                      ))}</tbody>
+                      <tfoot><tr><td colSpan={3}>إجمالي الالتزامات</td><td className="x-neg"><SAR v={clExp.reduce((s,e)=>s+Number(e.amount),0)}/></td><td colSpan={2}/></tr></tfoot>
+                    </table></div>
+                  </div>
+                )}
+                <div className="x-card">
+                  <CardHead icon="receipt" title="سجل الحركات" sub={ledger.length+" حركة"}/>
+                  {ledger.length===0?<Empty>لا توجد حركات بعد</Empty>:
+                    <div className="tbl-wrap"><table className="x-tbl">
+                      <thead><tr><th>التاريخ</th><th>الشاليه</th><th>النوع</th><th>المبلغ</th><th>ملاحظة</th><th className="end"></th></tr></thead>
+                      <tbody>{ledger.map((t,i)=>(
+                        <tr key={t.id||i}>
+                          <td>{fd(t.trans_date)}</td><td className="strong">{t.chalet}</td>
+                          <td><Pill tone={t.type==="إيداع"?"ok":"bad"}>{t.type}</Pill></td>
+                          <td className={"strong "+(t.type==="إيداع"?"x-pos":"x-neg")}><span dir="ltr" style={{unicodeBidi:"isolate"}}>{(t.type==="إيداع"?"+":"−")+t.amount.toLocaleString("en-US")}</span></td>
+                          <td className="x-muted">{t.note||"-"}</td>
+                          <td className="end"><div style={{display:"inline-flex",gap:6}}>
+                            <button className="btn bo bsm" aria-label="تعديل" onClick={()=>walletTab==="cln"?setClMdl({...t}):setWMdl({...t})}><Icon n="edit" s={15}/></button>
+                            <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(window.confirm("حذف هذا الصف؟")){await db(info.table,"DELETE",null,t.id);await loadAll();}}}><Icon n="trash" s={15}/></button>
+                          </div></td>
+                        </tr>
+                      ))}</tbody>
+                    </table></div>
+                  }
+                </div>
+              </div>
+              );
+            }
+
+            // ── نظرة عامة: المحافظ الثلاث فقط ──
             return (
             <div className="x-page">
-              <PageHead title="المحافظ" sub="محفظة التأمين ومحفظة الإيجار ومحفظة النظافة">
-                <button className="btn bo" onClick={()=>setClExpMdl({chalet:names[0]||"",category:"رواتب",amount:"",note:"",expense_date:td()})}><Icon n="receipt"/>التزام نظافة</button>
-                <button className="btn bo" onClick={()=>setClnMdl(true)}><Icon n="plus"/>رصيد نظافة</button>
-                <button className="btn bo" onClick={()=>setRentDepMdl(true)}><Icon n="plus"/>إيداع إيجار</button>
-                <button className="btn bp" onClick={()=>setIMdl(true)}><Icon n="plus"/>إضافة تأمين</button>
-              </PageHead>
+              <PageHead title="المحافظ" sub="التأمين، الإيجار، والنظافة — اضغط على أي محفظة لعرض كامل الحركات"/>
               <div className="x-kpis">
-                <Kpi hero label="محفظة التأمين" value={<SAR v={walletBal}/>} sub={"إيداعات "+insIn.toLocaleString("en-US")+" · صرف "+insOut.toLocaleString("en-US")}/>
-                <Kpi c="gold" label="محفظة الإيجار" value={<SAR v={rentWalletBal}/>} sub={"إيداعات "+rentIn.toLocaleString("en-US")+" · صرف "+rentOut.toLocaleString("en-US")}/>
-                <Kpi c="teal" label="محفظة النظافة" value={<SAR v={cleaningBal}/>} sub={"إيداعات "+clIn.toLocaleString("en-US")+" · صرف "+clOut.toLocaleString("en-US")}/>
-                <Kpi c="amber" label="التزامات النظافة هذا الشهر" value={<SAR v={clExpMonth}/>}/>
-                <Kpi label="تأمين منخفض" value={<>{lowIns.length}<small> شاليه</small></>} tone={lowIns.length?"neg":"pos"} sub={lowIns.length?lowIns.map(c=>c.name).join("، "):"كل الأرصدة فوق 500 ر.س"}/>
-              </div>
-              <div className="x-card">
-                <CardHead icon="home" title="الرصيد لكل شاليه"/>
-                <div className="tbl-wrap"><table className="x-tbl">
-                  <thead><tr><th>الشاليه</th><th>التأمين</th><th>الإيجار</th><th>النظافة</th><th>طلبات الصيانة</th><th>الحالة</th></tr></thead>
-                  <tbody>{cStats.map(c=>(
-                    <tr key={c.id}><td className="strong">{c.name}</td><td className={c.ins<500?"x-neg strong":""}><SAR v={c.ins} unit={false}/></td><td><SAR v={rentBal(c.name)} unit={false}/></td><td><SAR v={clBal(c.name)} unit={false}/></td><td>{c.mtot}</td><td>{c.ins<500?<Pill tone="bad">تأمين منخفض</Pill>:<Pill tone="ok">جيد</Pill>}</td></tr>
-                  ))}</tbody>
-                </table></div>
-              </div>
-              <div className="x-card">
-                <div className="x-card-h">
-                  <h2><Icon n="receipt"/>سجل الحركات</h2>
-                  <Seg label="المحفظة" value={walletTab} onChange={v=>setWalletTab(v)} options={[{v:"ins",l:"التأمين",c:wallet.filter(t=>t.cat!=="إيجار").length},{v:"rent",l:"الإيجار",c:wallet.filter(t=>t.cat==="إيجار").length},{v:"cln",l:"النظافة",c:cleaning.length},{v:"obl",l:"التزامات النظافة",c:clExp.length}]}/>
-                </div>
-                {walletTab!=="obl" ? (ledger.length===0?<Empty>لا توجد حركات</Empty>:
-                  <div className="tbl-wrap"><table className="x-tbl">
-                    <thead><tr><th>التاريخ</th><th>الشاليه</th><th>النوع</th><th>المبلغ</th><th>ملاحظة</th><th className="end"></th></tr></thead>
-                    <tbody>{ledger.map((t,i)=>(
-                      <tr key={t.id||i}>
-                        <td>{fd(t.trans_date)}</td><td className="strong">{t.chalet}</td>
-                        <td><Pill tone={t.type==="إيداع"?"ok":"bad"}>{t.type}</Pill></td>
-                        <td className={"strong "+(t.type==="إيداع"?"x-pos":"x-neg")}><span dir="ltr" style={{unicodeBidi:"isolate"}}>{(t.type==="إيداع"?"+":"−")+t.amount.toLocaleString("en-US")}</span></td>
-                        <td className="x-muted">{t.note||"-"}</td>
-                        <td className="end"><div style={{display:"inline-flex",gap:6}}>
-                          <button className="btn bo bsm" aria-label="تعديل" onClick={()=>walletTab==="cln"?setClMdl({...t}):setWMdl({...t})}><Icon n="edit" s={15}/></button>
-                          <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(window.confirm("حذف هذا الصف؟")){await db(walletTab==="cln"?"cleaning":"wallet","DELETE",null,t.id);await loadAll();}}}><Icon n="trash" s={15}/></button>
-                        </div></td>
-                      </tr>
-                    ))}</tbody>
-                  </table></div>
-                ) : (clExp.length===0?<Empty>لا توجد التزامات</Empty>:
-                  <div className="tbl-wrap"><table className="x-tbl">
-                    <thead><tr><th>التاريخ</th><th>الشاليه</th><th>الفئة</th><th>المبلغ</th><th>ملاحظة</th><th className="end"></th></tr></thead>
-                    <tbody>{[...clExp].reverse().map((e,i)=>(
-                      <tr key={e.id||i}>
-                        <td>{fd(e.expense_date)}</td><td className="strong">{e.chalet}</td><td><Pill tone="muted">{e.category}</Pill></td>
-                        <td className="strong x-neg"><span dir="ltr" style={{unicodeBidi:"isolate"}}>{"−"+Number(e.amount).toLocaleString("en-US")}</span></td>
-                        <td className="x-muted">{e.note||"-"}</td>
-                        <td className="end"><div style={{display:"inline-flex",gap:6}}>
-                          <button className="btn bo bsm" aria-label="تعديل" onClick={()=>setClExpMdl({...e})}><Icon n="edit" s={15}/></button>
-                          <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(window.confirm("حذف؟")){await db("cleaning_expenses","DELETE",null,e.id);await loadAll();}}}><Icon n="trash" s={15}/></button>
-                        </div></td>
-                      </tr>
-                    ))}</tbody>
-                    <tfoot><tr><td colSpan={3}>إجمالي الالتزامات</td><td className="x-neg"><SAR v={clExp.reduce((s,e)=>s+Number(e.amount),0)}/></td><td colSpan={2}/></tr></tfoot>
-                  </table></div>
-                )}
+                <Kpi c="gold" label="محفظة التأمين" value={<SAR v={walletBal}/>}
+                  sub={lowIns.length?lowIns.length+" شاليه تأمينه منخفض":"كل الأرصدة فوق 500 ر.س"}>
+                  <WalletSpark tx={insTx}/>
+                  <button className="x-back" style={{marginTop:2}} onClick={()=>setWalletTab("ins")}>عرض التفاصيل</button>
+                </Kpi>
+                <Kpi c="amber" label="محفظة الإيجار" value={<SAR v={rentWalletBal}/>}
+                  sub={"إيداعات "+rentIn.toLocaleString("en-US")+" · صرف "+rentOut.toLocaleString("en-US")}>
+                  <WalletSpark tx={rentTx}/>
+                  <button className="x-back" style={{marginTop:2}} onClick={()=>setWalletTab("rent")}>عرض التفاصيل</button>
+                </Kpi>
+                <Kpi c="teal" label="محفظة النظافة" value={<SAR v={cleaningBal}/>}
+                  sub={clExpMonth>0?"التزامات هذا الشهر: "+clExpMonth.toLocaleString("en-US")+" ر.س":"إيداعات "+clIn.toLocaleString("en-US")+" · صرف "+clOut.toLocaleString("en-US")}>
+                  <WalletSpark tx={clnTx}/>
+                  <button className="x-back" style={{marginTop:2}} onClick={()=>setWalletTab("cln")}>عرض التفاصيل</button>
+                </Kpi>
               </div>
             </div>
             );
@@ -4060,10 +4126,13 @@ ${poolLine}
           <div style={{marginBottom:12}}>
             <label className="lbl">الفئة</label>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-              {["إيجار","تنظيف","صيانة","إدارة","كهرباء","اشتراكات","غيره"].map(cat=>(
+              {["إيجار","تنظيف","تأمين","صيانة","إدارة","كهرباء","اشتراكات","غيره"].map(cat=>(
                 <button key={cat} className="btn" onClick={()=>setExMdl(p=>({...p,category:cat}))} style={{padding:"7px 14px",fontSize:13,background:exMdl.category===cat?B:SL,color:exMdl.category===cat?S:B,border:"1.5px solid rgba(201,163,106,.3)"}}>{cat}</button>
               ))}
             </div>
+            {["إيجار","تنظيف","تأمين"].includes(exMdl.category||"")&&(
+              <p className="x-sub" style={{margin:0}}>💡 هذا المبلغ سيُضاف تلقائياً كإيداع بمحفظة {exMdl.category==="تنظيف"?"النظافة":exMdl.category}</p>
+            )}
           </div>
           <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={exMdl.chalet} onChange={e=>setExMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
           <div style={{marginBottom:12}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={exMdl.amount} onChange={e=>setExMdl(p=>({...p,amount:e.target.value}))} placeholder="0"/></div>
@@ -4071,7 +4140,7 @@ ${poolLine}
           <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={exMdl.note||""} onChange={e=>setExMdl(p=>({...p,note:e.target.value}))} placeholder="اختياري..."/></div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setExMdl(null)}>إلغاء</button>
-            <SaveBtn label="حفظ المصروف" disabled={!exMdl.amount||!exMdl.chalet} onClick={async()=>{await db("expenses","POST",{chalet:exMdl.chalet,category:exMdl.category,amount:Number(exMdl.amount),note:exMdl.note||"",expense_date:exMdl.expense_date});await loadAll();setExMdl(null);}}/>
+            <SaveBtn label="حفظ المصروف" disabled={!exMdl.amount||!exMdl.chalet} onClick={async()=>{await svExpense(exMdl);setExMdl(null);}}/>
           </div>
         </Mdl>
       )}
@@ -4229,7 +4298,11 @@ ${poolLine}
             <SaveBtn style={{background:"#3D7A5A"}} onClick={async()=>{
               const body={chalet:clExpMdl.chalet,category:clExpMdl.category,amount:Number(clExpMdl.amount),note:clExpMdl.note||"",expense_date:clExpMdl.expense_date||td()};
               if(clExpMdl.id)await db("cleaning_expenses","PATCH",body,clExpMdl.id);
-              else await db("cleaning_expenses","POST",body);
+              else {
+                await db("cleaning_expenses","POST",body);
+                // كل التزام جديد (رواتب، مواد...) يُسحب فوراً من محفظة النظافة
+                await db("cleaning","POST",{trans_date:body.expense_date,type:"سحب",chalet:body.chalet,amount:body.amount,note:body.category+(body.note?": "+body.note:"")});
+              }
               await loadAll();setClExpMdl(null);
             }}/>
           </div>
