@@ -2818,7 +2818,7 @@ ${poolLine}
   },[soonArrivals]);
   async function svM(f: Partial<MaintenanceRequest>, old?: MaintenanceRequest | null): Promise<void> {const cost=Number(f.cost)||0;const wasDone=old?.status==="done";const isDone=f.status==="done";const isNew=!f.id;const body={chalet:f.chalet,issue:f.issue,maint_date:f.maint_date,priority:f.priority,status:f.status,cost,note:f.note,req:f.req,image:f.image||null};if(f.id)await db("maintenance","PATCH",body as Record<string,unknown>,f.id);else await db("maintenance","POST",body as Record<string,unknown>);if(cost>0&&isDone&&(isNew||!wasDone))await db("wallet","POST",{trans_date:f.maint_date||td(),type:"سحب صيانة",chalet:f.chalet,cat:"صيانة",amount:cost,note:f.issue||"صيانة"});await loadAll();setMMdl(null);}
   async function svAC(chalet: string, field: string, value: unknown, roomId: number | null = null): Promise<void> {if(roomId){const room=rooms.find(r=>r.id===roomId);const body={chalet,room_id:roomId,room_name:room?.name||"",ac_on:field==="ac_on"?value:(room?._acOn||false),ac_temp:field==="ac_temp"?value:(room?._acTemp||22),ac_mode:field==="ac_mode"?value:(room?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(room?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(room?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,room._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setRooms(p=>p.map(x=>x.id===roomId?{...x,_sdId:(res[0] as Room).id}:x));}await sendACCommand(roomId,field,value);}else{const ch=chalets.find(x=>x.name===chalet);const body={chalet,ac_on:field==="ac_on"?value:(ch?._acOn||false),ac_temp:field==="ac_temp"?value:(ch?._acTemp||22),ac_mode:field==="ac_mode"?value:(ch?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(ch?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(ch?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,ch._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setChalets(p=>p.map(x=>x.name===chalet?{...x,_sdId:(res[0] as Chalet).id}:x));}}}
-  async function svCln(chalet: string, amount: string | number, note: string, type: string = "إيداع"): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("cleaning","POST",{trans_date:td(),type,chalet,amount:amt,note:note||(type==="إيداع"?"إيداع نظافة":"سحب يدوي")});await loadAll();setClnMdl(false);}
+  async function svCln(chalet: string, amount: string | number, note: string, type: string = "إيداع"): Promise<void> {const amt=Number(amount);if(!amt)return;await db("cleaning","POST",{trans_date:td(),type,chalet:chalet||null,amount:amt,note:note||(type==="إيداع"?"إيداع نظافة":"سحب يدوي")});await loadAll();setClnMdl(false);}
   async function payFixedExpense(fx: FixedExpense): Promise<void> {await db("expenses","POST",{chalet:fx.chalet,category:fx.category||"مصروف ثابت",amount:Number(fx.amount),note:fx.name,expense_date:td()});await loadAll();}
   // دفع إيجار (كامل أو جزئي): يُسجَّل كسحب من محفظة الإيجار، ولو وصل مجموع المسحوب لهذه الدورة
   // للمبلغ الكامل تتقدّم last_acknowledged لدورة السنة القادمة — دفعة جزئية تبقي التذكير شغّال بالمتبقي.
@@ -2830,8 +2830,8 @@ ${poolLine}
     await loadAll();
     setRentPayMdl(null);
   }
-  async function svRentDeposit(chalet: string, month: string, amount: string | number, type: string = "إيداع"): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type,chalet,cat:"إيجار",amount:amt,note:(type==="إيداع"?"إيداع إيجار شهر ":"سحب إيجار يدوي · ")+month});await loadAll();setRentDepMdl(false);}
-  async function svI(chalet: string, amount: string | number, note: string, type: string = "إيداع"): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type,chalet,cat:"تأمين",amount:amt,note:note||(type==="إيداع"?"إيداع تأمين":"سحب تأمين يدوي")});await loadAll();setIMdl(false);}
+  async function svRentDeposit(chalet: string, month: string, amount: string | number, type: string = "إيداع"): Promise<void> {const amt=Number(amount);if(!amt)return;await db("wallet","POST",{trans_date:td(),type,chalet:chalet||null,cat:"إيجار",amount:amt,note:type==="إيداع"?"إيداع إيجار شهر "+month:"سحب إيجار يدوي"});await loadAll();setRentDepMdl(false);}
+  async function svI(chalet: string, amount: string | number, note: string, type: string = "إيداع"): Promise<void> {const amt=Number(amount);if(!amt)return;await db("wallet","POST",{trans_date:td(),type,chalet:chalet||null,cat:"تأمين",amount:amt,note:note||(type==="إيداع"?"إيداع تأمين":"سحب تأمين يدوي")});await loadAll();setIMdl(false);}
   // تسجيل مصروف إيجار/تنظيف/تأمين يغذّي تلقائياً نفس المحفظة (إيداع بنفس المبلغ، مُجمّع من كل الشاليهات) —
   // طريقة التغذية الثانية جنب الإيداع اليدوي من داخل المحفظة نفسها.
   async function svExpense(f: Partial<Expense>): Promise<void> {
@@ -2931,14 +2931,14 @@ ${poolLine}
     const [amt,setAmt]=useState("");
     const [nt,setNt]=useState("");
     return (
-      <Mdl onClose={()=>setIMdl(false)} title={out?"سحب من محفظة التأمين":"إيداع في محفظة التأمين"}>
-        <p style={{color:T,fontSize:13,marginBottom:16}}>{out?"المبلغ سيُخصم فوراً من محفظة التأمين":"المبلغ سيُضاف فوراً لمحفظة التأمين"}</p>
-        <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={ch} onChange={e=>setCh(e.target.value)}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+      <Mdl onClose={()=>setIMdl(false)} title={out?"سحب عام من محفظة التأمين":"إيداع في محفظة التأمين"}>
+        <p style={{color:T,fontSize:13,marginBottom:16}}>{out?"المبلغ سيُخصم فوراً من محفظة التأمين — سحب عام غير مرتبط بشاليه معيّن":"المبلغ سيُضاف فوراً لمحفظة التأمين"}</p>
+        {!out&&<div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={ch} onChange={e=>setCh(e.target.value)}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>}
         <div style={{marginBottom:12}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={amt} onChange={e=>setAmt(e.target.value)} placeholder="0"/></div>
-        <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={nt} onChange={e=>setNt(e.target.value)} placeholder={out?"مثال: رد تأمين لضيف":"مثال: تأمين شهر يونيو"}/></div>
+        <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={nt} onChange={e=>setNt(e.target.value)} placeholder={out?"مثال: دفعة إيجار مستقبلية":"مثال: تأمين شهر يونيو"}/></div>
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
           <button className="btn bo" onClick={()=>setIMdl(false)}>إلغاء</button>
-          <button className="btn bp" onClick={()=>svI(ch,amt,nt,out?"سحب تأمين":"إيداع")}>{out?"حفظ وسحب":"حفظ وإضافة"}</button>
+          <button className="btn bp" onClick={()=>svI(out?"":ch,amt,nt,out?"سحب تأمين":"إيداع")}>{out?"حفظ وسحب":"حفظ وإضافة"}</button>
         </div>
       </Mdl>
     );
@@ -2950,14 +2950,16 @@ ${poolLine}
     const [month,setMonth]=useState(MONTH_NAMES[new Date().getMonth()]);
     const [amt,setAmt]=useState("");
     return (
-      <Mdl onClose={()=>setRentDepMdl(false)} title={out?"سحب من محفظة الإيجار":"إيداع في محفظة الإيجار"}>
-        <p style={{color:T,fontSize:13,marginBottom:16}}>{out?"المبلغ سيُخصم فوراً من محفظة الإيجار":"المبلغ سيُضاف فوراً لمحفظة الإيجار"}، مرتبط بالشاليه والشهر</p>
-        <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={ch} onChange={e=>setCh(e.target.value)}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
-        <div style={{marginBottom:12}}><label className="lbl">الشهر</label><select className="inp" value={month} onChange={e=>setMonth(e.target.value)}>{MONTH_NAMES.map(m=><option key={m} value={m}>{m}</option>)}</select></div>
+      <Mdl onClose={()=>setRentDepMdl(false)} title={out?"سحب عام من محفظة الإيجار":"إيداع في محفظة الإيجار"}>
+        <p style={{color:T,fontSize:13,marginBottom:16}}>{out?"المبلغ سيُخصم فوراً من محفظة الإيجار — سحب عام غير مرتبط بشاليه معيّن (مثلاً لدفع إيجار مستقبلي)":"المبلغ سيُضاف فوراً لمحفظة الإيجار، مرتبط بالشاليه والشهر"}</p>
+        {!out&&(<>
+          <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={ch} onChange={e=>setCh(e.target.value)}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+          <div style={{marginBottom:12}}><label className="lbl">الشهر</label><select className="inp" value={month} onChange={e=>setMonth(e.target.value)}>{MONTH_NAMES.map(m=><option key={m} value={m}>{m}</option>)}</select></div>
+        </>)}
         <div style={{marginBottom:20}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={amt} onChange={e=>setAmt(e.target.value)} placeholder="0"/></div>
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
           <button className="btn bo" onClick={()=>setRentDepMdl(false)}>إلغاء</button>
-          <button className="btn bp" onClick={()=>svRentDeposit(ch,month,amt,out?"سحب إيجار":"إيداع")}>{out?"حفظ وسحب":"حفظ وإضافة"}</button>
+          <button className="btn bp" onClick={()=>svRentDeposit(out?"":ch,month,amt,out?"سحب إيجار":"إيداع")}>{out?"حفظ وسحب":"حفظ وإضافة"}</button>
         </div>
       </Mdl>
     );
@@ -3655,7 +3657,7 @@ ${poolLine}
                       <thead><tr><th>التاريخ</th><th>الشاليه</th><th>النوع</th><th>المبلغ</th><th>ملاحظة</th><th className="end"></th></tr></thead>
                       <tbody>{ledger.map((t,i)=>(
                         <tr key={t.id||i}>
-                          <td>{fd(t.trans_date)}</td><td className="strong">{t.chalet}</td>
+                          <td>{fd(t.trans_date)}</td><td className="strong">{t.chalet||<span className="x-muted">عام</span>}</td>
                           <td><Pill tone={t.type==="إيداع"?"ok":"bad"}>{t.type}</Pill></td>
                           <td className={"strong "+(t.type==="إيداع"?"x-pos":"x-neg")}><span dir="ltr" style={{unicodeBidi:"isolate"}}>{(t.type==="إيداع"?"+":"−")+t.amount.toLocaleString("en-US")}</span></td>
                           <td className="x-muted">{t.note||"-"}</td>
@@ -4334,14 +4336,14 @@ ${poolLine}
           const [amt,setAmt]=useState("");
           const [nt,setNt]=useState("");
           return (
-            <Mdl onClose={()=>setClnMdl(false)} title={out?"سحب يدوي من محفظة النظافة":"إضافة رصيد نظافة"}>
-              <p style={{color:T,fontSize:13,marginBottom:16}}>{out?"المبلغ سيُخصم فوراً من محفظة النظافة":"المبلغ سيُضاف فوراً لمحفظة النظافة"}</p>
-              <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={ch} onChange={e=>setCh(e.target.value)}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+            <Mdl onClose={()=>setClnMdl(false)} title={out?"سحب عام من محفظة النظافة":"إضافة رصيد نظافة"}>
+              <p style={{color:T,fontSize:13,marginBottom:16}}>{out?"المبلغ سيُخصم فوراً من محفظة النظافة — سحب عام غير مرتبط بشاليه معيّن":"المبلغ سيُضاف فوراً لمحفظة النظافة"}</p>
+              {!out&&<div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={ch} onChange={e=>setCh(e.target.value)}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>}
               <div style={{marginBottom:12}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={amt} onChange={e=>setAmt(e.target.value)} placeholder="500"/></div>
               <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={nt} onChange={e=>setNt(e.target.value)} placeholder={out?"مثال: سلفة عامل":"رصيد نظافة شهر يونيو"}/></div>
               <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
                 <button className="btn bo" onClick={()=>setClnMdl(false)}>إلغاء</button>
-                <SaveBtn label={out?"سحب":"إضافة"} style={{background:out?"#A63A2A":"#3D7A5A"}} onClick={()=>svCln(ch,amt,nt,out?"سحب":"إيداع")}/>
+                <SaveBtn label={out?"سحب":"إضافة"} style={{background:out?"#A63A2A":"#3D7A5A"}} onClick={()=>svCln(out?"":ch,amt,nt,out?"سحب":"إيداع")}/>
               </div>
             </Mdl>
           );
@@ -4351,7 +4353,7 @@ ${poolLine}
       {clMdl&&(
         <Mdl onClose={()=>setClMdl(null)} title="تعديل معاملة النظافة">
           <div style={{marginBottom:12}}><label className="lbl">التاريخ</label><input className="inp" type="date" value={clMdl.trans_date||""} onChange={e=>setClMdl(p=>({...p,trans_date:e.target.value}))}/></div>
-          <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={clMdl.chalet||""} onChange={e=>setClMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+          <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={clMdl.chalet||""} onChange={e=>setClMdl(p=>({...p,chalet:e.target.value}))}><option value="">عام (كل الشاليهات)</option>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
           <div style={{marginBottom:12}}><label className="lbl">النوع</label><select className="inp" value={clMdl.type||"إيداع"} onChange={e=>setClMdl(p=>({...p,type:e.target.value}))}><option value="إيداع">إيداع</option><option value="سحب">سحب</option></select></div>
           <div style={{marginBottom:12}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={clMdl.amount||""} onChange={e=>setClMdl(p=>({...p,amount:Number(e.target.value)}))}/></div>
           <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={clMdl.note||""} onChange={e=>setClMdl(p=>({...p,note:e.target.value}))}/></div>
@@ -4444,7 +4446,7 @@ ${poolLine}
       {wMdl&&(
         <Mdl onClose={()=>setWMdl(null)} title="تعديل معاملة التأمين">
           <div style={{marginBottom:12}}><label className="lbl">التاريخ</label><input className="inp" type="date" value={wMdl.trans_date||""} onChange={e=>setWMdl(p=>({...p,trans_date:e.target.value}))}/></div>
-          <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={wMdl.chalet||""} onChange={e=>setWMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+          <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={wMdl.chalet||""} onChange={e=>setWMdl(p=>({...p,chalet:e.target.value}))}><option value="">عام (كل الشاليهات)</option>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
           <div style={{marginBottom:12}}><label className="lbl">النوع</label><select className="inp" value={wMdl.type||"إيداع"} onChange={e=>setWMdl(p=>({...p,type:e.target.value}))}><option value="إيداع">إيداع</option><option value="سحب صيانة">سحب صيانة</option><option value="سحب إيجار">سحب إيجار</option></select></div>
           <div style={{marginBottom:12}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={wMdl.amount||""} onChange={e=>setWMdl(p=>({...p,amount:Number(e.target.value)}))}/></div>
           <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={wMdl.note||""} onChange={e=>setWMdl(p=>({...p,note:e.target.value}))}/></div>
