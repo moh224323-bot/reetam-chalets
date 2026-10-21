@@ -2446,7 +2446,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [wallet,setWallet]     = useState<WalletTransaction[]>([]);
   const [cleaning,setCleaning] = useState<CleaningTransaction[]>([]);
   const [clMdl,setClMdl]       = useState<CleaningTransaction | null>(null);
-  const [clnMdl,setClnMdl]     = useState(false);
+  const [clnMdl,setClnMdl]     = useState<"in"|"out"|false>(false);
   const [clExp,setClExp]       = useState<CleaningExpense[]>([]);
   const [clExpMdl,setClExpMdl] = useState<Partial<CleaningExpense> | null>(null);
   const [clTasks,setClTasks]   = useState<CleaningTask[]>([]);
@@ -2493,8 +2493,8 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [mOld,setMOld]       = useState<MaintenanceRequest | null>(null);
   const [cMdl,setCMdl]       = useState<Partial<Chalet> | null>(null);
   const [imgUploading,setImgUploading] = useState(false);
-  const [iMdl,setIMdl]       = useState(false);
-  const [rentDepMdl,setRentDepMdl] = useState(false);
+  const [iMdl,setIMdl]       = useState<"in"|"out"|false>(false);
+  const [rentDepMdl,setRentDepMdl] = useState<"in"|"out"|false>(false);
   const [rentPayMdl,setRentPayMdl] = useState<{fx:FixedExpense; amount:string} | null>(null);
   const [wMdl,setWMdl]       = useState<Partial<WalletTransaction> | null>(null);
   const [coMdl,setCoMdl]     = useState<Booking | null>(null);
@@ -2818,7 +2818,7 @@ ${poolLine}
   },[soonArrivals]);
   async function svM(f: Partial<MaintenanceRequest>, old?: MaintenanceRequest | null): Promise<void> {const cost=Number(f.cost)||0;const wasDone=old?.status==="done";const isDone=f.status==="done";const isNew=!f.id;const body={chalet:f.chalet,issue:f.issue,maint_date:f.maint_date,priority:f.priority,status:f.status,cost,note:f.note,req:f.req,image:f.image||null};if(f.id)await db("maintenance","PATCH",body as Record<string,unknown>,f.id);else await db("maintenance","POST",body as Record<string,unknown>);if(cost>0&&isDone&&(isNew||!wasDone))await db("wallet","POST",{trans_date:f.maint_date||td(),type:"سحب صيانة",chalet:f.chalet,cat:"صيانة",amount:cost,note:f.issue||"صيانة"});await loadAll();setMMdl(null);}
   async function svAC(chalet: string, field: string, value: unknown, roomId: number | null = null): Promise<void> {if(roomId){const room=rooms.find(r=>r.id===roomId);const body={chalet,room_id:roomId,room_name:room?.name||"",ac_on:field==="ac_on"?value:(room?._acOn||false),ac_temp:field==="ac_temp"?value:(room?._acTemp||22),ac_mode:field==="ac_mode"?value:(room?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(room?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(room?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,room._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setRooms(p=>p.map(x=>x.id===roomId?{...x,_sdId:(res[0] as Room).id}:x));}await sendACCommand(roomId,field,value);}else{const ch=chalets.find(x=>x.name===chalet);const body={chalet,ac_on:field==="ac_on"?value:(ch?._acOn||false),ac_temp:field==="ac_temp"?value:(ch?._acTemp||22),ac_mode:field==="ac_mode"?value:(ch?._acMode||"cool"),ac_speed:field==="ac_speed"?value:(ch?._acSpeed||"auto"),updated_at:new Date().toISOString()};if(ch?._sdId){await db("smart_devices","PATCH",body as Record<string,unknown>,ch._sdId);}else{const res=await db("smart_devices","POST",body as Record<string,unknown>);if(res?.[0])setChalets(p=>p.map(x=>x.name===chalet?{...x,_sdId:(res[0] as Chalet).id}:x));}}}
-  async function svCln(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("cleaning","POST",{trans_date:td(),type:"إيداع",chalet,amount:amt,note:note||"إيداع نظافة"});await loadAll();setClnMdl(false);}
+  async function svCln(chalet: string, amount: string | number, note: string, type: string = "إيداع"): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("cleaning","POST",{trans_date:td(),type,chalet,amount:amt,note:note||(type==="إيداع"?"إيداع نظافة":"سحب يدوي")});await loadAll();setClnMdl(false);}
   async function payFixedExpense(fx: FixedExpense): Promise<void> {await db("expenses","POST",{chalet:fx.chalet,category:fx.category||"مصروف ثابت",amount:Number(fx.amount),note:fx.name,expense_date:td()});await loadAll();}
   // دفع إيجار (كامل أو جزئي): يُسجَّل كسحب من محفظة الإيجار، ولو وصل مجموع المسحوب لهذه الدورة
   // للمبلغ الكامل تتقدّم last_acknowledged لدورة السنة القادمة — دفعة جزئية تبقي التذكير شغّال بالمتبقي.
@@ -2830,8 +2830,8 @@ ${poolLine}
     await loadAll();
     setRentPayMdl(null);
   }
-  async function svRentDeposit(chalet: string, month: string, amount: string | number): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"إيجار",amount:amt,note:"إيداع إيجار شهر "+month});await loadAll();setRentDepMdl(false);}
-  async function svI(chalet: string, amount: string | number, note: string): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type:"إيداع",chalet,cat:"تأمين",amount:amt,note:note||"إيداع تأمين"});await loadAll();setIMdl(false);}
+  async function svRentDeposit(chalet: string, month: string, amount: string | number, type: string = "إيداع"): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type,chalet,cat:"إيجار",amount:amt,note:(type==="إيداع"?"إيداع إيجار شهر ":"سحب إيجار يدوي · ")+month});await loadAll();setRentDepMdl(false);}
+  async function svI(chalet: string, amount: string | number, note: string, type: string = "إيداع"): Promise<void> {const amt=Number(amount);if(!amt||!chalet)return;await db("wallet","POST",{trans_date:td(),type,chalet,cat:"تأمين",amount:amt,note:note||(type==="إيداع"?"إيداع تأمين":"سحب تأمين يدوي")});await loadAll();setIMdl(false);}
   // تسجيل مصروف إيجار/تنظيف/تأمين يغذّي تلقائياً نفس المحفظة (إيداع بنفس المبلغ، مُجمّع من كل الشاليهات) —
   // طريقة التغذية الثانية جنب الإيداع اليدوي من داخل المحفظة نفسها.
   async function svExpense(f: Partial<Expense>): Promise<void> {
@@ -2926,36 +2926,38 @@ ${poolLine}
   }
 
   function InsMdl(){
+    const out = iMdl==="out";
     const [ch,setCh]=useState(names[0]||"");
     const [amt,setAmt]=useState("");
     const [nt,setNt]=useState("");
     return (
-      <Mdl onClose={()=>setIMdl(false)} title="إضافة تأمين">
-        <p style={{color:T,fontSize:13,marginBottom:16}}>المبلغ سيُضاف فوراً لمحفظة التأمين</p>
+      <Mdl onClose={()=>setIMdl(false)} title={out?"سحب من محفظة التأمين":"إيداع في محفظة التأمين"}>
+        <p style={{color:T,fontSize:13,marginBottom:16}}>{out?"المبلغ سيُخصم فوراً من محفظة التأمين":"المبلغ سيُضاف فوراً لمحفظة التأمين"}</p>
         <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={ch} onChange={e=>setCh(e.target.value)}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
         <div style={{marginBottom:12}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={amt} onChange={e=>setAmt(e.target.value)} placeholder="0"/></div>
-        <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={nt} onChange={e=>setNt(e.target.value)} placeholder="مثال: تأمين شهر يونيو"/></div>
+        <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={nt} onChange={e=>setNt(e.target.value)} placeholder={out?"مثال: رد تأمين لضيف":"مثال: تأمين شهر يونيو"}/></div>
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
           <button className="btn bo" onClick={()=>setIMdl(false)}>إلغاء</button>
-          <button className="btn bp" onClick={()=>svI(ch,amt,nt)}>حفظ وإضافة</button>
+          <button className="btn bp" onClick={()=>svI(ch,amt,nt,out?"سحب تأمين":"إيداع")}>{out?"حفظ وسحب":"حفظ وإضافة"}</button>
         </div>
       </Mdl>
     );
   }
 
   function RentDepMdl(){
+    const out = rentDepMdl==="out";
     const [ch,setCh]=useState(names[0]||"");
     const [month,setMonth]=useState(MONTH_NAMES[new Date().getMonth()]);
     const [amt,setAmt]=useState("");
     return (
-      <Mdl onClose={()=>setRentDepMdl(false)} title="إيداع في محفظة الإيجار">
-        <p style={{color:T,fontSize:13,marginBottom:16}}>المبلغ سيُضاف فوراً لمحفظة الإيجار، مرتبط بالشاليه والشهر</p>
+      <Mdl onClose={()=>setRentDepMdl(false)} title={out?"سحب من محفظة الإيجار":"إيداع في محفظة الإيجار"}>
+        <p style={{color:T,fontSize:13,marginBottom:16}}>{out?"المبلغ سيُخصم فوراً من محفظة الإيجار":"المبلغ سيُضاف فوراً لمحفظة الإيجار"}، مرتبط بالشاليه والشهر</p>
         <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={ch} onChange={e=>setCh(e.target.value)}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
         <div style={{marginBottom:12}}><label className="lbl">الشهر</label><select className="inp" value={month} onChange={e=>setMonth(e.target.value)}>{MONTH_NAMES.map(m=><option key={m} value={m}>{m}</option>)}</select></div>
         <div style={{marginBottom:20}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={amt} onChange={e=>setAmt(e.target.value)} placeholder="0"/></div>
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
           <button className="btn bo" onClick={()=>setRentDepMdl(false)}>إلغاء</button>
-          <button className="btn bp" onClick={()=>svRentDeposit(ch,month,amt)}>حفظ وإضافة</button>
+          <button className="btn bp" onClick={()=>svRentDeposit(ch,month,amt,out?"سحب إيجار":"إيداع")}>{out?"حفظ وسحب":"حفظ وإضافة"}</button>
         </div>
       </Mdl>
     );
@@ -3585,18 +3587,35 @@ ${poolLine}
                 ? {label:"محفظة الإيجار", bal:rentWalletBal, in:rentIn, out:rentOut, tx:rentTx, table:"wallet" as const}
                 : {label:"محفظة النظافة", bal:cleaningBal, in:clIn, out:clOut, tx:clnTx, table:"cleaning" as const};
               const ledger=[...info.tx].reverse();
+              const months6=Array.from({length:6},(_,i)=>{const d=new Date();d.setMonth(d.getMonth()-i);return d.toISOString().slice(0,7);});
+              const tx6=info.tx.filter(t=>months6.includes((t.trans_date||"").slice(0,7)));
+              const in6=tx6.filter(t=>t.type==="إيداع").reduce((s,t)=>s+t.amount,0), out6=tx6.filter(t=>t.type!=="إيداع").reduce((s,t)=>s+t.amount,0);
+              const net6=in6-out6, avgIn6=Math.round(in6/6);
+              const lastTx=[...info.tx].sort((a,b)=>(a.trans_date||"")<(b.trans_date||"")?1:-1)[0];
               return (
               <div className="x-page">
                 <PageHead title={info.label} sub={"الرصيد الحالي: "+info.bal.toLocaleString("en-US")+" ر.س"} back={{label:"المحافظ",onClick:()=>setWalletTab(null)}}>
-                  {walletTab==="ins"&&<button className="btn bp" onClick={()=>setIMdl(true)}><Icon n="plus"/>إيداع تأمين</button>}
-                  {walletTab==="rent"&&<button className="btn bp" onClick={()=>setRentDepMdl(true)}><Icon n="plus"/>إيداع إيجار</button>}
+                  {walletTab==="ins"&&(<>
+                    <button className="btn bo" onClick={()=>setIMdl("out")}><Icon n="download"/>سحب يدوي</button>
+                    <button className="btn bp" onClick={()=>setIMdl("in")}><Icon n="plus"/>إيداع تأمين</button>
+                  </>)}
+                  {walletTab==="rent"&&(<>
+                    <button className="btn bo" onClick={()=>setRentDepMdl("out")}><Icon n="download"/>سحب يدوي</button>
+                    <button className="btn bp" onClick={()=>setRentDepMdl("in")}><Icon n="plus"/>إيداع إيجار</button>
+                  </>)}
                   {walletTab==="cln"&&(<>
+                    <button className="btn bo" onClick={()=>setClnMdl("out")}><Icon n="download"/>سحب يدوي</button>
                     <button className="btn bo" onClick={()=>setClExpMdl({chalet:names[0]||"",category:"رواتب",amount:"",note:"",expense_date:td()})}><Icon n="receipt"/>صرف (راتب/مواد)</button>
-                    <button className="btn bp" onClick={()=>setClnMdl(true)}><Icon n="plus"/>إيداع نظافة</button>
+                    <button className="btn bp" onClick={()=>setClnMdl("in")}><Icon n="plus"/>إيداع نظافة</button>
                   </>)}
                 </PageHead>
                 <div className="x-kpis">
                   <Kpi hero label={info.label} value={<SAR v={info.bal}/>} sub={"إيداعات "+info.in.toLocaleString("en-US")+" · صرف "+info.out.toLocaleString("en-US")}/>
+                  <Kpi c={net6>=0?"green":"red"} label="اتجاه آخر 6 أشهر" value={<SAR v={net6}/>} sub="صافي الإيداعات بعد خصم السحوبات">
+                    <WalletSpark tx={info.tx}/>
+                  </Kpi>
+                  <Kpi c="blue" label="متوسط الإيداع الشهري" value={<SAR v={avgIn6}/>} sub="متوسط آخر 6 أشهر"/>
+                  <Kpi label="عدد الحركات" value={ledger.length} sub={lastTx?"آخر حركة: "+fd(lastTx.trans_date):"لا توجد حركات بعد"}/>
                 </div>
                 {walletTab==="ins"&&(
                   <div className="x-card">
@@ -4309,19 +4328,20 @@ ${poolLine}
         </Mdl>
       )}
       {clnMdl&&(()=>{
+        const out = clnMdl==="out";
         function ClnMdlInner(){
           const [ch,setCh]=useState(names[0]||"");
           const [amt,setAmt]=useState("");
           const [nt,setNt]=useState("");
           return (
-            <Mdl onClose={()=>setClnMdl(false)} title="إضافة رصيد نظافة">
-              <p style={{color:T,fontSize:13,marginBottom:16}}>المبلغ سيُضاف فوراً لمحفظة النظافة</p>
+            <Mdl onClose={()=>setClnMdl(false)} title={out?"سحب يدوي من محفظة النظافة":"إضافة رصيد نظافة"}>
+              <p style={{color:T,fontSize:13,marginBottom:16}}>{out?"المبلغ سيُخصم فوراً من محفظة النظافة":"المبلغ سيُضاف فوراً لمحفظة النظافة"}</p>
               <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={ch} onChange={e=>setCh(e.target.value)}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
               <div style={{marginBottom:12}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={amt} onChange={e=>setAmt(e.target.value)} placeholder="500"/></div>
-              <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={nt} onChange={e=>setNt(e.target.value)} placeholder="رصيد نظافة شهر يونيو"/></div>
+              <div style={{marginBottom:20}}><label className="lbl">ملاحظة</label><input className="inp" value={nt} onChange={e=>setNt(e.target.value)} placeholder={out?"مثال: سلفة عامل":"رصيد نظافة شهر يونيو"}/></div>
               <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
                 <button className="btn bo" onClick={()=>setClnMdl(false)}>إلغاء</button>
-                <SaveBtn label="إضافة" style={{background:"#3D7A5A"}} onClick={()=>svCln(ch,amt,nt)}/>
+                <SaveBtn label={out?"سحب":"إضافة"} style={{background:out?"#A63A2A":"#3D7A5A"}} onClick={()=>svCln(ch,amt,nt,out?"سحب":"إيداع")}/>
               </div>
             </Mdl>
           );
