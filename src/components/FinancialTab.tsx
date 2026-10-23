@@ -17,6 +17,7 @@ interface Props {
   expenses?:   Expense[];
   fixedExpenses?: FixedExpense[];
   onAddExpense?: () => void;
+  onAddMonthlyExpenses?: () => void;
   onAddFixedExpense?: () => void;
   onPayFixedExpense?: (fx: FixedExpense) => void;
   onEdit?:     (t: WalletTransaction) => void;
@@ -38,7 +39,7 @@ const PERIOD_LABELS: Record<Period, string> = {
 
 const isRevenue = (b: { status: string }) => b.status === "completed" || b.status === "confirmed";
 
-export default function FinancialTab({ bookings, maintenance, wallet, names, expenses = [], fixedExpenses = [], onAddExpense, onAddFixedExpense, onPayFixedExpense, onEdit, onReload, lockedChalet }: Props) {
+export default function FinancialTab({ bookings, maintenance, wallet, names, expenses = [], fixedExpenses = [], onAddExpense, onAddMonthlyExpenses, onAddFixedExpense, onPayFixedExpense, onEdit, onReload, lockedChalet }: Props) {
   const now = new Date();
   const [period, setPeriod] = useState<Period>("this_month");
   const [fch, setFch]       = useState(lockedChalet || "الكل");
@@ -327,6 +328,7 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
     <div className="x-page">
       <PageHead title={lockedChalet ? "المالية · " + lockedChalet : "المالية"} sub="قائمة الدخل والمؤشرات الأساسية">
         {actions.map((a,i)=><button key={i} className="btn bo" onClick={a.fn}><Icon n={a.i}/>{a.l}</button>)}
+        {onAddMonthlyExpenses && <button className="btn bo" onClick={onAddMonthlyExpenses}><Icon n="home"/>مصاريف الشاليه الشهرية</button>}
         {onAddExpense && <button className="btn bp" onClick={onAddExpense}><Icon n="plus"/>إضافة مصروف</button>}
       </PageHead>
 
