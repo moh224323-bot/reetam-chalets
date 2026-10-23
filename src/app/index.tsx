@@ -2499,6 +2499,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [wMdl,setWMdl]       = useState<Partial<WalletTransaction> | null>(null);
   const [coMdl,setCoMdl]     = useState<Booking | null>(null);
   const [exMdl,setExMdl]     = useState<Partial<Expense> | null>(null);
+  const [monthlyExpMdl,setMonthlyExpMdl] = useState<{chalet:string; expense_date:string; rent:string; cleaning:string; insurance:string; electricity:string} | null>(null);
   const [uMdl,setUMdl]       = useState<(Partial<AppUser> & {password?:string}) | null>(null);
   const [uErr,setUErr]       = useState("");
   const [addRoomMdl,setAddRoomMdl] = useState<Partial<Room> | null>(null);
@@ -2834,14 +2835,26 @@ ${poolLine}
   async function svI(chalet: string, amount: string | number, note: string, type: string = "إيداع"): Promise<void> {const amt=Number(amount);if(!amt)return;await db("wallet","POST",{trans_date:td(),type,chalet:chalet||null,cat:"تأمين",amount:amt,note:note||(type==="إيداع"?"إيداع تأمين":"سحب تأمين يدوي")});await loadAll();setIMdl(false);}
   // تسجيل مصروف إيجار/تنظيف/تأمين يغذّي تلقائياً نفس المحفظة (إيداع بنفس المبلغ، مُجمّع من كل الشاليهات) —
   // طريقة التغذية الثانية جنب الإيداع اليدوي من داخل المحفظة نفسها.
-  async function svExpense(f: Partial<Expense>): Promise<void> {
-    const amount=Number(f.amount)||0, chalet=f.chalet||"", date=f.expense_date||td();
-    await db("expenses","POST",{chalet,category:f.category,amount,note:f.note||"",expense_date:date});
+  async function postExpenseRow(chalet: string, category: string, amount: number, date: string, note?: string): Promise<void> {
+    await db("expenses","POST",{chalet,category,amount,note:note||"",expense_date:date});
     if(amount>0&&chalet){
-      const src=f.note?": "+f.note:"";
-      if(f.category==="تنظيف")      await db("cleaning","POST",{trans_date:date,type:"إيداع",chalet,amount,note:"من مصروف نظافة"+src});
-      else if(f.category==="إيجار") await db("wallet","POST",{trans_date:date,type:"إيداع",chalet,cat:"إيجار",amount,note:"من مصروف إيجار"+src});
-      else if(f.category==="تأمين") await db("wallet","POST",{trans_date:date,type:"إيداع",chalet,cat:"تأمين",amount,note:"من مصروف تأمين"+src});
+      const src=note?": "+note:"";
+      if(category==="تنظيف")      await db("cleaning","POST",{trans_date:date,type:"إيداع",chalet,amount,note:"من مصروف نظافة"+src});
+      else if(category==="إيجار") await db("wallet","POST",{trans_date:date,type:"إيداع",chalet,cat:"إيجار",amount,note:"من مصروف إيجار"+src});
+      else if(category==="تأمين") await db("wallet","POST",{trans_date:date,type:"إيداع",chalet,cat:"تأمين",amount,note:"من مصروف تأمين"+src});
+    }
+  }
+  async function svExpense(f: Partial<Expense>): Promise<void> {
+    await postExpenseRow(f.chalet||"", f.category||"", Number(f.amount)||0, f.expense_date||td(), f.note);
+    await loadAll();
+  }
+  // مصاريف الشاليه الشهرية المتكررة (إيجار، تنظيف، تأمين، كهرباء) بصفحة واحدة بدل 4 نوافذ منفصلة —
+  // كل بند مُدخَل (أكبر من صفر) يُسجَّل مصروفاً مستقلاً، والثلاثة الأولى تغذّي محفظتها تلقائياً كالعادة.
+  async function svMonthlyExpenses(m: {chalet:string; expense_date:string; rent:string; cleaning:string; insurance:string; electricity:string}): Promise<void> {
+    const rows: [string,string][] = [["إيجار",m.rent],["تنظيف",m.cleaning],["تأمين",m.insurance],["كهرباء",m.electricity]];
+    for(const [cat,val] of rows){
+      const amt=Number(val)||0;
+      if(amt>0) await postExpenseRow(m.chalet, cat, amt, m.expense_date);
     }
     await loadAll();
   }
@@ -3433,7 +3446,8 @@ ${poolLine}
               expenses={scExpenses}
               fixedExpenses={scFixedExpenses}
               lockedChalet={isChaletMgr?currentUser.chalet:undefined}
-              onAddExpense={()=>setExMdl({chalet:(isChaletMgr?currentUser.chalet:names[0])||"",category:"إيجار",amount:"",note:"",expense_date:td()})}
+              onAddExpense={()=>setExMdl({chalet:(isChaletMgr?currentUser.chalet:names[0])||"",category:"إدارة",amount:"",note:"",expense_date:td()})}
+              onAddMonthlyExpenses={()=>setMonthlyExpMdl({chalet:(isChaletMgr?currentUser.chalet:names[0])||"",expense_date:td(),rent:"",cleaning:"",insurance:"",electricity:""})}
               onAddFixedExpense={()=>setFxMdl({chalet:(isChaletMgr?currentUser.chalet:names[0])||"",name:"",amount:0,frequency:"monthly",category:"إيجار",active:true})}
               onPayFixedExpense={payFixedExpense}
               onEdit={t=>setWMdl({...t})}
@@ -4144,16 +4158,14 @@ ${poolLine}
 
       {exMdl&&(
         <Mdl onClose={()=>setExMdl(null)} title="➕ إضافة مصروف">
+          <p style={{color:T,fontSize:13,marginBottom:12}}>لمصاريف الشاليه المتكررة (إيجار، تنظيف، تأمين، كهرباء) استخدم زر "مصاريف الشاليه الشهرية" بدل هذه النافذة</p>
           <div style={{marginBottom:12}}>
             <label className="lbl">الفئة</label>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
-              {["إيجار","تنظيف","تأمين","صيانة","إدارة","كهرباء","اشتراكات","غيره"].map(cat=>(
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+              {["صيانة","إدارة","اشتراكات","غيره"].map(cat=>(
                 <button key={cat} className="btn" onClick={()=>setExMdl(p=>({...p,category:cat}))} style={{padding:"7px 14px",fontSize:13,background:exMdl.category===cat?B:SL,color:exMdl.category===cat?S:B,border:"1.5px solid rgba(201,163,106,.3)"}}>{cat}</button>
               ))}
             </div>
-            {["إيجار","تنظيف","تأمين"].includes(exMdl.category||"")&&(
-              <p className="x-sub" style={{margin:0}}>💡 هذا المبلغ سيُضاف تلقائياً كإيداع بمحفظة {exMdl.category==="تنظيف"?"النظافة":exMdl.category}</p>
-            )}
           </div>
           <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={exMdl.chalet} onChange={e=>setExMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
           <div style={{marginBottom:12}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={exMdl.amount} onChange={e=>setExMdl(p=>({...p,amount:e.target.value}))} placeholder="0"/></div>
@@ -4165,6 +4177,40 @@ ${poolLine}
           </div>
         </Mdl>
       )}
+      {monthlyExpMdl&&(()=>{
+        const m=monthlyExpMdl;
+        const FIELDS=[
+          {key:"rent" as const,       label:"إيجار",  icon:"home",  hint:"محفظة الإيجار"},
+          {key:"cleaning" as const,   label:"تنظيف",  icon:"broom", hint:"محفظة النظافة"},
+          {key:"insurance" as const,  label:"تأمين",  icon:"shield",hint:"محفظة التأمين"},
+          {key:"electricity" as const,label:"كهرباء", icon:"power", hint:null},
+        ];
+        const total=FIELDS.reduce((s,f)=>s+(Number(m[f.key])||0),0);
+        return (
+        <Mdl onClose={()=>setMonthlyExpMdl(null)} title="🏠 مصاريف الشاليه الشهرية">
+          <p style={{color:T,fontSize:13,marginBottom:16}}>سجّل كل مصاريف الشاليه المتكررة دفعة وحدة — اترك الفارغ لو ما ينطبق، وكل بند مُدخَل يُحفظ مصروفاً مستقلاً</p>
+          <div style={{marginBottom:12}}><label className="lbl">الشاليه</label><select className="inp" value={m.chalet} onChange={e=>setMonthlyExpMdl(p=>p&&({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
+          <div style={{marginBottom:16}}><label className="lbl">التاريخ</label><input className="inp" type="date" value={m.expense_date} onChange={e=>setMonthlyExpMdl(p=>p&&({...p,expense_date:e.target.value}))}/></div>
+          <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+            {FIELDS.map(f=>(
+              <div key={f.key} style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:34,height:34,borderRadius:9,background:SL,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:B}}><Icon n={f.icon} s={17}/></div>
+                <div style={{flex:1,minWidth:0}}>
+                  <label className="lbl">{f.label}</label>
+                  <input className="inp" type="number" value={m[f.key]} onChange={e=>setMonthlyExpMdl(p=>p&&({...p,[f.key]:e.target.value}))} placeholder="0"/>
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="x-sub" style={{marginBottom:20}}>💡 الإيجار والتنظيف والتأمين تُضاف تلقائياً كإيداع لمحفظتها</p>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end",alignItems:"center"}}>
+            {total>0&&<span className="x-sub" style={{marginLeft:"auto"}}>الإجمالي: {total.toLocaleString("en-US")} ر.س</span>}
+            <button className="btn bo" onClick={()=>setMonthlyExpMdl(null)}>إلغاء</button>
+            <SaveBtn label="حفظ الكل" disabled={!m.chalet||total<=0} onClick={async()=>{await svMonthlyExpenses(m);setMonthlyExpMdl(null);}}/>
+          </div>
+        </Mdl>
+        );
+      })()}
 
       {fxMdl&&(
         <Mdl onClose={()=>setFxMdl(null)} title={fxMdl.id?"تعديل المصروف الثابت":"إضافة مصروف ثابت"}>
