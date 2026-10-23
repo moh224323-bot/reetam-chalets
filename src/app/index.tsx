@@ -3607,7 +3607,7 @@ ${poolLine}
                   </>)}
                   {walletTab==="cln"&&(<>
                     <button className="btn bo" onClick={()=>setClnMdl("out")}><Icon n="download"/>سحب يدوي</button>
-                    <button className="btn bo" onClick={()=>setClExpMdl({chalet:names[0]||"",category:"رواتب",amount:"",note:"",expense_date:td()})}><Icon n="receipt"/>صرف (راتب/مواد)</button>
+                    <button className="btn bo" onClick={()=>setClExpMdl({category:"رواتب",amount:"",note:"",expense_date:td()})}><Icon n="receipt"/>صرف (راتب/مواد)</button>
                     <button className="btn bp" onClick={()=>setClnMdl("in")}><Icon n="plus"/>إيداع نظافة</button>
                   </>)}
                 </PageHead>
@@ -3634,10 +3634,10 @@ ${poolLine}
                   <div className="x-card">
                     <div className="x-card-h"><h2><Icon n="receipt"/>الالتزامات (رواتب، مواد، معدات)</h2><span className="x-sub">هذا الشهر: {clExpMonth.toLocaleString("en-US")} ر.س</span></div>
                     <div className="tbl-wrap"><table className="x-tbl">
-                      <thead><tr><th>التاريخ</th><th>الشاليه</th><th>الفئة</th><th>المبلغ</th><th>ملاحظة</th><th className="end"></th></tr></thead>
+                      <thead><tr><th>التاريخ</th><th>الفئة</th><th>المبلغ</th><th>ملاحظة</th><th className="end"></th></tr></thead>
                       <tbody>{[...clExp].reverse().map((e,i)=>(
                         <tr key={e.id||i}>
-                          <td>{fd(e.expense_date)}</td><td className="strong">{e.chalet}</td><td><Pill tone="muted">{e.category}</Pill></td>
+                          <td>{fd(e.expense_date)}</td><td><Pill tone="muted">{e.category}</Pill></td>
                           <td className="strong x-neg"><span dir="ltr" style={{unicodeBidi:"isolate"}}>{"−"+Number(e.amount).toLocaleString("en-US")}</span></td>
                           <td className="x-muted">{e.note||"-"}</td>
                           <td className="end"><div style={{display:"inline-flex",gap:6}}>
@@ -3646,7 +3646,7 @@ ${poolLine}
                           </div></td>
                         </tr>
                       ))}</tbody>
-                      <tfoot><tr><td colSpan={3}>إجمالي الالتزامات</td><td className="x-neg"><SAR v={clExp.reduce((s,e)=>s+Number(e.amount),0)}/></td><td colSpan={2}/></tr></tfoot>
+                      <tfoot><tr><td colSpan={2}>إجمالي الالتزامات</td><td className="x-neg"><SAR v={clExp.reduce((s,e)=>s+Number(e.amount),0)}/></td><td colSpan={2}/></tr></tfoot>
                     </table></div>
                   </div>
                 )}
@@ -4302,27 +4302,27 @@ ${poolLine}
       )}
       {clExpMdl&&(
         <Mdl onClose={()=>setClExpMdl(null)} title={clExpMdl.id?"تعديل التزام":"إضافة التزام نظافة"}>
+          <p style={{color:T,fontSize:13,marginBottom:12}}>سحب عام من محفظة النظافة — غير مرتبط بشاليه معيّن</p>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <div><label className="lbl">التاريخ</label><input className="inp" type="date" value={clExpMdl.expense_date||td()} onChange={e=>setClExpMdl(p=>({...p,expense_date:e.target.value}))}/></div>
-            <div><label className="lbl">الشاليه</label><select className="inp" value={clExpMdl.chalet||""} onChange={e=>setClExpMdl(p=>({...p,chalet:e.target.value}))}>{names.map(c=><option key={c} value={c}>{c}</option>)}</select></div>
             <div><label className="lbl">الفئة</label><select className="inp" value={clExpMdl.category||"رواتب"} onChange={e=>setClExpMdl(p=>({...p,category:e.target.value}))}>
               <option value="رواتب">رواتب</option>
               <option value="مواد تنظيف">مواد تنظيف</option>
               <option value="معدات">معدات</option>
               <option value="أخرى">أخرى</option>
             </select></div>
-            <div><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={clExpMdl.amount||""} onChange={e=>setClExpMdl(p=>({...p,amount:e.target.value}))}/></div>
+            <div style={{gridColumn:"span 2"}}><label className="lbl">المبلغ (ريال)</label><input className="inp" type="number" value={clExpMdl.amount||""} onChange={e=>setClExpMdl(p=>({...p,amount:e.target.value}))}/></div>
             <div style={{gridColumn:"span 2"}}><label className="lbl">ملاحظة</label><input className="inp" value={clExpMdl.note||""} onChange={e=>setClExpMdl(p=>({...p,note:e.target.value}))}/></div>
           </div>
           <div style={{display:"flex",gap:10,marginTop:18,justifyContent:"flex-end"}}>
             <button className="btn bo" onClick={()=>setClExpMdl(null)}>إلغاء</button>
             <SaveBtn style={{background:"#3D7A5A"}} onClick={async()=>{
-              const body={chalet:clExpMdl.chalet,category:clExpMdl.category,amount:Number(clExpMdl.amount),note:clExpMdl.note||"",expense_date:clExpMdl.expense_date||td()};
+              const body={category:clExpMdl.category,amount:Number(clExpMdl.amount),note:clExpMdl.note||"",expense_date:clExpMdl.expense_date||td()};
               if(clExpMdl.id)await db("cleaning_expenses","PATCH",body,clExpMdl.id);
               else {
-                await db("cleaning_expenses","POST",body);
-                // كل التزام جديد (رواتب، مواد...) يُسحب فوراً من محفظة النظافة
-                await db("cleaning","POST",{trans_date:body.expense_date,type:"سحب",chalet:body.chalet,amount:body.amount,note:body.category+(body.note?": "+body.note:"")});
+                await db("cleaning_expenses","POST",{...body,chalet:null});
+                // كل التزام جديد (رواتب، مواد...) يُسحب فوراً من محفظة النظافة — سحب عام غير مرتبط بشاليه
+                await db("cleaning","POST",{trans_date:body.expense_date,type:"سحب",chalet:null,amount:body.amount,note:body.category+(body.note?": "+body.note:"")});
               }
               await loadAll();setClExpMdl(null);
             }}/>
