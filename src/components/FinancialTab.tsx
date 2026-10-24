@@ -560,27 +560,48 @@ export default function FinancialTab({ bookings, maintenance, wallet, names, exp
       )}
 
       {/* المصاريف */}
-      {detailModal==="expenses" && (
+      {detailModal==="expenses" && (()=>{
+        const groups = (()=>{
+          const map = new Map<string, Expense[]>();
+          [...fex].reverse().forEach(e => {
+            const k = e.chalet || "عام";
+            (map.get(k) || map.set(k, []).get(k)!).push(e);
+          });
+          return Array.from(map.entries())
+            .map(([chalet, items]) => ({ chalet, items, total: items.reduce((s,e)=>s+Number(e.amount),0) }))
+            .sort((a,b)=>b.total-a.total);
+        })();
+        return (
         <Modal title={"💸 المصاريف (" + fex.length + ") · " + exTotal.toLocaleString("en-US") + " ر"} onClose={()=>setDetailModal(null)}>
-          <DataTable heads={["التاريخ","الشاليه","الفئة","المبلغ","ملاحظة","حذف"]}
-            rows={[...fex].reverse().map((e, i) => (
-              <tr key={i}>
-                <td data-label="التاريخ" style={{ fontSize:12 }}>{formatDate(e.expense_date)}</td>
-                <td data-label="الشاليه" style={{ fontWeight:600 }}>{e.chalet}</td>
-                <td data-label="الفئة"><Bdg bg="#FEF3C7" color="#92400E">{e.category}</Bdg></td>
-                <td data-label="المبلغ" style={{ fontWeight:700, color:"#A63A2A" }}>{Number(e.amount).toLocaleString("en-US") + " ر"}</td>
-                <td data-label="ملاحظة" style={{ color:T, fontSize:12 }}>{e.note || "-"}</td>
-                <td data-label=""><button className="btn bd bsm" onClick={async () => { await db("expenses","DELETE",null,e.id); onReload?.(); }}>🗑️</button></td>
-              </tr>
-            ))}
+          <DataTable heads={["التاريخ","الفئة","المبلغ","ملاحظة","حذف"]}
+            rows={groups.flatMap(g => [
+              <tr key={"h-"+g.chalet} style={{ background:SL }}>
+                <td colSpan={5} style={{ padding:"10px 8px" }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:10 }}>
+                    <span style={{ fontWeight:800, color:B, fontSize:13 }}>{g.chalet} <span style={{ fontWeight:600, color:SI, fontSize:11.5 }}>({g.items.length} مصروف)</span></span>
+                    <span style={{ fontWeight:900, color:"#A63A2A", fontSize:13.5 }}>{g.total.toLocaleString("en-US")} ر</span>
+                  </div>
+                </td>
+              </tr>,
+              ...g.items.map((e, i) => (
+                <tr key={g.chalet+"-"+i}>
+                  <td data-label="التاريخ" style={{ fontSize:12 }}>{formatDate(e.expense_date)}</td>
+                  <td data-label="الفئة"><Bdg bg="#FEF3C7" color="#92400E">{e.category}</Bdg></td>
+                  <td data-label="المبلغ" style={{ fontWeight:700, color:"#A63A2A" }}>{Number(e.amount).toLocaleString("en-US") + " ر"}</td>
+                  <td data-label="ملاحظة" style={{ color:T, fontSize:12 }}>{e.note || "-"}</td>
+                  <td data-label=""><button className="btn bd bsm" onClick={async () => { await db("expenses","DELETE",null,e.id); onReload?.(); }}>🗑️</button></td>
+                </tr>
+              )),
+            ])}
             footer={[
-              <td key={0} colSpan={3} style={{ fontWeight:800, color:B }}>الإجمالي</td>,
+              <td key={0} colSpan={2} style={{ fontWeight:800, color:B }}>الإجمالي</td>,
               <td key={1} style={{ fontWeight:800, color:"#A63A2A", fontSize:15 }}>{exTotal.toLocaleString("en-US") + " ر"}</td>,
               <td key={2}/>, <td key={3}/>,
             ]}
           />
         </Modal>
-      )}
+        );
+      })()}
 
       {/* معاملات التأمين */}
       {detailModal==="insurance" && (
