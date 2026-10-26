@@ -7,6 +7,7 @@ export interface LandingChalet {
   id: number; name: string; loc?: string; cap?: number; price?: number; wprice?: number;
   description?: string; img?: string; gallery?: string; amenities?: string;
   rating?: number | null; reviews?: number;
+  allow_overnight?: boolean; allow_hourly?: boolean; hourly_slots?: string | null;
 }
 export interface LandingData {
   enabled: boolean; preview?: boolean;
@@ -17,7 +18,11 @@ export interface LandingData {
   bank_name?: string; bank_account_name?: string; bank_iban?: string;
   chalets?: LandingChalet[];
   rating?: { avg: number | null; count: number };
-  booked?: { chalet: string; from: string; to: string }[];
+  booked?: { chalet: string; from: string; to: string; checkin_time?: string | null; checkout_time?: string | null }[];
+}
+type HourlySlot = { name: string; from: string; to: string; price: string };
+function hourlySlotsOf(c: LandingChalet): HourlySlot[] {
+  try { const v = c.hourly_slots ? JSON.parse(c.hourly_slots) : []; return Array.isArray(v) ? v : []; } catch { return []; }
 }
 interface GuestBooking {
   ok: boolean; id: number; chalet: string; guest: string; date_from: string; date_to: string;
@@ -155,6 +160,8 @@ const P: Record<string, React.ReactNode> = {
   chevL: <path d="M15 6l-6 6 6 6"/>,
   grid: <><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></>,
   image: <><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/></>,
+  moon: <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>,
+  clock: <><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></>,
 };
 function I({ n, s = 20, style }: { n: string; s?: number; style?: React.CSSProperties }) {
   return <svg className="lp-i" width={s} height={s} viewBox="0 0 24 24" aria-hidden="true" style={style}>{P[n] || P.check}</svg>;
@@ -485,9 +492,16 @@ function ChaletPage({ c, data, onGo, onToast }: { c: LandingChalet; data: Landin
   const [lb, setLb] = useState<{ list: Photo[]; i: number; title: string } | null>(null);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const hourlySlots = useMemo(() => hourlySlotsOf(c), [c]);
+  const canOvernight = c.allow_overnight !== false;
+  const canHourly = !!c.allow_hourly && hourlySlots.length > 0;
+  const [bkMode, setBkMode] = useState<"overnight" | "hourly">(canOvernight ? "overnight" : "hourly");
+  const [day, setDay] = useState("");
+  const [slotIdx, setSlotIdx] = useState<number | null>(null);
   const others = (data.chalets || []).filter(x => x.id !== c.id).slice(0, 3);
   const booked = useMemo(() => (data.booked || []).filter(b => b.chalet === c.name), [data.booked, c.name]);
   const { nights, total } = priceFor(c, from, to);
+  const slotTotal = bkMode === "hourly" && slotIdx !== null ? Number(hourlySlots[slotIdx]?.price || 0) : 0;
   const shown = photos.slice(0, 5);
 
   return (
@@ -563,13 +577,30 @@ function ChaletPage({ c, data, onGo, onToast }: { c: LandingChalet; data: Landin
 
               <div className="lp-cd-sec" id="avail">
                 <h2>الأيام المتاحة</h2>
-                <p className="lp-cd-sub">اختر يوم الوصول ثم يوم المغادرة من التقويم</p>
-                <AvailCal c={c} booked={booked} from={from} to={to} onPick={(f, t) => { setFrom(f); setTo(t); }}/>
+                {canOvernight && canHourly && (
+                  <div className="lp-modetog">
+                    <button type="button" className={bkMode === "overnight" ? "sel" : undefined} onClick={() => setBkMode("overnight")}><I n="moon" s={16}/>مبيت</button>
+                    <button type="button" className={bkMode === "hourly" ? "sel" : undefined} onClick={() => setBkMode("hourly")}><I n="clock" s={16}/>بالساعة</button>
+                  </div>
+                )}
+                {bkMode === "overnight" ? (
+                  <>
+                    <p className="lp-cd-sub">اختر يوم الوصول ثم يوم المغادرة من التقويم</p>
+                    <AvailCal c={c} booked={booked} from={from} to={to} onPick={(f, t) => { setFrom(f); setTo(t); }}/>
+                  </>
+                ) : (
+                  <>
+                    <p className="lp-cd-sub">اختر اليوم ثم الفترة المناسبة</p>
+                    <HourlyPicker slots={hourlySlots} booked={booked} day={day} slotIdx={slotIdx} onPick={(d, i) => { setDay(d); setSlotIdx(i); }}/>
+                  </>
+                )}
               </div>
             </div>
 
             <aside className="lp-cd-aside" id="book">
-              <BookingPanel chalet={c} data={data} booked={booked} from={from} to={to} setFrom={setFrom} setTo={setTo} onToast={onToast}/>
+              <BookingPanel chalet={c} data={data} booked={booked} from={from} to={to} setFrom={setFrom} setTo={setTo}
+                bkMode={bkMode} canOvernight={canOvernight} canHourly={canHourly} hourlySlots={hourlySlots}
+                day={day} slotIdx={slotIdx} onToast={onToast}/>
             </aside>
           </div>
         </div>
@@ -586,11 +617,13 @@ function ChaletPage({ c, data, onGo, onToast }: { c: LandingChalet; data: Landin
 
       <div className="lp-mbar">
         <div>
-          {nights > 0
+          {bkMode === "hourly" && slotIdx !== null
+            ? <><b>{fmt(slotTotal) + " ريال"}</b><small>{hourlySlots[slotIdx]?.name}</small></>
+            : nights > 0
             ? <><b>{fmt(total) + " ريال"}</b><small>{nightsLabel(nights)}</small></>
             : <><b>{fmt(Number(c.price || 0)) + " ريال"}</b><small>لليلة</small></>}
         </div>
-        <a className="lp-btn lp-primary" href="#book">{nights > 0 ? "أكمل الحجز" : "اختر التاريخ واحجز"}</a>
+        <a className="lp-btn lp-primary" href="#book">{(nights > 0 || slotIdx !== null) ? "أكمل الحجز" : "اختر واحجز"}</a>
       </div>
 
       {lb && <Lightbox list={lb.list} start={lb.i} title={lb.title} name={c.name} onClose={() => setLb(null)}/>}
@@ -643,13 +676,30 @@ function Lightbox({ list, start, title, name, onClose }: { list: Photo[]; start:
 const WEEK = ["سبت", "أحد", "اثنين", "ثلاثاء", "أربعاء", "خميس", "جمعة"];
 function bookedNightsOf(booked: { from: string; to: string }[]) {
   const s = new Set<string>();
-  for (const b of booked) { const d = parseISO(b.from); const e = parseISO(b.to); let guard = 0; while (d < e && guard++ < 400) { s.add(toISO(d)); d.setDate(d.getDate() + 1); } }
+  for (const b of booked) {
+    if (b.from === b.to) { s.add(b.from); continue; } // حجز بالساعة ليوم واحد — يشغل ذلك اليوم بالتقويم
+    const d = parseISO(b.from); const e = parseISO(b.to); let guard = 0; while (d < e && guard++ < 400) { s.add(toISO(d)); d.setDate(d.getDate() + 1); }
+  }
   return s;
 }
 function rangeFree(nightsSet: Set<string>, from: string, to: string) {
   const d = parseISO(from); const e = parseISO(to);
   while (d < e) { if (nightsSet.has(toISO(d))) return false; d.setDate(d.getDate() + 1); }
   return true;
+}
+/* ───────── الحجز بالساعة (فترات محددة) ───────── */
+function slotsTakenForDay(booked: { from: string; to: string; checkin_time?: string | null; checkout_time?: string | null }[], day: string, slots: HourlySlot[]) {
+  const taken = new Set<number>();
+  for (const b of booked) {
+    if (b.from !== day || b.to !== day || !b.checkin_time) continue;
+    const i = slots.findIndex(s => s.from === b.checkin_time && s.to === b.checkout_time);
+    if (i >= 0) taken.add(i);
+  }
+  return taken;
+}
+function dayBookedOvernight(booked: { from: string; to: string }[], day: string) {
+  const d = parseISO(day).getTime();
+  return booked.some(b => { if (b.from === b.to) return false; const f = parseISO(b.from).getTime(), t = parseISO(b.to).getTime(); return d >= f && d < t; });
 }
 function AvailCal({ c, booked, from, to, onPick }: { c: LandingChalet; booked: { from: string; to: string }[]; from: string; to: string; onPick: (from: string, to: string) => void }) {
   const now = new Date();
@@ -719,42 +769,96 @@ function AvailCal({ c, booked, from, to, onPick }: { c: LandingChalet; booked: {
   );
 }
 
+/* ───────── اختيار اليوم والفترة (حجز بالساعة) ───────── */
+function HourlyPicker({ slots, booked, day, slotIdx, onPick }: {
+  slots: HourlySlot[]; booked: { from: string; to: string; checkin_time?: string | null; checkout_time?: string | null }[];
+  day: string; slotIdx: number | null; onPick: (day: string, slotIdx: number | null) => void;
+}) {
+  const today = toISO(new Date());
+  const taken = useMemo(() => day ? slotsTakenForDay(booked, day, slots) : new Set<number>(), [booked, day, slots]);
+  const fullyBooked = day ? dayBookedOvernight(booked, day) : false;
+  return (
+    <div className="lp-cal">
+      <div className="lp-field"><label htmlFor="lp-hday">اليوم</label>
+        <input className="lp-input" type="date" id="lp-hday" min={today} value={day} onChange={e => onPick(e.target.value, null)}/>
+      </div>
+      {!day ? (
+        <p className="lp-cd-sub" style={{ marginTop: 12 }}>اختر اليوم أولاً عشان تشوف الفترات المتاحة</p>
+      ) : fullyBooked ? (
+        <div className="lp-err" style={{ marginTop: 12 }}>هذا اليوم محجوز بالكامل (مبيت)</div>
+      ) : (
+        <div className="lp-slots">
+          {slots.map((s, i) => {
+            const bk = taken.has(i);
+            return (
+              <button key={i} type="button" className={"lp-slot" + (slotIdx === i ? " sel" : "") + (bk ? " bk" : "")} disabled={bk} onClick={() => onPick(day, i)}>
+                <b>{s.name}</b>
+                <span>{s.from + " ← " + s.to}</span>
+                <small>{bk ? "محجوزة" : fmt(Number(s.price || 0)) + " ريال"}</small>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ───────── لوحة الحجز ───────── */
-function BookingPanel({ chalet, data, booked, from, to, setFrom, setTo, onToast }: {
-  chalet: LandingChalet; data: LandingData; booked: { from: string; to: string }[];
-  from: string; to: string; setFrom: (v: string) => void; setTo: (v: string) => void; onToast: (t: string) => void;
+function BookingPanel({ chalet, data, booked, from, to, setFrom, setTo, bkMode, canOvernight, canHourly, hourlySlots, day, slotIdx, onToast }: {
+  chalet: LandingChalet; data: LandingData; booked: { from: string; to: string; checkin_time?: string | null; checkout_time?: string | null }[];
+  from: string; to: string; setFrom: (v: string) => void; setTo: (v: string) => void;
+  bkMode: "overnight" | "hourly"; canOvernight: boolean; canHourly: boolean; hourlySlots: HourlySlot[];
+  day: string; slotIdx: number | null; onToast: (t: string) => void;
 }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState<{ id: number; price: number; nights: number; from: string; to: string } | null>(null);
+  const [done, setDone] = useState<{ id: number; price: number; summary: string; waLine: string } | null>(null);
   const { nights, total } = useMemo(() => priceFor(chalet, from, to), [chalet, from, to]);
   const conflict = useMemo(() => !!from && !!to && booked.some(b => b.from < to && b.to > from), [booked, from, to]);
+  const slot = bkMode === "hourly" && slotIdx !== null ? hourlySlots[slotIdx] : null;
+  const slotTaken = useMemo(() => day && slotIdx !== null ? slotsTakenForDay(booked, day, hourlySlots).has(slotIdx) : false, [booked, day, slotIdx, hourlySlots]);
+  const dayFull = useMemo(() => day ? dayBookedOvernight(booked, day) : false, [booked, day]);
   const wa = waNumber(data.whatsapp || data.phone);
   const today = toISO(new Date());
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
-    if (!from || !to) { setErr("اختر تاريخ الوصول والمغادرة من التقويم"); return; }
-    if (nights <= 0) { setErr("تاريخ المغادرة لازم يكون بعد الوصول"); return; }
-    if (conflict) { setErr("التواريخ المختارة محجوزة، اختر تواريخ ثانية"); return; }
+    let r: { ok: boolean; error?: string; id: number; price: number; nights?: number; slot?: string };
     setBusy(true);
-    const { data: r, error } = await supabase.rpc("landing_create_booking", { p_chalet_id: chalet.id, p_name: name, p_phone: phone, p_from: from, p_to: to });
+    if (bkMode === "hourly") {
+      if (!day) { setErr("اختر اليوم"); setBusy(false); return; }
+      if (slotIdx === null) { setErr("اختر الفترة"); setBusy(false); return; }
+      if (dayFull) { setErr("هذا اليوم محجوز بالكامل (مبيت)"); setBusy(false); return; }
+      if (slotTaken) { setErr("هذي الفترة محجوزة، اختر فترة أخرى"); setBusy(false); return; }
+      const res = await supabase.rpc("landing_create_booking", { p_chalet_id: chalet.id, p_name: name, p_phone: phone, p_from: day, p_to: null, p_slot_index: slotIdx });
+      r = res.data; if (res.error || !r) { setBusy(false); setErr("صار خطأ في الاتصال، حاول مرة ثانية"); return; }
+    } else {
+      if (!from || !to) { setErr("اختر تاريخ الوصول والمغادرة من التقويم"); setBusy(false); return; }
+      if (nights <= 0) { setErr("تاريخ المغادرة لازم يكون بعد الوصول"); setBusy(false); return; }
+      if (conflict) { setErr("التواريخ المختارة محجوزة، اختر تواريخ ثانية"); setBusy(false); return; }
+      const res = await supabase.rpc("landing_create_booking", { p_chalet_id: chalet.id, p_name: name, p_phone: phone, p_from: from, p_to: to });
+      r = res.data; if (res.error || !r) { setBusy(false); setErr("صار خطأ في الاتصال، حاول مرة ثانية"); return; }
+    }
     setBusy(false);
-    if (error || !r) { setErr("صار خطأ في الاتصال، حاول مرة ثانية"); return; }
     if (!r.ok) { setErr(r.error || "تعذّر إتمام الحجز"); return; }
-    setDone({ id: r.id, price: r.price, nights: r.nights, from, to });
+    const summary = bkMode === "hourly"
+      ? chalet.name + " · " + (r.slot || "") + " · " + fmt(r.price) + " ريال"
+      : chalet.name + " · " + nightsLabel(r.nights || 0) + " · " + fmt(r.price) + " ريال";
+    const waLine = bkMode === "hourly" ? `اليوم ${day} — فترة ${r.slot || ""}` : `من ${from} إلى ${to}`;
+    setDone({ id: r.id, price: r.price, summary, waLine });
     onToast("وصلنا طلب حجزك");
   }
 
   if (done) {
-    const waMsg = encodeURIComponent(`السلام عليكم، حجزت ${chalet.name} من الموقع\nرقم الحجز: ${done.id}\nمن ${done.from} إلى ${done.to}\nالمبلغ: ${fmt(done.price)} ريال\nأرفقت لكم إيصال التحويل`);
+    const waMsg = encodeURIComponent(`السلام عليكم، حجزت ${chalet.name} من الموقع\nرقم الحجز: ${done.id}\n${done.waLine}\nالمبلغ: ${fmt(done.price)} ريال\nأرفقت لكم إيصال التحويل`);
     return (
       <div className="lp-book">
         <h3>تم استلام طلب حجزك</h3>
-        <div className="lp-sent"><I n="check"/><div><b>{"رقم حجزك " + done.id}</b><span>{chalet.name + " · " + nightsLabel(done.nights) + " · " + fmt(done.price) + " ريال"}</span></div></div>
+        <div className="lp-sent"><I n="check"/><div><b>{"رقم حجزك " + done.id}</b><span>{done.summary}</span></div></div>
         {(data.bank_iban || data.bank_name) && (
           <div className="lp-bank">
             <b>حوّل المبلغ على الحساب التالي</b>
@@ -776,16 +880,30 @@ function BookingPanel({ chalet, data, booked, from, to, setFrom, setTo, onToast 
         <div className="lp-price"><b>{fmt(Number(chalet.price || 0))}</b> <small>ريال / الليلة</small></div>
         {chalet.wprice ? <span className="lp-wk">{"الجمعة والسبت " + fmt(Number(chalet.wprice)) + " ريال"}</span> : null}
       </div>
-      <div className="lp-grid2">
-        <div className="lp-field"><label htmlFor="lp-f1">الوصول</label><input className="lp-input" type="date" id="lp-f1" min={today} value={from} onChange={e => { const v = e.target.value; setFrom(v); if (v && to && v >= to) { const d = parseISO(v); d.setDate(d.getDate() + 1); setTo(toISO(d)); } }} required/></div>
-        <div className="lp-field"><label htmlFor="lp-f2">المغادرة</label><input className="lp-input" type="date" id="lp-f2" min={from || today} value={to} onChange={e => setTo(e.target.value)} required/></div>
-      </div>
-      {conflict && <div className="lp-err">هذي التواريخ محجوزة لهذا الشاليه، جرّب تواريخ ثانية</div>}
+      {canOvernight && canHourly && (
+        <p className="lp-hint" style={{ marginBottom: 2 }}>{bkMode === "hourly" ? "⏱ حجز بالساعة" : "🌙 حجز مبيت"}</p>
+      )}
+      {bkMode === "overnight" ? (
+        <>
+          <div className="lp-grid2">
+            <div className="lp-field"><label htmlFor="lp-f1">الوصول</label><input className="lp-input" type="date" id="lp-f1" min={today} value={from} onChange={e => { const v = e.target.value; setFrom(v); if (v && to && v >= to) { const d = parseISO(v); d.setDate(d.getDate() + 1); setTo(toISO(d)); } }} required/></div>
+            <div className="lp-field"><label htmlFor="lp-f2">المغادرة</label><input className="lp-input" type="date" id="lp-f2" min={from || today} value={to} onChange={e => setTo(e.target.value)} required/></div>
+          </div>
+          {conflict && <div className="lp-err">هذي التواريخ محجوزة لهذا الشاليه، جرّب تواريخ ثانية</div>}
+        </>
+      ) : (
+        <>
+          <div className="lp-total"><span>اليوم والفترة</span><b>{day ? dayName(day) : "—"}{slot ? " · " + slot.name : ""}</b></div>
+          {day && dayFull && <div className="lp-err">هذا اليوم محجوز بالكامل (مبيت)</div>}
+          {day && !dayFull && slotIdx === null && <div className="lp-hint">اختر الفترة من قائمة "الأيام المتاحة"</div>}
+          {slotTaken && <div className="lp-err">هذي الفترة محجوزة، اختر فترة أخرى</div>}
+        </>
+      )}
       <div className="lp-field"><label htmlFor="lp-f3">الاسم الكامل</label><input className="lp-input" id="lp-f3" value={name} onChange={e => setName(e.target.value)} placeholder="مثال: خالد العتيبي" autoComplete="name" required/></div>
       <div className="lp-field"><label htmlFor="lp-f4">رقم الجوال</label><input className="lp-input lp-mono" id="lp-f4" value={phone} onChange={e => setPhone(e.target.value)} inputMode="tel" placeholder="05XXXXXXXX" autoComplete="tel" style={{ textAlign: "right" }} required/></div>
-      <div className="lp-total"><span>{nights > 0 ? nightsLabel(nights) : "اختر التواريخ"}</span><b>{fmt(total) + " ريال"}</b></div>
+      <div className="lp-total"><span>{bkMode === "hourly" ? (slot ? slot.name : "اختر الفترة") : (nights > 0 ? nightsLabel(nights) : "اختر التواريخ")}</span><b>{fmt(bkMode === "hourly" ? Number(slot?.price || 0) : total) + " ريال"}</b></div>
       {err && <div className="lp-err" role="alert">{err}</div>}
-      <button className="lp-btn lp-primary" type="submit" disabled={busy || conflict} style={{ width: "100%" }}>{busy ? "جاري الإرسال..." : "تأكيد طلب الحجز"}</button>
+      <button className="lp-btn lp-primary" type="submit" disabled={busy || conflict || (bkMode === "hourly" && (!day || slotIdx === null || slotTaken || dayFull))} style={{ width: "100%" }}>{busy ? "جاري الإرسال..." : "تأكيد طلب الحجز"}</button>
       <p className="lp-hint" style={{ textAlign: "center" }}>الحجز يتأكد بعد استلام التحويل البنكي</p>
     </form>
   );
@@ -1263,6 +1381,20 @@ textarea.lp-input{min-height:90px;padding:12px 16px;resize:vertical}
 .lp-legend i.bk{background:var(--lp-bad-bg);box-shadow:inset 0 0 0 1px #EFC3B9}
 .lp-legend i.sel{background:var(--lp-espresso)}
 .lp-link{background:none;border:0;padding:0;color:var(--lp-clay);font-size:13px;font-weight:600;text-decoration:underline;margin-inline-start:auto}
+.lp-modetog{display:flex;gap:8px;background:var(--lp-paper);border:1px solid var(--lp-line);border-radius:14px;padding:4px;margin-bottom:14px;width:max-content}
+.lp-modetog button{display:flex;align-items:center;gap:6px;padding:9px 16px;border-radius:10px;border:0;background:transparent;color:var(--lp-ink-2);font-weight:700;font-size:13.5px;cursor:pointer;font-family:inherit}
+.lp-modetog button.sel{background:var(--lp-espresso);color:#FFF6E8}
+.lp-slots{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.lp-slot{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:14px;border-radius:14px;border:1.5px solid var(--lp-line);background:var(--lp-ok-bg);color:var(--lp-ink);cursor:pointer;text-align:right;font-family:inherit}
+.lp-slot b{font-size:14px}
+.lp-slot span{font-size:12px;color:var(--lp-ink-2)}
+.lp-slot small{font-size:12.5px;font-weight:700;color:var(--lp-ok)}
+.lp-slot.sel{border-color:var(--lp-espresso);background:var(--lp-espresso);color:#FFF6E8}
+.lp-slot.sel span{color:#E9DCC8}
+.lp-slot.sel small{color:#FFF6E8}
+.lp-slot.bk{background:var(--lp-bad-bg);color:var(--lp-bad);cursor:not-allowed;opacity:.75}
+.lp-slot.bk small{color:var(--lp-bad)}
+.lp-slot:disabled{cursor:not-allowed}
 .lp section.lp-cd-others{padding-block:64px 88px;background:var(--lp-sand-2)}
 .lp-mbar{display:none}
 @media (max-width:960px){
