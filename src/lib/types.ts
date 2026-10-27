@@ -69,6 +69,7 @@ export interface WalletTransaction {
   cat?: string;
   amount: number;
   note?: string;
+  expense_id?: number | null;
 }
 
 export interface CleaningTransaction {
@@ -78,6 +79,7 @@ export interface CleaningTransaction {
   chalet: string;
   amount: number;
   note?: string;
+  expense_id?: number | null;
 }
 
 export interface Expense {
