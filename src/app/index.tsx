@@ -2836,12 +2836,14 @@ ${poolLine}
   // تسجيل مصروف إيجار/تنظيف/تأمين يغذّي تلقائياً نفس المحفظة (إيداع بنفس المبلغ، مُجمّع من كل الشاليهات) —
   // طريقة التغذية الثانية جنب الإيداع اليدوي من داخل المحفظة نفسها.
   async function postExpenseRow(chalet: string, category: string, amount: number, date: string, note?: string): Promise<void> {
-    await db("expenses","POST",{chalet,category,amount,note:note||"",expense_date:date});
-    if(amount>0&&chalet){
+    const ex=await db("expenses","POST",{chalet,category,amount,note:note||"",expense_date:date});
+    // الإيداع مربوط بالمصروف (expense_id + ON DELETE CASCADE) — حذف المصروف يحذف إيداعه تلقائياً
+    const expense_id=(ex?.[0] as Expense|undefined)?.id;
+    if(amount>0&&chalet&&expense_id){
       const src=note?": "+note:"";
-      if(category==="تنظيف")      await db("cleaning","POST",{trans_date:date,type:"إيداع",chalet,amount,note:"من مصروف نظافة"+src});
-      else if(category==="إيجار") await db("wallet","POST",{trans_date:date,type:"إيداع",chalet,cat:"إيجار",amount,note:"من مصروف إيجار"+src});
-      else if(category==="تأمين") await db("wallet","POST",{trans_date:date,type:"إيداع",chalet,cat:"تأمين",amount,note:"من مصروف تأمين"+src});
+      if(category==="تنظيف")      await db("cleaning","POST",{trans_date:date,type:"إيداع",chalet,amount,expense_id,note:"من مصروف نظافة"+src});
+      else if(category==="إيجار") await db("wallet","POST",{trans_date:date,type:"إيداع",chalet,cat:"إيجار",amount,expense_id,note:"من مصروف إيجار"+src});
+      else if(category==="تأمين") await db("wallet","POST",{trans_date:date,type:"إيداع",chalet,cat:"تأمين",amount,expense_id,note:"من مصروف تأمين"+src});
     }
   }
   async function svExpense(f: Partial<Expense>): Promise<void> {
@@ -3603,6 +3605,15 @@ ${poolLine}
                 ? {label:"محفظة الإيجار", bal:rentWalletBal, in:rentIn, out:rentOut, tx:rentTx, table:"wallet" as const}
                 : {label:"محفظة النظافة", bal:cleaningBal, in:clIn, out:clOut, tx:clnTx, table:"cleaning" as const};
               const ledger=[...info.tx].reverse();
+              // إيداعات المحفظة القادمة من المصاريف، مجمّعة حسب الشهر والشاليه
+              const fromExpMap=new Map<string,{key:string;ym:string;month:string;chalet:string;amount:number}>();
+              for(const t of info.tx){
+                if(!t.expense_id||t.type!=="إيداع") continue;
+                const ym=(t.trans_date||"").slice(0,7), key=ym+"|"+(t.chalet||"");
+                const r=fromExpMap.get(key)||{key,ym,month:new Date(ym+"-01T00:00:00").toLocaleDateString("en-US",{month:"long",year:"numeric"}),chalet:t.chalet||"عام",amount:0};
+                r.amount+=Number(t.amount)||0; fromExpMap.set(key,r);
+              }
+              const fromExp=[...fromExpMap.values()].sort((a,b)=>a.ym<b.ym?1:a.ym>b.ym?-1:a.chalet.localeCompare(b.chalet,"ar"));
               const months6=Array.from({length:6},(_,i)=>{const d=new Date();d.setMonth(d.getMonth()-i);return d.toISOString().slice(0,7);});
               const tx6=info.tx.filter(t=>months6.includes((t.trans_date||"").slice(0,7)));
               const in6=tx6.filter(t=>t.type==="إيداع").reduce((s,t)=>s+t.amount,0), out6=tx6.filter(t=>t.type!=="إيداع").reduce((s,t)=>s+t.amount,0);
@@ -3664,6 +3675,24 @@ ${poolLine}
                     </table></div>
                   </div>
                 )}
+                <div className="x-card">
+                  <CardHead icon="receipt" title="إيداعات من المصاريف" sub="شهرياً لكل شاليه — حذف المصروف يحذف إيداعه تلقائياً"/>
+                  {fromExp.length===0?<Empty>لا توجد إيداعات مربوطة بمصاريف بعد</Empty>:
+                    <div className="tbl-wrap"><table className="x-tbl">
+                      <thead><tr><th style={{width:40}}>✓</th><th>Month</th><th>الشاليه</th><th>قيمة الإيداع</th><th>الحالة</th></tr></thead>
+                      <tbody>{fromExp.map(r=>(
+                        <tr key={r.key}>
+                          <td className="x-pos strong">✓</td>
+                          <td className="strong" dir="ltr" style={{textAlign:"start"}}>{r.month}</td>
+                          <td>{r.chalet}</td>
+                          <td className="strong x-pos"><SAR v={r.amount} unit={false}/></td>
+                          <td><Pill tone="ok">✓ تم</Pill></td>
+                        </tr>
+                      ))}</tbody>
+                      <tfoot><tr><td colSpan={3}>الإجمالي</td><td className="x-pos"><SAR v={fromExp.reduce((s,r)=>s+r.amount,0)}/></td><td/></tr></tfoot>
+                    </table></div>
+                  }
+                </div>
                 <div className="x-card">
                   <CardHead icon="receipt" title="سجل الحركات" sub={ledger.length+" حركة"}/>
                   {ledger.length===0?<Empty>لا توجد حركات بعد</Empty>:
