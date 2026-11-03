@@ -5,7 +5,10 @@ node_modules/
 
 # agent skills (local tooling, installed via `npx skills add`)
 .agents/
-.claude/skills/
+.claude/skills/*
+# مهارات Supabase مرفوعة في الريبو لتتوفر في كل جلسة
+!.claude/skills/supabase/
+!.claude/skills/supabase-postgres-best-practices/
 skills-lock.json
 
 # Expo
