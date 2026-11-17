@@ -86,11 +86,8 @@ export default function InvestorsTab({ names, chalets, bookings, expenses, maint
       `📊 *كشف حساب الشريك — ${r.n}*`,
       `🗓️ ${periodLabel(period)}${r.closed ? " (مُقفل)" : " (مبدئي، غير مُقفل)"}`,
       ``,
-      `💵 الإيرادات المحصّلة (${st.bookings_count} حجز): ${fmt(st.revenue)} ر`,
-      ...Object.entries(st.expenses).map(([k, v]) => `➖ ${k}: ${fmt(v)} ر`),
-      ...(st.mgmt_fee ? [`➖ رسوم الإدارة (${st.mgmt_fee_pct}%): ${fmt(st.mgmt_fee)} ر`] : []),
-      `📈 *الصافي القابل للتوزيع: ${fmt(st.net)} ر*`,
-      ...(st.reserve_spent ? [`ℹ️ صيانة صُرفت من احتياطي التأمين: ${fmt(st.reserve_spent)} ر (ما تنخصم مرة ثانية)`] : []),
+      // للشريك: صافي الربح فقط، بدون تفاصيل الإيرادات والمصاريف
+      `📈 صافي ربح الشاليه: ${fmt(st.net)} ر`,
       ``,
       `🤝 نسبتك: ${Number(iv.percentage)}%`,
       `*نصيبك من الشهر: ${fmt(share)} ر*`,
