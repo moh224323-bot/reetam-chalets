@@ -6,8 +6,6 @@ import { db } from "../lib/db";
 import { Booking } from "../lib/types";
 import { Icon, Pill, SAR, PageHead, Kpi, Seg, CardHead, Empty } from "./ds";
 
-const SUPA_URL = process.env.EXPO_PUBLIC_SUPA_URL!;
-const SUPA_KEY = process.env.EXPO_PUBLIC_SUPA_KEY!;
 
 interface SiteSettings {
   landing_enabled?: boolean; landing_owner_id?: string | null;
@@ -27,12 +25,8 @@ const TEXT_FIELDS: (keyof SiteSettings)[] = [
 const WEB_NOTE = "حجز من صفحة الموقع";
 
 async function patchSettings(body: Partial<SiteSettings>) {
-  const r = await fetch(`${SUPA_URL}/rest/v1/business_settings?id=eq.1`, {
-    method: "PATCH",
-    headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
-    body: JSON.stringify(body),
-  });
-  return r.ok;
+  // بجلسة المستخدم (db) — إعدادات النشاط محمية بسياسة المالك
+  return (await db("business_settings", "PATCH", body as Record<string, unknown>, 1)) !== null;
 }
 
 /** يصغّر الشعار إلى 320px كحد أقصى ويحفظه PNG (يحافظ على الشفافية) */
@@ -91,7 +85,7 @@ export default function WebsiteTab({ bookings, ownerId, onReload, onOpenBooking,
   const siteUrl = origin + "/?site";
 
   async function load() {
-    const r = await fetch(`${SUPA_URL}/rest/v1/business_settings?id=eq.1&select=*`, { headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` } }).then(x => x.json()).catch(() => null);
+    const r = await db("business_settings", "GET", null, "id=eq.1") as unknown as SiteSettings[] | null;
     if (r?.[0]) { setS(r[0]); setDraft(r[0]); }
     const rq = await db("room_requests", "GET", null, "source=eq.landing&order=created_at.desc&limit=200");
     setReqs((rq || []) as unknown as GuestRequest[]);
