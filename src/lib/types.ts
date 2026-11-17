@@ -113,6 +113,8 @@ export interface Investor {
   phone?: string;
   percentage: number;
   note?: string;
+  /** حساب دخول الشريك (بوابة المستثمر) */
+  profile_id?: string | null;
 }
 
 export interface InvestorShare {
@@ -252,6 +254,6 @@ export interface AppUser {
   name: string;
   username?: string;
   email?: string;
-  role: "platform_admin" | "owner" | "admin" | "staff" | "chalet_manager";
+  role: "platform_admin" | "owner" | "admin" | "staff" | "chalet_manager" | "investor";
   chalet?: string;
 }

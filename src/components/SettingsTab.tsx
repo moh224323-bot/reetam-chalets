@@ -23,6 +23,7 @@ const ROLE_INFO: Record<string,{label:string;tone:"info"|"muted"|"warn";desc:str
   admin:           { label:"أدمن",        tone:"info",  desc:"يرى كل شيء ويتحكم بالكامل" },
   staff:           { label:"موظف",        tone:"muted", desc:"الحجوزات والشاليهات والصيانة" },
   chalet_manager:  { label:"مدير شاليه", tone:"warn",  desc:"يرى شاليهه فقط: حجوزات وصيانة وولاء" },
+  investor:        { label:"مستثمر",     tone:"muted", desc:"يرى كشوفه المُقفلة وتوزيعاته فقط (يُنشأ من صفحة المستثمرين)" },
 };
 
 export default function SettingsTab({ users, onAdd, onEdit, onReload }: Props) {

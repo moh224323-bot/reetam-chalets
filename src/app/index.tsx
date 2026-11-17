@@ -18,6 +18,7 @@ import SettingsTab    from "../components/SettingsTab";
 import LandingPage, { fetchLanding, type LandingData } from "../components/LandingPage";
 import WebsiteTab     from "../components/WebsiteTab";
 import InvestorsTab   from "../components/InvestorsTab";
+import InvestorPortal from "../components/InvestorPortal";
 import { Icon, Pill, SAR, PageHead, Kpi, Seg, CardHead, Track, toneFor, Empty } from "../components/ds";
 import { rentCycleInfo, formatDueDate, RENT_REMINDER_DAYS, MONTH_NAMES } from "../lib/dueDate";
 
@@ -2427,7 +2428,15 @@ function AppWrapper() {
     if(showForgot) return <ForgotPasswordPage onBack={()=>setShowForgot(false)}/>;
     return <LoginPage onLogin={u=>setCurrentUser(u)} onShowSignup={()=>setShowSignup(true)} onShowForgot={()=>setShowForgot(true)}/>;
   }
-  return <App currentUser={currentUser} onLogout={()=>{supabase.auth.signOut();currentOwnerId=null;setCurrentOwnerId(null);setCurrentUser(null);}}/>;
+  const logout = ()=>{supabase.auth.signOut();currentOwnerId=null;setCurrentOwnerId(null);setCurrentUser(null);};
+  // حساب المستثمر يشوف بوابته فقط (كشوفه وتوزيعاته)، مو لوحة التحكم الكاملة
+  if(currentUser.role==="investor") return (
+    <div style={{fontFamily:"var(--f-body)",background:"var(--bg)",color:"var(--text)",minHeight:"100vh"}}>
+      <style>{CSS}</style>
+      <InvestorPortal onLogout={logout}/>
+    </div>
+  );
+  return <App currentUser={currentUser} onLogout={logout}/>;
 }
 
 function App({ currentUser = { role: "admin", name: "المستخدم" } as AppUser, onLogout = () => {} }: { currentUser: AppUser; onLogout: () => void }) {
@@ -3446,6 +3455,7 @@ ${poolLine}
               userName={currentUser.name||""} onReload={loadAll}
               onAddInvestor={n=>setInvMdl({chalet:n,name:"",phone:"",percentage:0,note:""})}
               onEditInvestor={iv=>setInvMdl({...iv})}
+              createLogin={callTeamMemberFn}
             />
           )}
 

@@ -20,18 +20,31 @@ interface Props {
   onReload: () => Promise<void> | void;
   onAddInvestor: (chalet: string) => void;
   onEditInvestor: (iv: Investor) => void;
+  createLogin: (payload: Record<string, unknown>) => Promise<{ success?: boolean; id?: string; error?: string }>;
 }
 
 const fmt = (n: number) => round2(n).toLocaleString("en-US");
 const td = () => new Date().toISOString().slice(0, 10);
 
-export default function InvestorsTab({ names, chalets, bookings, expenses, maint, investors, statements, payments, userName, onReload, onAddInvestor, onEditInvestor }: Props) {
+export default function InvestorsTab({ names, chalets, bookings, expenses, maint, investors, statements, payments, userName, onReload, onAddInvestor, onEditInvestor, createLogin }: Props) {
   const periods = useMemo(() => recentPeriods(12), []);
   const currentPeriod = periods[0];
   const [period, setPeriod] = useState(periods[1]); // الشهر الماضي افتراضياً: آخر شهر مكتمل
   const [payMdl, setPayMdl] = useState<{ iv: Investor; amount: string; paid_date: string; method: string; receipt_url: string; note: string } | null>(null);
   const [feeMdl, setFeeMdl] = useState<{ chalet: Chalet; pct: string } | null>(null);
   const [ledgerIv, setLedgerIv] = useState<Investor | null>(null);
+  const [loginMdl, setLoginMdl] = useState<{ iv: Investor; email: string; password: string; ids: number[]; err: string } | null>(null);
+
+  // نفس الشخص له صف لكل شاليه: نقترح ربط الصفوف اللي بنفس الجوال (أو نفس الاسم إذا ما فيه جوال)
+  const normPhone = (p?: string) => (p || "").replace(/[^0-9]/g, "").replace(/^966/, "0");
+  function samePerson(a: Investor, b: Investor) {
+    const pa = normPhone(a.phone), pb = normPhone(b.phone);
+    return pa && pb ? pa === pb : a.name.trim() === b.name.trim();
+  }
+  function openLogin(iv: Investor) {
+    const ids = investors.filter(x => !x.profile_id && Number(x.percentage) > 0 && samePerson(x, iv)).map(x => x.id);
+    setLoginMdl({ iv, email: "", password: "", ids: ids.includes(iv.id) ? ids : [iv.id, ...ids], err: "" });
+  }
 
   const paidBy = useMemo(() => {
     const m: Record<number, number> = {};
@@ -184,6 +197,9 @@ export default function InvestorsTab({ names, chalets, bookings, expenses, maint
                             <button className="btn bp bsm" onClick={() => setPayMdl({ iv, amount: bal.balance > 0 ? String(bal.balance) : "", paid_date: td(), method: "تحويل بنكي", receipt_url: "", note: "" })}><Icon n="money" s={15} />دفعة</button>
                             <button className="btn bsm bshare" onClick={() => sendStatement(iv, r)}><Icon n="send" s={15} />الكشف</button>
                             <button className="btn bo bsm" onClick={() => setLedgerIv(iv)}><Icon n="receipt" s={15} />السجل</button>
+                            {iv.profile_id
+                              ? <Pill tone="ok">له حساب</Pill>
+                              : <button className="btn bo bsm" onClick={() => openLogin(iv)}><Icon n="shield" s={15} />حساب دخول</button>}
                             <button className="btn bo bsm" aria-label="تعديل" onClick={() => onEditInvestor(iv)}><Icon n="edit" s={15} /></button>
                             <button className="btn bd bsm" aria-label="حذف" onClick={async () => { if (window.confirm("حذف " + iv.name + "؟")) { await db("investors", "DELETE", null, iv.id); await onReload(); } }}><Icon n="trash" s={15} /></button>
                           </div>
@@ -227,6 +243,31 @@ export default function InvestorsTab({ names, chalets, bookings, expenses, maint
             <SaveBtn disabled={!(Number(feeMdl.pct) >= 0 && Number(feeMdl.pct) <= 100)} onClick={async () => {
               await db("chalets", "PATCH", { mgmt_fee_pct: Number(feeMdl.pct) || 0 }, feeMdl.chalet.id);
               setFeeMdl(null); await onReload();
+            }} />
+          </div>
+        </Modal>
+      )}
+
+      {loginMdl && (
+        <Modal onClose={() => setLoginMdl(null)} title={"حساب دخول للشريك — " + loginMdl.iv.name}>
+          <div className="x-muted" style={{ fontSize: 13, marginBottom: 12 }}>الشريك يدخل لوحة التحكم بهذا الحساب ويشوف فقط: شراكاته، الكشوف المُقفلة بكل بنودها، نصيبه، ودفعاته. ما يشوف بيانات الضيوف ولا باقي الشركاء.</div>
+          <div style={{ marginBottom: 12 }}><label className="lbl">الإيميل</label><input className="inp" dir="ltr" type="email" value={loginMdl.email} onChange={e => setLoginMdl(p => p && ({ ...p, email: e.target.value }))} /></div>
+          <div style={{ marginBottom: 12 }}><label className="lbl">كلمة المرور (6 أحرف على الأقل)</label><input className="inp" dir="ltr" type="text" value={loginMdl.password} onChange={e => setLoginMdl(p => p && ({ ...p, password: e.target.value }))} /></div>
+          <div style={{ marginBottom: 12 }}><label className="lbl">الشراكات اللي تظهر له</label>
+            {investors.filter(x => !x.profile_id && (x.id === loginMdl.iv.id || samePerson(x, loginMdl.iv))).map(x => (
+              <label key={x.id} style={{ display: "flex", gap: 8, alignItems: "center", padding: "4px 0" }}>
+                <input type="checkbox" checked={loginMdl.ids.includes(x.id)} onChange={e => setLoginMdl(p => p && ({ ...p, ids: e.target.checked ? [...p.ids, x.id] : p.ids.filter(i => i !== x.id) }))} />
+                <span>{x.chalet + " — " + Number(x.percentage) + "%"}</span>
+              </label>
+            ))}
+          </div>
+          {loginMdl.err && <div className="x-neg" style={{ fontSize: 13, marginBottom: 12 }}>{loginMdl.err}</div>}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button className="btn bo" onClick={() => setLoginMdl(null)}>إلغاء</button>
+            <SaveBtn label="إنشاء الحساب" disabled={!loginMdl.email.includes("@") || loginMdl.password.length < 6 || loginMdl.ids.length === 0} onClick={async () => {
+              const r = await createLogin({ email: loginMdl.email.trim(), password: loginMdl.password, name: loginMdl.iv.name.trim(), role: "investor", investorIds: loginMdl.ids });
+              if (r?.error) { setLoginMdl(p => p && ({ ...p, err: r.error || "" })); return; }
+              setLoginMdl(null); await onReload();
             }} />
           </div>
         </Modal>
