@@ -20,6 +20,8 @@ export interface Chalet {
   terms?: string | null;
   entry_method?: string | null;
   map_url?: string | null;
+  /** رسوم الإدارة: نسبة من الإيرادات المحصّلة تُخصم قبل التوزيع على الشركاء */
+  mgmt_fee_pct?: number;
   // computed from smart_devices
   _acOn?: boolean;
   _acTemp?: number;
@@ -111,6 +113,44 @@ export interface Investor {
   phone?: string;
   percentage: number;
   note?: string;
+  /** حساب دخول الشريك (بوابة المستثمر) */
+  profile_id?: string | null;
+}
+
+export interface InvestorShare {
+  investor_id: number;
+  name: string;
+  pct: number;
+  amount: number;
+}
+
+/** نسخة ثابتة من كشف الشهر وقت الإقفال */
+export interface InvestorStatement {
+  id: number;
+  chalet: string;
+  period: string; // YYYY-MM
+  revenue: number;
+  bookings_count: number;
+  expenses: Record<string, number>;
+  expenses_total: number;
+  mgmt_fee_pct: number;
+  mgmt_fee: number;
+  net: number;
+  shares: InvestorShare[];
+  reserve_spent: number;
+  note?: string | null;
+  closed_at: string;
+  closed_by?: string | null;
+}
+
+export interface InvestorPayment {
+  id: number;
+  investor_id: number;
+  amount: number;
+  paid_date: string;
+  method?: string | null;
+  receipt_url?: string | null;
+  note?: string | null;
 }
 
 export interface CleaningExpense {
@@ -214,6 +254,6 @@ export interface AppUser {
   name: string;
   username?: string;
   email?: string;
-  role: "platform_admin" | "owner" | "admin" | "staff" | "chalet_manager";
+  role: "platform_admin" | "owner" | "admin" | "staff" | "chalet_manager" | "investor";
   chalet?: string;
 }

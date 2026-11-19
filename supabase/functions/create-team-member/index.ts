@@ -9,7 +9,7 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ALLOWED_ROLES = ["admin", "staff", "chalet_manager"];
+const ALLOWED_ROLES = ["admin", "staff", "chalet_manager", "investor"];
 const ADMIN_ROLES = ["platform_admin", "owner", "admin"];
 
 function json(body: unknown, status = 200) {
@@ -43,7 +43,7 @@ serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { userId, email, password, name, username, role, chalet } = body || {};
+    const { userId, email, password, name, username, role, chalet, investorIds } = body || {};
 
     if (!name || !role) return json({ error: "بيانات ناقصة" }, 400);
     if (!ALLOWED_ROLES.includes(role)) return json({ error: "دور غير صالح" }, 400);
@@ -51,8 +51,21 @@ serve(async (req) => {
       return json({ error: "كلمة المرور يجب أن تكون 6 أحرف على الأقل" }, 400);
     }
 
+    // حساب المستثمر: نربط صفوف الشريك (صف لكل شاليه) بحسابه، ضمن نفس المالك فقط
+    async function linkInvestors(profileId: string) {
+      if (role !== "investor" || !Array.isArray(investorIds)) return null;
+      const ids = investorIds.map(Number).filter(Number.isFinite);
+      if (!ids.length) return null;
+      const { error } = await admin.from("investors").update({ profile_id: profileId })
+        .in("id", ids).eq("owner_id", callerProfile!.owner_id);
+      return error;
+    }
+
     // ── تعديل مستخدم موجود ──
     if (userId) {
+      // ما يُسمح بتعديل مستخدم من حساب (مالك) آخر
+      const { data: target } = await admin.from("profiles").select("owner_id").eq("id", userId).single();
+      if (!target || target.owner_id !== callerProfile.owner_id) return json({ error: "المستخدم غير موجود" }, 404);
       if (password) {
         const { error: pwErr } = await admin.auth.admin.updateUserById(userId, { password });
         if (pwErr) return json({ error: pwErr.message }, 400);
@@ -62,6 +75,8 @@ serve(async (req) => {
         .update({ name, username: username || null, role, chalet: chalet || null })
         .eq("id", userId);
       if (updErr) return json({ error: updErr.message }, 400);
+      const linkErr = await linkInvestors(userId);
+      if (linkErr) return json({ error: linkErr.message }, 400);
       return json({ success: true, id: userId });
     }
 
@@ -90,6 +105,9 @@ serve(async (req) => {
       await admin.auth.admin.deleteUser(created.user.id);
       return json({ error: profileErr.message }, 400);
     }
+
+    const linkErr = await linkInvestors(created.user.id);
+    if (linkErr) return json({ error: linkErr.message }, 400);
 
     return json({ success: true, id: created.user.id });
   } catch (e) {

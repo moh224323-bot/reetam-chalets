@@ -10,13 +10,15 @@ import type {
   Chalet, Booking, MaintenanceRequest, WalletTransaction,
   CleaningTransaction, CleaningExpense, CleaningTask, CleaningLog,
   Room, Review, AppUser, Expense, FixedExpense, CleaningWorker, LoyaltyCard,
-  GuestRating, BlockedGuest, Investor,
+  GuestRating, BlockedGuest, Investor, InvestorStatement, InvestorPayment,
 } from "../lib/types";
 import FinancialTab   from "../components/FinancialTab";
 import ChaletsTab     from "../components/ChaletsTab";
 import SettingsTab    from "../components/SettingsTab";
 import LandingPage, { fetchLanding, type LandingData } from "../components/LandingPage";
 import WebsiteTab     from "../components/WebsiteTab";
+import InvestorsTab   from "../components/InvestorsTab";
+import InvestorPortal from "../components/InvestorPortal";
 import { Icon, Pill, SAR, PageHead, Kpi, Seg, CardHead, Track, toneFor, Empty } from "../components/ds";
 import { rentCycleInfo, formatDueDate, RENT_REMINDER_DAYS, MONTH_NAMES } from "../lib/dueDate";
 
@@ -2379,7 +2381,15 @@ function AppWrapper() {
     if(showForgot) return <ForgotPasswordPage onBack={()=>setShowForgot(false)}/>;
     return <LoginPage onLogin={u=>setCurrentUser(u)} onShowSignup={()=>setShowSignup(true)} onShowForgot={()=>setShowForgot(true)}/>;
   }
-  return <App currentUser={currentUser} onLogout={()=>{supabase.auth.signOut();currentOwnerId=null;setCurrentOwnerId(null);setCurrentUser(null);}}/>;
+  const logout = ()=>{supabase.auth.signOut();currentOwnerId=null;setCurrentOwnerId(null);setCurrentUser(null);};
+  // حساب المستثمر يشوف بوابته فقط (كشوفه وتوزيعاته)، مو لوحة التحكم الكاملة
+  if(currentUser.role==="investor") return (
+    <div style={{fontFamily:"var(--f-body)",background:"var(--bg)",color:"var(--text)",minHeight:"100vh"}}>
+      <style>{CSS}</style>
+      <InvestorPortal onLogout={logout}/>
+    </div>
+  );
+  return <App currentUser={currentUser} onLogout={logout}/>;
 }
 
 function App({ currentUser = { role: "admin", name: "المستخدم" } as AppUser, onLogout = () => {} }: { currentUser: AppUser; onLogout: () => void }) {
@@ -2420,8 +2430,9 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   const [guestRatings,setGuestRatings]   = useState<GuestRating[]>([]);
   const [blockedGuests,setBlockedGuests] = useState<BlockedGuest[]>([]);
   const [investors,setInvestors] = useState<Investor[]>([]);
+  const [invStatements,setInvStatements] = useState<InvestorStatement[]>([]);
+  const [invPayments,setInvPayments] = useState<InvestorPayment[]>([]);
   const [invMdl,setInvMdl]       = useState<Partial<Investor> | null>(null);
-  const [invPeriod,setInvPeriod] = useState<"this_month"|"last_month"|"this_year">("this_month");
   const [loading,setLoading]   = useState(true);
   const [refreshing,setRefreshing] = useState(false);
   const [fch,setFch]           = useState("الكل");
@@ -2502,13 +2513,15 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
         db("smart_devices"), db("rooms"), db("reviews"), db("expenses"), db("profiles"),
         db("room_requests","GET",null,"resolved=eq.false&order=created_at.desc"),
       ]);
-      const [fx,cw,lc,gr,bg,inv] = await Promise.all([
+      const [fx,cw,lc,gr,bg,inv,ist,ipay] = await Promise.all([
         db("fixed_expenses").catch(()=>[]),
         db("cleaning_workers").catch(()=>[]),
         db("loyalty_cards","GET",null,"order=total_reviews.desc").catch(()=>[]),
         db("guest_ratings").catch(()=>[]),
         db("blocked_guests").catch(()=>[]),
         db("investors").catch(()=>[]),
+        db("investor_statements").catch(()=>[]),
+        db("investor_payments").catch(()=>[]),
       ]);
       const sdMap = {};
       (sd||[]).forEach(d=>{if(d.room_id)sdMap["room_"+d.room_id]=d;else sdMap[d.chalet]=d;});
@@ -2518,7 +2531,7 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
       if(!clogs)  console.error("⚠️ cleaning_logs فشل التحميل");
       setBookings(b||[]); setMaint(m||[]); setWallet(w||[]); setCleaning(cl||[]); setClExp(cle||[]); setClTasks(ctasks||[]); setClLogs(clogs||[]);
       setReviews(rv||[]); setExpenses(ex||[]); setUsers(us||[]); setRoomReqs(rr||[]); setFixedExpenses(fx||[]); setCleanWorkers(cw||[]); setLoyaltyCards(lc||[]);
-      setGuestRatings(gr||[]); setBlockedGuests(bg||[]); setInvestors((inv||[]) as unknown as Investor[]);
+      setGuestRatings(gr||[]); setBlockedGuests(bg||[]); setInvestors((inv||[]) as unknown as Investor[]); setInvStatements((ist||[]) as unknown as InvestorStatement[]); setInvPayments((ipay||[]) as unknown as InvestorPayment[]);
       // حفظ البيانات الأساسية في cache للتحميل الفوري القادم
       try {
         localStorage.setItem("reetam_cache", JSON.stringify({
@@ -2588,29 +2601,6 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
       };
     });
   },[scChalets,scBookings,scMaint,scExpenses,cBal]);
-
-  const invPeriodRange = ()=>{
-    const now=new Date();
-    if(invPeriod==="last_month"){
-      const d=new Date(now.getFullYear(),now.getMonth()-1,1);
-      const y=d.getFullYear(), m=d.getMonth();
-      const last=new Date(y,m+1,0).getDate();
-      return { from:`${y}-${String(m+1).padStart(2,"0")}-01`, to:`${y}-${String(m+1).padStart(2,"0")}-${String(last).padStart(2,"0")}` };
-    }
-    if(invPeriod==="this_year") return { from:`${now.getFullYear()}-01-01`, to:`${now.getFullYear()}-12-31` };
-    return { from:monthStart(), to:monthEnd() };
-  };
-  const invPeriodLabel = invPeriod==="last_month"?"الشهر الماضي":invPeriod==="this_year"?"هذا العام":"هذا الشهر";
-  const chaletNetForPeriod = useMemo(()=>{
-    const { from, to } = invPeriodRange();
-    const map: Record<string,{rev:number;mex:number;net:number}> = {};
-    names.forEach(n=>{
-      const rev = bookings.filter(b=>b.chalet===n&&(b.status==="completed"||b.status==="confirmed")&&b.date_from>=from&&b.date_from<=to).reduce((s,b)=>s+Number(b.price),0);
-      const mex = maint.filter(m=>m.chalet===n&&Number(m.cost)>0&&m.maint_date&&m.maint_date>=from&&m.maint_date<=to).reduce((s,m)=>s+Number(m.cost),0);
-      map[n] = { rev, mex, net: rev-mex };
-    });
-    return map;
-  },[names,bookings,maint,invPeriod]);
 
   const eC = {name:"",loc:"",cap:"",price:"",wprice:"",ins:"",description:"",st:"active",img:null,allow_overnight:true,allow_hourly:true};
   const eB = {chalet:names[0]||"",guest:"",phone:"",date_from:"",date_to:"",price:"",status:"confirmed",note:""};
@@ -3413,80 +3403,16 @@ ${poolLine}
           )}
 
           {/* ── Investors ── */}
-          {tab==="investors"&&isAdmin&&(()=>{
-            const totalNet=names.reduce((s,n)=>s+((chaletNetForPeriod[n]?.net)||0),0);
-            const partnerNames=new Set(investors.map(iv=>iv.name));
-            const incomplete=names.filter(n=>{const l=investors.filter(iv=>iv.chalet===n);return l.length>0&&l.reduce((s,iv)=>s+Number(iv.percentage||0),0)!==100;}).length;
-            return (
-            <div className="x-page">
-              <PageHead title="المستثمرون" sub="حصة كل شريك من صافي ربح الشاليه (الإيرادات ناقص الصيانة)">
-                <Seg label="الفترة" value={invPeriod} onChange={v=>setInvPeriod(v)} options={[{v:"this_month",l:"هذا الشهر"},{v:"last_month",l:"الشهر الماضي"},{v:"this_year",l:"هذا العام"}]}/>
-              </PageHead>
-              <div className="x-kpis">
-                <Kpi hero label={"الأرباح القابلة للتوزيع · "+invPeriodLabel} value={<SAR v={totalNet}/>}/>
-                <Kpi c="blue" label="عدد الشركاء" value={partnerNames.size} sub={"في "+names.length+" شاليه"}/>
-                <Kpi label="شاليهات نسبها غير مكتملة" value={incomplete} tone={incomplete?"neg":"pos"} sub={incomplete?"مجموع النسب لا يساوي 100%":"كل النسب مكتملة"}/>
-              </div>
-              {names.length===0 && <div className="x-card"><Empty>أضف شاليهات أولاً</Empty></div>}
-              {names.map(n=>{
-                const chInvestors = investors.filter(iv=>iv.chalet===n);
-                const totalPct = chInvestors.reduce((s,iv)=>s+Number(iv.percentage||0),0);
-                const stats = chaletNetForPeriod[n] || {rev:0,mex:0,net:0};
-                return (
-                  <div key={n} className="x-card">
-                    <CardHead icon="home" title={n} sub={<>صافي {invPeriodLabel}: <b className={stats.net<0?"x-neg":"x-pos"}><SAR v={stats.net}/></b></>}>
-                      {chInvestors.length>0&&<Pill tone={totalPct===100?"ok":"warn"}>{"مجموع النسب "+totalPct+"%"}</Pill>}
-                      <button className="btn bo bsm" onClick={()=>setInvMdl({chalet:n,name:"",phone:"",percentage:0,note:""})}><Icon n="plus" s={15}/>شريك</button>
-                    </CardHead>
-                    {chInvestors.length===0
-                      ? <Empty>لا يوجد شركاء لهذا الشاليه</Empty>
-                      : <div className="tbl-wrap"><table className="x-tbl">
-                          <thead><tr><th>الشريك</th><th>النسبة</th><th>نصيبه</th><th className="x-hide-sm">الجوال</th><th className="end"></th></tr></thead>
-                          <tbody>
-                            {chInvestors.map(iv=>{
-                              const share = Math.round(stats.net * (Number(iv.percentage)||0) / 100);
-                              return (
-                                <tr key={iv.id}>
-                                  <td className="strong">{iv.name}</td>
-                                  <td><div className="x-barrow"><Track pct={Number(iv.percentage)||0}/><span>{Number(iv.percentage)+"%"}</span></div></td>
-                                  <td className={"strong "+(share<0?"x-neg":"")}><SAR v={share}/></td>
-                                  <td className="x-mono x-muted x-hide-sm">{iv.phone||"-"}</td>
-                                  <td className="end">
-                                    <div style={{display:"inline-flex",gap:6}}>
-                                      <button className="btn bsm bshare" onClick={()=>{
-                                        const lines=[
-                                          `📊 *تقرير حصتك — ${n}*`,
-                                          `🗓️ الفترة: ${invPeriodLabel}`,
-                                          ``,
-                                          `💵 إيرادات الشاليه: ${stats.rev.toLocaleString("en-US")} ر`,
-                                          `🔧 تكاليف الصيانة: ${stats.mex.toLocaleString("en-US")} ر`,
-                                          `📈 صافي ربح الشاليه: ${stats.net.toLocaleString("en-US")} ر`,
-                                          `🤝 نسبتك: ${Number(iv.percentage)}%`,
-                                          ``,
-                                          `*نصيبك: ${share.toLocaleString("en-US")} ر*`,
-                                          ``,
-                                          `_تقرير آلي من نظام إدارة ريتام_`,
-                                        ];
-                                        const phone = iv.phone?.replace(/[^0-9]/g,"").replace(/^0/,"966");
-                                        const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(lines.join("\n"))}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(lines.join("\n"))}`;
-                                        window.open(url,"_blank");
-                                      }}><Icon n="send" s={15}/>إرسال التقرير</button>
-                                      <button className="btn bo bsm" aria-label="تعديل" onClick={()=>setInvMdl({...iv})}><Icon n="edit" s={15}/></button>
-                                      <button className="btn bd bsm" aria-label="حذف" onClick={async()=>{if(window.confirm("حذف "+iv.name+"؟")){await db("investors","DELETE",null,iv.id);await loadAll();}}}><Icon n="trash" s={15}/></button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table></div>
-                    }
-                  </div>
-                );
-              })}
-            </div>
-            );
-          })()}
+          {tab==="investors"&&isAdmin&&(
+            <InvestorsTab
+              names={names} chalets={chalets} bookings={bookings} expenses={expenses} maint={maint}
+              investors={investors} statements={invStatements} payments={invPayments}
+              userName={currentUser.name||""} onReload={loadAll}
+              onAddInvestor={n=>setInvMdl({chalet:n,name:"",phone:"",percentage:0,note:""})}
+              onEditInvestor={iv=>setInvMdl({...iv})}
+              createLogin={callTeamMemberFn}
+            />
+          )}
 
           {/* ── Maintenance ── */}
           {tab==="maintenance"&&(()=>{
