@@ -880,14 +880,14 @@ function ChaletPublicPage({chaletName}:{chaletName:string}) {
 
   useEffect(()=>{
     (async()=>{
-      const rows = await db("chalets","GET",null,`name=eq.${encodeURIComponent(chaletName)}`);
-      const ch = rows?.[0] as Chalet | undefined;
-      if(ch){
+      // عبر دالة آمنة: بيانات العرض والفترات المحجوزة فقط، بدون أسماء أو جوالات الضيوف
+      const {data} = await supabase.rpc("guest_chalet_page",{p_name:chaletName});
+      const pg = data as {chalet:Chalet; bank:BusinessSettings; bookings:Booking[]} | null;
+      const ch = pg?.chalet;
+      if(pg&&ch){
         setChalet(ch);
-        const bs = await db("business_settings","GET",null,"id=eq.1");
-        if(bs?.[0]) setBiz(bs[0] as BusinessSettings);
-        const bks = await db("bookings","GET",null,`chalet=eq.${encodeURIComponent(ch.name)}&status=in.(confirmed,pending)&select=*`);
-        setBookings((bks||[]) as Booking[]);
+        setBiz(pg.bank);
+        setBookings(pg.bookings||[]);
         if(ch.allow_overnight===false && ch.allow_hourly) setBkMode("hourly");
       }
       setLoading(false);
@@ -957,17 +957,14 @@ function ChaletPublicPage({chaletName}:{chaletName:string}) {
     }
 
     setBkSubmitting(true);
-    const body = bkMode==="overnight"
-      ? { chalet:chalet.name, guest:bkName, phone:bkPhone, date_from:bkFrom, date_to:bkTo, price:calcPrice(bkFrom,bkTo,chalet), status:"pending", payment_method:"تحويل بنكي", note:"حجز ذاتي من رابط الشاليه — بانتظار تأكيد التحويل" }
-      : { chalet:chalet.name, guest:bkName, phone:bkPhone, date_from:bkDay, date_to:bkDay, checkin_time:hourlySlots[bkSlot!].from, checkout_time:hourlySlots[bkSlot!].to, price:Number(hourlySlots[bkSlot!].price)||0, status:"pending", payment_method:"تحويل بنكي", note:`حجز بالساعة (${hourlySlots[bkSlot!].name}) — بانتظار تأكيد التحويل` };
-
-    const res = await fetch(`${SUPA_URL}/rest/v1/bookings`,{
-      method:"POST",
-      headers:{apikey:SUPA_KEY,Authorization:`Bearer ${SUPA_KEY}`,"Content-Type":"application/json",Prefer:"return=representation"},
-      body:JSON.stringify(body),
-    });
+    // الحجز عبر نفس دالة صفحة الموقع: تتحقق من التعارض وتحسب السعر على الخادم
+    const args = bkMode==="overnight"
+      ? { p_chalet_id:chalet.id, p_name:bkName, p_phone:bkPhone, p_from:bkFrom, p_to:bkTo }
+      : { p_chalet_id:chalet.id, p_name:bkName, p_phone:bkPhone, p_from:bkDay, p_to:null, p_slot_index:bkSlot };
+    const {data,error} = await supabase.rpc("landing_create_booking",args);
     setBkSubmitting(false);
-    if(!res.ok){ setBkErr("تعذّر إتمام الحجز، حاول مرة أخرى"); return; }
+    const r = data as {ok?:boolean; error?:string} | null;
+    if(error||!r?.ok){ setBkErr(r?.error||"تعذّر إتمام الحجز، حاول مرة أخرى"); return; }
     setBkDone(true);
   }
 
@@ -1447,48 +1444,33 @@ function GuestPageEmbed({bookingId, mode}) {
   useEffect(()=>{
     if(!bookingId){setStep("error");return;}
     async function load(){
-      const data=await db("bookings","GET",null,`id=eq.${bookingId}`);
-      if(!data||!data[0]){setStep("error");return;}
-      setBooking(data[0]);
+      const {data}=await supabase.rpc("guest_booking",{p_id:Number(bookingId)});
+      const g=data as {booking:any; chalet:{terms?:string}|null; has_review:boolean; has_checkin:boolean} | null;
+      if(!g?.booking){setStep("error");return;}
+      setBooking(g.booking);
       if(mode==="review"){
-        const rv=await db("reviews","GET",null,`booking_id=eq.${bookingId}`);
-        if(rv&&rv[0]){setStep("done");return;}
-        setStep("review");
+        setStep(g.has_review?"done":"review");
       } else if(mode==="pool"){
         setStep("pool");
       } else {
-        const cdata=await db("chalets","GET",null,`name=eq.${encodeURIComponent(data[0].chalet)}`);
-        if(cdata&&cdata[0]&&cdata[0].terms) setChaletTerms(cdata[0].terms);
-        const ci=await db("guest_checkins","GET",null,`booking_id=eq.${bookingId}`);
-        if(ci&&ci[0]){setStep("confirmed");}
-        else setStep("terms");
+        if(g.chalet?.terms) setChaletTerms(g.chalet.terms);
+        setStep(g.has_checkin?"confirmed":"terms");
       }
     }
     load();
   },[]);
 
   async function acceptTerms(){
-    const now=new Date().toISOString();
     if(!booking) return;
-    const res=await db("guest_checkins","POST",{booking_id:Number(bookingId),chalet:booking.chalet,guest:booking.guest,phone:booking.phone,checked_in_at:now,terms_accepted:true,terms_accepted_at:now});
-    if(res&&res[0]) setStep("confirmed");
+    const {data}=await supabase.rpc("guest_checkin",{p_booking:Number(bookingId)});
+    if((data as {ok?:boolean}|null)?.ok) setStep("confirmed");
   }
   async function submitReview(){
     if(!rating||!booking) return;
-    await db("reviews","POST",{booking_id:Number(bookingId),chalet:booking.chalet,guest:booking.guest,rating,comment});
-    // منح تذكرة ولاء
-    if(booking.phone){
-      const phone=booking.phone.replace(/[^0-9]/g,"").replace(/^966/,"0");
-      const existing=await db("loyalty_cards","GET",null,`phone=eq.${phone}`);
-      if(existing&&existing[0]){
-        const cur=existing[0];
-        const newTickets=cur.tickets>=2 ? 0 : cur.tickets+1;
-        const newFree=cur.tickets>=2 ? cur.free_nights+1 : cur.free_nights;
-        await db("loyalty_cards","PATCH",{tickets:newTickets,free_nights:newFree,total_reviews:cur.total_reviews+1,name:booking.guest,updated_at:new Date().toISOString()},cur.id);
-      } else {
-        await db("loyalty_cards","POST",{phone,name:booking.guest,tickets:1,free_nights:0,total_reviews:1});
-      }
-    }
+    // التقييم وتذكرة الولاء على الخادم؛ يرجع الجوال لرابط بطاقة الولاء
+    const {data}=await supabase.rpc("guest_submit_review",{p_booking:Number(bookingId),p_rating:rating,p_comment:comment});
+    const r=data as {ok?:boolean; phone?:string} | null;
+    if(r?.phone) setBooking({...booking,phone:r.phone});
     setSubmitted(true); setStep("done");
   }
 
@@ -1620,7 +1602,7 @@ function PoolGuestForm({booking, onDone}) {
     if(!choice||!booking) return;
     setLoading(true);
     const pref = choice==="ready"&&readyTime ? `ready:${readyTime}` : choice;
-    await db("bookings","PATCH",{pool_preference:pref,pool_approved:false},booking.id);
+    await supabase.rpc("guest_pool_preference",{p_booking:booking.id,p_pref:pref});
     setLoading(false);
     onDone();
   }
@@ -1683,12 +1665,11 @@ function GuestInfoPage({bookingId}:{bookingId: string | null}) {
   useEffect(()=>{
     if(!bookingId){setStep("error");return;}
     (async()=>{
-      const bdata=await db("bookings","GET",null,`id=eq.${bookingId}`);
-      if(!bdata||!bdata[0]){setStep("error");return;}
-      const b=bdata[0] as any;
-      setBooking(b);
-      const cdata=await db("chalets","GET",null,`name=eq.${encodeURIComponent(b.chalet)}`);
-      setChalet((cdata&&cdata[0])||null);
+      const {data}=await supabase.rpc("guest_booking",{p_id:Number(bookingId)});
+      const g=data as {booking:any; chalet:any} | null;
+      if(!g?.booking){setStep("error");return;}
+      setBooking(g.booking);
+      setChalet(g.chalet||null);
       setStep("ready");
     })();
   },[]);
@@ -1749,9 +1730,6 @@ const ROOM_REQUEST_TYPES = [
   { val:"أخرى",   icon:"📋", label:"طلب آخر",          color:"#7C3AED" },
 ];
 
-const SUPA_URL_ROOM = "https://kduoasfaqtrotesohqpf.supabase.co";
-const SUPA_KEY_ROOM = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkdW9hc2ZhcXRyb3Rlc29ocXBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzk5NzIwODcsImV4cCI6MjA5NTU0ODA4N30.RTybT1rFOCbWMZ9qkjmk5j0z24RMFWlJSMATMdw8aNw";
-
 function RoomRequestPage({ chalet, room }: { chalet: string; room: string }) {
   const [type,    setType]    = useState("");
   const [note,    setNote]    = useState("");
@@ -1768,17 +1746,9 @@ function RoomRequestPage({ chalet, room }: { chalet: string; room: string }) {
     setLoading(true);
     setErr("");
     try {
-      const res = await fetch(`${SUPA_URL_ROOM}/rest/v1/room_requests`, {
-        method: "POST",
-        headers: {
-          "apikey": SUPA_KEY_ROOM,
-          "Authorization": `Bearer ${SUPA_KEY_ROOM}`,
-          "Content-Type": "application/json",
-          "Prefer": "return=minimal",
-        },
-        body: JSON.stringify({ chalet, room, type, note: note || null, resolved: false }),
-      });
-      if (!res.ok) { const t = await res.text(); setErr(t); setLoading(false); return; }
+      const { data, error } = await supabase.rpc("guest_room_request", { p_chalet: chalet, p_room: room, p_type: type, p_note: note || null });
+      const r = data as { ok?: boolean; error?: string } | null;
+      if (error || !r?.ok) { setErr(r?.error || "تعذّر إرسال الطلب"); setLoading(false); return; }
       setDone(true);
     } catch(e) {
       setErr("تعذّر الاتصال، تحقق من الإنترنت");
@@ -2072,19 +2042,6 @@ function SignupPage({onSignedUp,onBack}: {onSignedUp:(u:AppUser)=>void; onBack:(
 }
 
 // ── بطاقة الولاء للضيف ──────────────────────────────────────────────────────
-const SUPA_URL_G = "https://kduoasfaqtrotesohqpf.supabase.co";
-const SUPA_KEY_G = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkdW9hc2ZhcXRyb3Rlc29ocXBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc1NzExOTcsImV4cCI6MjA2MzE0NzE5N30.LKqDMEZLnrNHfAJnCvwzb0_ZVhkVqkJi7MaGvGWRnkU";
-
-async function guestDb(table: string, method = "GET", body?: object, filter?: string) {
-  const url = `${SUPA_URL_G}/rest/v1/${table}${filter ? "?" + filter : ""}`;
-  const headers: Record<string,string> = { "apikey": SUPA_KEY_G, "Authorization": `Bearer ${SUPA_KEY_G}`, "Content-Type": "application/json" };
-  if (method !== "GET") headers["Prefer"] = method === "POST" ? "return=representation" : "return=minimal";
-  const res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
-  if (!res.ok) return null;
-  if (method === "PATCH" || method === "DELETE") return null;
-  return res.json().catch(() => null);
-}
-
 function LoyaltyPage({ phone }: { phone: string }) {
   const [card, setCard] = useState<LoyaltyCard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2093,8 +2050,8 @@ function LoyaltyPage({ phone }: { phone: string }) {
 
   useEffect(() => {
     if (!phone) { setLoading(false); return; }
-    guestDb("loyalty_cards", "GET", undefined, `phone=eq.${phone}`).then(data => {
-      setCard(data?.[0] || null);
+    supabase.rpc("guest_loyalty_card", { p_phone: phone }).then(({ data }) => {
+      setCard((data as LoyaltyCard | null) || null);
       setLoading(false);
     });
   }, [phone]);
@@ -2196,8 +2153,8 @@ function LoyaltyPage({ phone }: { phone: string }) {
   );
 }
 
-const SUPA_URL_CL = "https://kduoasfaqtrotesohqpf.supabase.co";
-const SUPA_KEY_CL = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtkdW9hc2ZhcXRyb3Rlc29ocXBmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDc1NzExOTcsImV4cCI6MjA2MzE0NzE5N30.LKqDMEZLnrNHfAJnCvwzb0_ZVhkVqkJi7MaGvGWRnkU";
+const SUPA_URL_CL = SUPA_URL;
+const SUPA_KEY_CL = SUPA_KEY;
 
 const CLEAN_TASK_STRINGS: Record<string, Record<string, string>> = {
   hi: {
@@ -2284,12 +2241,8 @@ function CleanTaskWorkerPage({ logId, taskName, chalet, lang }: { logId: string 
       if (!upRes.ok) { setErr("خطأ في رفع الملف"); setLoading(false); return; }
       const mediaUrl = `${SUPA_URL_CL}/storage/v1/object/public/cleaning-media/${fileName}`;
 
-      const res = await fetch(`${SUPA_URL_CL}/rest/v1/cleaning_logs?id=eq.${logId}`, {
-        method: "PATCH",
-        headers: { "apikey": SUPA_KEY_CL, "Authorization": `Bearer ${SUPA_KEY_CL}`, "Content-Type": "application/json", "Prefer": "return=minimal" },
-        body: JSON.stringify({ status: "done", done_at: new Date().toISOString(), done_note: note || null, worker_done: true, done_media_url: mediaUrl }),
-      });
-      if (!res.ok) { setErr("خطأ في الاتصال"); setLoading(false); return; }
+      const { data } = await supabase.rpc("cleaning_task_done", { p_log: Number(logId), p_note: note || null, p_media_url: mediaUrl });
+      if (!(data as { ok?: boolean } | null)?.ok) { setErr("خطأ في الاتصال"); setLoading(false); return; }
       setDone(true);
     } catch { setErr("تعذّر الاتصال"); }
     setLoading(false);
@@ -2656,12 +2609,14 @@ function App({ currentUser = { role: "admin", name: "المستخدم" } as AppU
   // عند تغيير اسم الشاليه، نحدّث الاسم في كل الجداول المرتبطة حتى لا تنكسر الروابط القديمة
   async function renameChaletEverywhere(oldName: string, newName: string): Promise<void> {
     if(!oldName || oldName===newName) return;
+    const {data:{session}} = await supabase.auth.getSession();
+    const token = session?.access_token || SUPA_KEY;
     const tables = ["bookings","maintenance","expenses","fixed_expenses","wallet","cleaning","cleaning_expenses","cleaning_tasks","rooms","smart_devices","reviews","room_requests"];
     await Promise.all(tables.map(t=>{
       const url = `${SUPA_URL}/rest/v1/${t}?chalet=eq.${encodeURIComponent(oldName)}`;
       return fetch(url,{
         method:"PATCH",
-        headers:{apikey:SUPA_KEY,Authorization:`Bearer ${SUPA_KEY}`,"Content-Type":"application/json"},
+        headers:{apikey:SUPA_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json"},
         body:JSON.stringify({chalet:newName}),
       }).catch(()=>null);
     }));

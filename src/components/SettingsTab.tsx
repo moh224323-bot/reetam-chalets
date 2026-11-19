@@ -3,9 +3,6 @@ import { AppUser } from "../lib/types";
 import { db } from "../lib/db";
 import { Icon, Pill, PageHead, CardHead, Empty } from "./ds";
 
-const SUPA_URL = process.env.EXPO_PUBLIC_SUPA_URL!;
-const SUPA_KEY = process.env.EXPO_PUBLIC_SUPA_KEY!;
-
 interface BankSettings {
   bank_name?: string;
   bank_account_name?: string;
@@ -32,18 +29,13 @@ export default function SettingsTab({ users, onAdd, onEdit, onReload }: Props) {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    fetch(`${SUPA_URL}/rest/v1/business_settings?id=eq.1&select=*`, {
-      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}` },
-    }).then(r => r.json()).then(rows => { if (rows?.[0]) setBank(rows[0]); }).catch(()=>{});
+    // بجلسة المستخدم (db) — إعدادات النشاط محمية بسياسة المالك وما عادت تُقرأ بالمفتاح العام
+    db("business_settings", "GET", null, "id=eq.1").then(rows => { if (rows?.[0]) setBank(rows[0] as BankSettings); });
   }, []);
 
   async function saveBank() {
     setSaving(true);
-    await fetch(`${SUPA_URL}/rest/v1/business_settings?id=eq.1`, {
-      method: "PATCH",
-      headers: { apikey: SUPA_KEY, Authorization: `Bearer ${SUPA_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" },
-      body: JSON.stringify(bank),
-    });
+    await db("business_settings", "PATCH", bank as Record<string, unknown>, 1);
     setSaving(false);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
